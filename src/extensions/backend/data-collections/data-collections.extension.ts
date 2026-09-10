@@ -3,6 +3,10 @@ import assetsCollection from './assets';
 import reservationsCollection from './reservations';
 import reservationItemsCollection from './reservation-items';
 import customersCollection from './customers';
+import documentsCollection from './documents';
+import paymentsCollection from './payments';
+import inspectionsCollection from './inspections';
+import activityLogCollection from './activity-log';
 
 export default extensions.dataCollections({
   id: 'c1fe36e1-148a-4fed-91aa-ade5edec2a02',
@@ -12,5 +16,9 @@ export default extensions.dataCollections({
     reservationsCollection,
     reservationItemsCollection,
     customersCollection,
+    documentsCollection,
+    paymentsCollection,
+    inspectionsCollection,
+    activityLogCollection,
   ],
 });
