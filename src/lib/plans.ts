@@ -13,6 +13,8 @@ export type RentalFlowFeature =
   | 'FULL_HISTORY'
   | 'UNLIMITED_ASSETS';
 
+const BETA_FULL_ACCESS = true;
+
 const planLevel: Record<RentalFlowPlan, number> = {
   FREE: 0,
   STARTER: 1,
@@ -50,15 +52,13 @@ export function requiredPlan(feature: RentalFlowFeature): RentalFlowPlan {
 }
 
 /**
- * During local Wix development every feature is exposed so the whole product
- * can be tested before the Wix App Market pricing packages are configured.
+ * Private beta: all features are intentionally enabled so the released,
+ * unlisted app can be tested end-to-end on real Wix sites.
  *
- * Before public launch this will be connected to Wix App Management
- * getAppInstance(), using isFree/packageName to resolve the installed plan.
+ * IMPORTANT: set BETA_FULL_ACCESS to false and replace this temporary resolver
+ * with Wix App Management getAppInstance() before App Market submission.
  */
 export function getCurrentPlan(): RentalFlowPlan {
-  if (import.meta.env.DEV) return 'PRO';
-
-  // Safe production fallback until Wix pricing packages are configured.
+  if (BETA_FULL_ACCESS || import.meta.env.DEV) return 'PRO';
   return 'FREE';
 }
