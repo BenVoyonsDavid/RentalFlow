@@ -7,6 +7,8 @@ import documentsCollection from './documents';
 import paymentsCollection from './payments';
 import inspectionsCollection from './inspections';
 import activityLogCollection from './activity-log';
+import appSettingsCollection from './app-settings';
+import documentTemplatesCollection from './document-templates';
 
 export default extensions.dataCollections({
   id: 'c1fe36e1-148a-4fed-91aa-ade5edec2a02',
@@ -20,5 +22,7 @@ export default extensions.dataCollections({
     paymentsCollection,
     inspectionsCollection,
     activityLogCollection,
+    appSettingsCollection,
+    documentTemplatesCollection,
   ],
 });
