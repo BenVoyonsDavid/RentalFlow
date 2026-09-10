@@ -14,6 +14,7 @@ const RESERVATION_ITEMS = '@pilotedavid1/rental-flow/reservation-items';
 type CalendarView = 'MONTH' | 'WEEK' | 'LIST' | 'AVAILABILITY';
 type ReservationStatus = 'CONFIRMED' | 'CANCELLED' | 'COMPLETED' | 'ERROR';
 type CustomerMode = 'EXISTING' | 'NEW';
+type DetailTab = 'DETAILS' | 'EQUIPMENT' | 'PAYMENTS' | 'DOCUMENTS' | 'INSPECTION' | 'NOTES' | 'HISTORY';
 
 type Asset = {
   _id?: string; title?: string; assetNumber?: string; productType?: string; status?: string;
@@ -33,6 +34,7 @@ type Reservation = {
   bufferBeforeHours?: number; bufferAfterHours?: number; status?: ReservationStatus;
   subtotalCents?: number; customerDiscountPercent?: number; discountCents?: number;
   totalCents?: number; currency?: string; notes?: string;
+  _createdDate?: Date | string; _updatedDate?: Date | string;
 };
 
 type ReservationItem = {
@@ -44,18 +46,9 @@ type ReservationItem = {
 };
 
 type ReservationForm = {
-  customerMode: CustomerMode;
-  customerId: string;
-  newFirstName: string;
-  newLastName: string;
-  newCompanyName: string;
-  newEmail: string;
-  newPhone: string;
-  startDateTime: string;
-  endDateTime: string;
-  bufferBeforeHours: string;
-  bufferAfterHours: string;
-  notes: string;
+  customerMode: CustomerMode; customerId: string; newFirstName: string; newLastName: string;
+  newCompanyName: string; newEmail: string; newPhone: string; startDateTime: string; endDateTime: string;
+  bufferBeforeHours: string; bufferAfterHours: string; notes: string;
 };
 
 const blankForm: ReservationForm = {
@@ -66,6 +59,7 @@ const blankForm: ReservationForm = {
 const card: CSSProperties = { background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 20, boxShadow: '0 1px 3px rgba(0,0,0,.06)' };
 const primary: CSSProperties = { border: 0, borderRadius: 8, padding: '10px 16px', fontSize: 14, fontWeight: 600, cursor: 'pointer', background: '#116dff', color: '#fff' };
 const secondary: CSSProperties = { ...primary, border: '1px solid #116dff', background: '#fff', color: '#116dff' };
+const danger: CSSProperties = { ...secondary, borderColor: '#dc2626', color: '#b91c1c' };
 const input: CSSProperties = { width: '100%', boxSizing: 'border-box', border: '1px solid #cbd5e1', borderRadius: 8, padding: '10px 12px', fontSize: 14, background: '#fff' };
 
 function asDate(value: Date | string | undefined): Date {
@@ -99,11 +93,22 @@ function customerName(customer: Customer): string {
   return person || customer.companyName || 'Client sans nom';
 }
 function startOfWeek(date: Date): Date {
-  const result = new Date(date);
-  const day = result.getDay() || 7;
-  result.setDate(result.getDate() - day + 1);
-  result.setHours(0, 0, 0, 0);
-  return result;
+  const result = new Date(date); const day = result.getDay() || 7;
+  result.setDate(result.getDate() - day + 1); result.setHours(0, 0, 0, 0); return result;
+}
+function reservationPayload(reservation: Reservation, changes: Partial<Reservation> = {}) {
+  return {
+    _id: reservation._id,
+    reservationNumber: reservation.reservationNumber || '', customerId: reservation.customerId || '',
+    customerNumber: reservation.customerNumber || '', customerName: reservation.customerName || '',
+    customerEmail: reservation.customerEmail || '', customerPhone: reservation.customerPhone || '',
+    startDateTime: reservation.startDateTime, endDateTime: reservation.endDateTime,
+    bufferBeforeHours: reservation.bufferBeforeHours || 0, bufferAfterHours: reservation.bufferAfterHours || 0,
+    status: reservation.status || 'CONFIRMED', subtotalCents: reservation.subtotalCents || 0,
+    customerDiscountPercent: reservation.customerDiscountPercent || 0, discountCents: reservation.discountCents || 0,
+    totalCents: reservation.totalCents || 0, currency: reservation.currency || 'CAD', notes: reservation.notes || '',
+    ...changes,
+  };
 }
 
 const ReservationsPage: FC = () => {
@@ -125,6 +130,8 @@ const ReservationsPage: FC = () => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [formOpen, setFormOpen] = useState(false);
+  const [detailReservation, setDetailReservation] = useState<Reservation | null>(null);
+  const [detailTab, setDetailTab] = useState<DetailTab>('DETAILS');
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
   const [form, setForm] = useState<ReservationForm>(blankForm);
@@ -140,15 +147,11 @@ const ReservationsPage: FC = () => {
     setLoading(true); setError('');
     try {
       const [assetResult, customerResult, reservationResult, itemResult] = await Promise.all([
-        items.query(ASSETS).limit(1000).find(),
-        items.query(CUSTOMERS).limit(1000).find(),
-        items.query(RESERVATIONS).limit(1000).find(),
-        items.query(RESERVATION_ITEMS).limit(1000).find(),
+        items.query(ASSETS).limit(1000).find(), items.query(CUSTOMERS).limit(1000).find(),
+        items.query(RESERVATIONS).limit(1000).find(), items.query(RESERVATION_ITEMS).limit(1000).find(),
       ]);
-      setAssets(assetResult.items as Asset[]);
-      setCustomers(customerResult.items as Customer[]);
-      setReservations(reservationResult.items as Reservation[]);
-      setReservationItems(itemResult.items as ReservationItem[]);
+      setAssets(assetResult.items as Asset[]); setCustomers(customerResult.items as Customer[]);
+      setReservations(reservationResult.items as Reservation[]); setReservationItems(itemResult.items as ReservationItem[]);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Impossible de charger les réservations.');
     } finally { setLoading(false); }
@@ -164,8 +167,7 @@ const ReservationsPage: FC = () => {
     const requested = getBlockedRange(start, end, before, after);
     return !reservationItems.some((item) => {
       if (item.assetId !== assetId || item.status === 'CANCELLED' || item.status === 'COMPLETED') return false;
-      const existingStart = asDate(item.blockedStartDateTime);
-      const existingEnd = asDate(item.blockedEndDateTime);
+      const existingStart = asDate(item.blockedStartDateTime); const existingEnd = asDate(item.blockedEndDateTime);
       if (existingStart.getTime() === 0 || existingEnd.getTime() === 0) return false;
       return rangesOverlap(requested.blockedStart, requested.blockedEnd, existingStart, existingEnd);
     });
@@ -174,24 +176,20 @@ const ReservationsPage: FC = () => {
   const formDates = useMemo(() => {
     const start = form.startDateTime ? new Date(form.startDateTime) : null;
     const end = form.endDateTime ? new Date(form.endDateTime) : null;
-    const valid = !!start && !!end && !Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime()) && end > start;
-    return { start, end, valid };
+    return { start, end, valid: !!start && !!end && !Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime()) && end > start };
   }, [form.startDateTime, form.endDateTime]);
 
   const formAssetAvailability = useMemo(() => {
     if (!formDates.valid || !formDates.start || !formDates.end) return new Map<string, boolean>();
-    const before = numberValue(form.bufferBeforeHours);
-    const after = numberValue(form.bufferAfterHours);
+    const before = numberValue(form.bufferBeforeHours); const after = numberValue(form.bufferAfterHours);
     return new Map(activeAssets.map((asset) => [asset._id || '', !!asset._id && isAvailable(asset._id, formDates.start!, formDates.end!, before, after)]));
   }, [activeAssets, formDates, form.bufferBeforeHours, form.bufferAfterHours, isAvailable]);
 
   const priceLines = useMemo(() => {
     if (!formDates.valid || !formDates.start || !formDates.end) return [];
     return selectedAssetIds.flatMap((id) => {
-      const asset = activeAssets.find((candidate) => candidate._id === id);
-      if (!asset) return [];
-      try { return [{ asset, ...calculateRentalPrice(asset, formDates.start, formDates.end, pricingOptions) }]; }
-      catch { return []; }
+      const asset = activeAssets.find((candidate) => candidate._id === id); if (!asset) return [];
+      try { return [{ asset, ...calculateRentalPrice(asset, formDates.start, formDates.end, pricingOptions) }]; } catch { return []; }
     });
   }, [activeAssets, formDates, pricingOptions, selectedAssetIds]);
 
@@ -201,10 +199,9 @@ const ReservationsPage: FC = () => {
   const totalCents = Math.max(0, subtotalCents - customerDiscountCents);
   const currency = priceLines[0]?.asset.currency || 'CAD';
 
-  const openForm = () => {
-    setForm(blankForm); setSelectedAssetIds([]); setFormError(''); setSuccess(''); setFormOpen(true);
-  };
+  const openForm = () => { setForm(blankForm); setSelectedAssetIds([]); setFormError(''); setSuccess(''); setFormOpen(true); };
   const toggleAsset = (id: string) => setSelectedAssetIds((current) => current.includes(id) ? current.filter((candidate) => candidate !== id) : [...current, id]);
+  const openDetails = (reservation: Reservation) => { setDetailReservation(reservation); setDetailTab('DETAILS'); };
 
   const saveReservation = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault(); setFormError(''); setSuccess('');
@@ -213,11 +210,8 @@ const ReservationsPage: FC = () => {
     if (form.customerMode === 'EXISTING' && !selectedCustomer?._id) return setFormError('Sélectionnez un client.');
     if (form.customerMode === 'NEW' && !form.newFirstName.trim() && !form.newLastName.trim() && !form.newCompanyName.trim()) return setFormError('Entrez le nom du nouveau client.');
 
-    const before = numberValue(form.bufferBeforeHours);
-    const after = numberValue(form.bufferAfterHours);
-    setSaving(true);
-    let createdReservation: Reservation | null = null;
-
+    const before = numberValue(form.bufferBeforeHours); const after = numberValue(form.bufferAfterHours);
+    setSaving(true); let createdReservation: Reservation | null = null;
     try {
       const latestItemsResult = await items.query(RESERVATION_ITEMS).limit(1000).find();
       const latestItems = latestItemsResult.items as ReservationItem[];
@@ -228,103 +222,74 @@ const ReservationsPage: FC = () => {
       }
 
       let customer: Customer;
-      if (form.customerMode === 'EXISTING' && selectedCustomer) {
-        customer = selectedCustomer;
-      } else {
+      if (form.customerMode === 'EXISTING' && selectedCustomer) customer = selectedCustomer;
+      else {
         const email = form.newEmail.trim().toLowerCase();
-        if (email && customers.some((candidate) => candidate.email?.trim().toLowerCase() === email)) throw new Error('Un client avec ce courriel existe déjà. Sélectionnez-le dans la liste des clients existants.');
+        if (email && customers.some((candidate) => candidate.email?.trim().toLowerCase() === email)) throw new Error('Un client avec ce courriel existe déjà. Sélectionnez-le dans la liste.');
         customer = await items.insert(CUSTOMERS, {
-          customerNumber: customerNumber(),
-          firstName: form.newFirstName.trim(),
-          lastName: form.newLastName.trim(),
-          companyName: form.newCompanyName.trim(),
-          email,
-          phone: form.newPhone.trim(),
-          discountPercent: 0,
-          active: true,
+          customerNumber: customerNumber(), firstName: form.newFirstName.trim(), lastName: form.newLastName.trim(),
+          companyName: form.newCompanyName.trim(), email, phone: form.newPhone.trim(), discountPercent: 0, active: true,
         }) as Customer;
       }
       if (!customer._id) throw new Error('Wix n’a pas retourné l’identifiant du client.');
 
-      const number = reservationNumber();
-      const name = customerName(customer);
-      const appliedDiscountPercent = customerDiscountEnabled ? customer.discountPercent || 0 : 0;
-      const discountCents = Math.round(subtotalCents * appliedDiscountPercent / 100);
-      const finalTotal = Math.max(0, subtotalCents - discountCents);
-
+      const number = reservationNumber(); const appliedDiscountPercent = customerDiscountEnabled ? customer.discountPercent || 0 : 0;
+      const discountCents = Math.round(subtotalCents * appliedDiscountPercent / 100); const finalTotal = Math.max(0, subtotalCents - discountCents);
       createdReservation = await items.insert(RESERVATIONS, {
-        reservationNumber: number,
-        customerId: customer._id,
-        customerNumber: customer.customerNumber || '',
-        customerName: name,
-        customerEmail: customer.email || '',
-        customerPhone: customer.phone || '',
-        startDateTime: formDates.start,
-        endDateTime: formDates.end,
-        bufferBeforeHours: before,
-        bufferAfterHours: after,
-        status: 'CONFIRMED',
-        subtotalCents,
-        customerDiscountPercent: appliedDiscountPercent,
-        discountCents,
-        totalCents: finalTotal,
-        currency,
-        notes: form.notes.trim(),
+        reservationNumber: number, customerId: customer._id, customerNumber: customer.customerNumber || '', customerName: customerName(customer),
+        customerEmail: customer.email || '', customerPhone: customer.phone || '', startDateTime: formDates.start, endDateTime: formDates.end,
+        bufferBeforeHours: before, bufferAfterHours: after, status: 'CONFIRMED', subtotalCents,
+        customerDiscountPercent: appliedDiscountPercent, discountCents, totalCents: finalTotal, currency, notes: form.notes.trim(),
       }) as Reservation;
-
       if (!createdReservation._id) throw new Error('Wix n’a pas retourné l’identifiant de la réservation.');
+
       for (const line of priceLines) {
         if (!line.asset._id) continue;
+        const blocked = getBlockedRange(formDates.start, formDates.end, before, after);
         await items.insert(RESERVATION_ITEMS, {
-          reservationId: createdReservation._id,
-          reservationNumber: number,
-          assetId: line.asset._id,
-          assetNumber: line.asset.assetNumber || '',
-          assetTitle: line.asset.title || '',
-          startDateTime: formDates.start,
-          endDateTime: formDates.end,
-          blockedStartDateTime: requested.blockedStart,
-          blockedEndDateTime: requested.blockedEnd,
-          bufferBeforeHours: before,
-          bufferAfterHours: after,
-          billableDays: line.billableDays,
-          lineTotalCents: line.totalCents,
-          pricingMode: line.pricingMode,
-          currency: line.asset.currency || currency,
-          status: 'CONFIRMED',
+          reservationId: createdReservation._id, reservationNumber: number, assetId: line.asset._id,
+          assetNumber: line.asset.assetNumber || '', assetTitle: line.asset.title || '', startDateTime: formDates.start,
+          endDateTime: formDates.end, blockedStartDateTime: blocked.blockedStart, blockedEndDateTime: blocked.blockedEnd,
+          bufferBeforeHours: before, bufferAfterHours: after, billableDays: line.billableDays,
+          lineTotalCents: line.totalCents, pricingMode: line.pricingMode, currency: line.asset.currency || currency, status: 'CONFIRMED',
         });
       }
-
-      setFormOpen(false);
-      setSuccess(`Réservation ${number} créée pour ${name}.`);
-      await load();
+      setFormOpen(false); setSuccess(`Réservation ${number} créée avec succès.`); await load();
     } catch (e) {
       if (createdReservation?._id) {
-        try { await items.update(RESERVATIONS, { ...createdReservation, status: 'ERROR' }); } catch { /* preserve original error */ }
+        try { await items.update(RESERVATIONS, reservationPayload(createdReservation, { status: 'ERROR' })); } catch { /* preserve original error */ }
       }
       setFormError(e instanceof Error ? e.message : 'Impossible de créer la réservation.');
     } finally { setSaving(false); }
   };
 
-  const cancelReservation = async (reservation: Reservation) => {
-    if (!reservation._id || reservation.status === 'CANCELLED') return;
-    if (!window.confirm(`Annuler la réservation ${reservation.reservationNumber || ''} ?`)) return;
+  const setReservationStatus = async (reservation: Reservation, status: ReservationStatus) => {
+    if (!reservation._id || reservation.status === status) return;
+    if (status === 'CANCELLED' && !window.confirm(`Annuler la réservation ${reservation.reservationNumber || ''} ?`)) return;
+    if (status === 'COMPLETED' && !window.confirm(`Marquer ${reservation.reservationNumber || ''} comme terminée ?`)) return;
     setError(''); setSuccess('');
     try {
-      await items.update(RESERVATIONS, { ...reservation, status: 'CANCELLED' });
-      for (const item of reservationItems.filter((candidate) => candidate.reservationId === reservation._id)) {
-        if (item._id) await items.update(RESERVATION_ITEMS, { ...item, status: 'CANCELLED' });
-      }
-      setSuccess(`Réservation ${reservation.reservationNumber || ''} annulée. Les équipements sont de nouveau disponibles.`);
-      await load();
-    } catch (e) { setError(e instanceof Error ? e.message : 'Impossible d’annuler la réservation.'); }
+      await items.update(RESERVATIONS, reservationPayload(reservation, { status }));
+      const linked = reservationItems.filter((item) => item.reservationId === reservation._id);
+      for (const item of linked) if (item._id) await items.update(RESERVATION_ITEMS, { ...item, status });
+      setSuccess(status === 'CANCELLED' ? `Réservation ${reservation.reservationNumber || ''} annulée.` : `Réservation ${reservation.reservationNumber || ''} terminée.`);
+      setDetailReservation(null); await load();
+    } catch (e) { setError(e instanceof Error ? e.message : 'Impossible de modifier la réservation.'); }
   };
 
-  const sortedReservations = useMemo(() => [...reservations].sort((a, b) => asDate(a.startDateTime).getTime() - asDate(b.startDateTime).getTime()), [reservations]);
-  const monthReservations = useMemo(() => sortedReservations.filter((reservation) => { const d = asDate(reservation.startDateTime); return d.getFullYear() === monthCursor.getFullYear() && d.getMonth() === monthCursor.getMonth(); }), [monthCursor, sortedReservations]);
-  const weekEnd = useMemo(() => new Date(weekCursor.getTime() + 7 * 24 * 60 * 60 * 1000), [weekCursor]);
-  const weekReservations = useMemo(() => sortedReservations.filter((reservation) => { const d = asDate(reservation.startDateTime); return d >= weekCursor && d < weekEnd; }), [sortedReservations, weekCursor, weekEnd]);
+  const saveNotes = async (reservation: Reservation, notes: string) => {
+    if (!reservation._id) return;
+    await items.update(RESERVATIONS, reservationPayload(reservation, { notes }));
+    setDetailReservation({ ...reservation, notes }); setSuccess(`Notes de ${reservation.reservationNumber || 'la réservation'} enregistrées.`); await load();
+  };
 
+  const selectView = (next: CalendarView) => {
+    if ((next === 'WEEK' || next === 'AVAILABILITY') && !advancedViews) return; setView(next);
+  };
+  const sortedReservations = useMemo(() => [...reservations].sort((a, b) => asDate(a.startDateTime).getTime() - asDate(b.startDateTime).getTime()), [reservations]);
+  const monthReservations = useMemo(() => sortedReservations.filter((r) => { const d = asDate(r.startDateTime); return d.getFullYear() === monthCursor.getFullYear() && d.getMonth() === monthCursor.getMonth(); }), [monthCursor, sortedReservations]);
+  const weekEnd = useMemo(() => new Date(weekCursor.getTime() + 7 * 86400000), [weekCursor]);
+  const weekReservations = useMemo(() => sortedReservations.filter((r) => { const d = asDate(r.startDateTime); return d >= weekCursor && d < weekEnd; }), [sortedReservations, weekCursor, weekEnd]);
   const availabilityResult = useMemo(() => {
     if (!availabilityStart || !availabilityEnd) return null;
     const start = new Date(availabilityStart); const end = new Date(availabilityEnd);
@@ -333,15 +298,10 @@ const ReservationsPage: FC = () => {
     return activeAssets.map((asset) => ({ asset, available: !!asset._id && isAvailable(asset._id, start, end, before, after) }));
   }, [activeAssets, availabilityAfter, availabilityBefore, availabilityEnd, availabilityStart, isAvailable]);
 
-  const selectView = (next: CalendarView) => {
-    if ((next === 'WEEK' || next === 'AVAILABILITY') && !advancedViews) return;
-    setView(next);
-  };
-
   return (
     <WixDesignSystemProvider features={{ newColorsBranding: true }}>
       <Page>
-        <Page.Header title="Calendrier / Réservations" subtitle="Planifiez les locations, appliquez vos buffers et liez chaque réservation à un client." />
+        <Page.Header title="Calendrier / Réservations" subtitle="Planifiez les locations, gérez les buffers et ouvrez chaque réservation dans une fiche complète." />
         <Page.Content>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 20, paddingBottom: 40 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
@@ -353,16 +313,15 @@ const ReservationsPage: FC = () => {
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}><span style={{ color: '#64748b', fontSize: 13 }}>Plan : <strong>{planLabels[plan]}</strong></span><button style={primary} onClick={openForm}>+ Nouvelle réservation</button></div>
             </div>
-
             {success && <div style={{ ...card, background: '#f0fdf4', borderColor: '#86efac', color: '#166534' }}>{success}</div>}
             {error && <div style={{ ...card, background: '#fef2f2', borderColor: '#fecaca', color: '#991b1b' }}>{error}</div>}
 
             {loading ? <div style={card}>Chargement…</div> : <>
-              {view === 'MONTH' && <div style={card}><CalendarHeader title={new Intl.DateTimeFormat('fr-CA', { month: 'long', year: 'numeric' }).format(monthCursor)} onPrevious={() => setMonthCursor(new Date(monthCursor.getFullYear(), monthCursor.getMonth() - 1, 1))} onNext={() => setMonthCursor(new Date(monthCursor.getFullYear(), monthCursor.getMonth() + 1, 1))} /><ReservationCards reservations={monthReservations} reservationItems={reservationItems} onCancel={cancelReservation} /></div>}
-              {view === 'WEEK' && <div style={card}><CalendarHeader title={`${new Intl.DateTimeFormat('fr-CA', { month: 'short', day: 'numeric' }).format(weekCursor)} au ${new Intl.DateTimeFormat('fr-CA', { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(weekEnd.getTime() - 1))}`} onPrevious={() => setWeekCursor(new Date(weekCursor.getTime() - 7 * 86400000))} onNext={() => setWeekCursor(new Date(weekCursor.getTime() + 7 * 86400000))} /><ReservationCards reservations={weekReservations} reservationItems={reservationItems} onCancel={cancelReservation} /></div>}
-              {view === 'LIST' && <div style={card}><h2 style={{ marginTop: 0 }}>Toutes les réservations</h2><ReservationCards reservations={sortedReservations} reservationItems={reservationItems} onCancel={cancelReservation} /></div>}
+              {view === 'MONTH' && <div style={card}><CalendarHeader title={new Intl.DateTimeFormat('fr-CA', { month: 'long', year: 'numeric' }).format(monthCursor)} onPrevious={() => setMonthCursor(new Date(monthCursor.getFullYear(), monthCursor.getMonth() - 1, 1))} onNext={() => setMonthCursor(new Date(monthCursor.getFullYear(), monthCursor.getMonth() + 1, 1))} /><ReservationCards reservations={monthReservations} reservationItems={reservationItems} onOpen={openDetails} /></div>}
+              {view === 'WEEK' && <div style={card}><CalendarHeader title={`${new Intl.DateTimeFormat('fr-CA', { month: 'short', day: 'numeric' }).format(weekCursor)} au ${new Intl.DateTimeFormat('fr-CA', { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(weekEnd.getTime() - 1))}`} onPrevious={() => setWeekCursor(new Date(weekCursor.getTime() - 7 * 86400000))} onNext={() => setWeekCursor(new Date(weekCursor.getTime() + 7 * 86400000))} /><ReservationCards reservations={weekReservations} reservationItems={reservationItems} onOpen={openDetails} /></div>}
+              {view === 'LIST' && <div style={card}><h2 style={{ marginTop: 0 }}>Toutes les réservations</h2><ReservationCards reservations={sortedReservations} reservationItems={reservationItems} onOpen={openDetails} /></div>}
               {view === 'AVAILABILITY' && <div style={card}>
-                <h2 style={{ marginTop: 0 }}>Recherche de disponibilité</h2><p style={{ color: '#64748b' }}>Le buffer bloque l’équipement avant/après la location sans être facturé.</p>
+                <h2 style={{ marginTop: 0 }}>Recherche de disponibilité</h2><p style={{ color: '#64748b' }}>Le buffer bloque l’équipement avant/après sans être facturé.</p>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(190px,1fr))', gap: 14 }}>
                   <Field label="Début"><input type="datetime-local" style={input} value={availabilityStart} onChange={(e) => setAvailabilityStart(e.target.value)} /></Field>
                   <Field label="Fin"><input type="datetime-local" style={input} value={availabilityEnd} onChange={(e) => setAvailabilityEnd(e.target.value)} /></Field>
@@ -376,43 +335,25 @@ const ReservationsPage: FC = () => {
         </Page.Content>
       </Page>
 
+      {detailReservation && <ReservationDetail reservation={detailReservation} linkedItems={reservationItems.filter((item) => item.reservationId === detailReservation._id)} tab={detailTab} setTab={setDetailTab} onClose={() => setDetailReservation(null)} onCancel={() => void setReservationStatus(detailReservation, 'CANCELLED')} onComplete={() => void setReservationStatus(detailReservation, 'COMPLETED')} onSaveNotes={(notes) => void saveNotes(detailReservation, notes)} />}
+
       {formOpen && <div onMouseDown={() => !saving && setFormOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(15,23,42,.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 18 }}>
-        <div onMouseDown={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 960, maxHeight: '92vh', overflowY: 'auto', background: '#fff', borderRadius: 14 }}>
+        <div onMouseDown={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 920, maxHeight: '92vh', overflowY: 'auto', background: '#fff', borderRadius: 14 }}>
           <form onSubmit={saveReservation}>
-            <div style={{ padding: '20px 24px', borderBottom: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between' }}><div><h2 style={{ margin: 0 }}>Nouvelle réservation</h2><div style={{ color: '#64748b', marginTop: 4 }}>Client, disponibilité, tarification et buffers dans un même flux.</div></div><button type="button" onClick={() => !saving && setFormOpen(false)} style={{ border: 0, background: 'transparent', fontSize: 26 }}>×</button></div>
+            <div style={{ padding: '20px 24px', borderBottom: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', gap: 12 }}><div><h2 style={{ margin: 0 }}>Nouvelle réservation</h2><div style={{ color: '#64748b', marginTop: 4 }}>La période facturée et la période bloquée sont calculées séparément.</div></div><button type="button" onClick={() => !saving && setFormOpen(false)} style={{ border: 0, background: 'transparent', fontSize: 26 }}>×</button></div>
             <div style={{ padding: 24 }}>
               {formError && <div style={{ background: '#fef2f2', color: '#991b1b', borderRadius: 8, padding: 12, marginBottom: 18 }}>{formError}</div>}
-
-              <h3 style={{ marginTop: 0 }}>Client</h3>
-              <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}><button type="button" style={{ ...secondary, background: form.customerMode === 'EXISTING' ? '#116dff' : '#fff', color: form.customerMode === 'EXISTING' ? '#fff' : '#116dff' }} onClick={() => setForm({ ...form, customerMode: 'EXISTING' })}>Client existant</button><button type="button" style={{ ...secondary, background: form.customerMode === 'NEW' ? '#116dff' : '#fff', color: form.customerMode === 'NEW' ? '#fff' : '#116dff' }} onClick={() => setForm({ ...form, customerMode: 'NEW', customerId: '' })}>Nouveau client</button></div>
-
-              {form.customerMode === 'EXISTING' ? <div>
-                <Field label="Choisir un client *"><select style={input} value={form.customerId} onChange={(e) => setForm({ ...form, customerId: e.target.value })}><option value="">Sélectionner…</option>{activeCustomers.map((customer) => <option key={customer._id} value={customer._id}>{customerName(customer)}{customer.companyName && (customer.firstName || customer.lastName) ? ` · ${customer.companyName}` : ''} · {customer.customerNumber || ''}</option>)}</select></Field>
-                {selectedCustomer && <div style={{ ...card, marginTop: 12, padding: 14, background: '#f8fafc' }}><strong>{customerName(selectedCustomer)}</strong><div style={{ color: '#64748b', marginTop: 4 }}>{selectedCustomer.email || 'Aucun courriel'} · {selectedCustomer.phone || 'Aucun téléphone'}</div><div style={{ marginTop: 6 }}>Rabais client : <strong>{customerDiscountEnabled ? `${selectedCustomer.discountPercent || 0} %` : '🔒 Business'}</strong></div></div>}
-              </div> : <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(210px,1fr))', gap: 14 }}>
-                <Field label="Prénom"><input style={input} value={form.newFirstName} onChange={(e) => setForm({ ...form, newFirstName: e.target.value })} /></Field>
-                <Field label="Nom"><input style={input} value={form.newLastName} onChange={(e) => setForm({ ...form, newLastName: e.target.value })} /></Field>
-                <Field label="Entreprise"><input style={input} value={form.newCompanyName} onChange={(e) => setForm({ ...form, newCompanyName: e.target.value })} /></Field>
-                <Field label="Courriel"><input type="email" style={input} value={form.newEmail} onChange={(e) => setForm({ ...form, newEmail: e.target.value })} /></Field>
-                <Field label="Téléphone"><input style={input} value={form.newPhone} onChange={(e) => setForm({ ...form, newPhone: e.target.value })} /></Field>
-              </div>}
+              <h3>Client</h3>
+              <div style={{ display: 'flex', gap: 10, marginBottom: 14 }}><button type="button" style={form.customerMode === 'EXISTING' ? primary : secondary} onClick={() => setForm({ ...form, customerMode: 'EXISTING' })}>Client existant</button><button type="button" style={form.customerMode === 'NEW' ? primary : secondary} onClick={() => setForm({ ...form, customerMode: 'NEW' })}>Nouveau client</button></div>
+              {form.customerMode === 'EXISTING' ? <Field label="Client *"><select style={input} value={form.customerId} onChange={(e) => setForm({ ...form, customerId: e.target.value })}><option value="">Sélectionner…</option>{activeCustomers.map((customer) => <option key={customer._id} value={customer._id}>{customerName(customer)} · {customer.customerNumber || ''}</option>)}</select></Field> : <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(210px,1fr))', gap: 14 }}><Field label="Prénom"><input style={input} value={form.newFirstName} onChange={(e) => setForm({ ...form, newFirstName: e.target.value })} /></Field><Field label="Nom"><input style={input} value={form.newLastName} onChange={(e) => setForm({ ...form, newLastName: e.target.value })} /></Field><Field label="Entreprise"><input style={input} value={form.newCompanyName} onChange={(e) => setForm({ ...form, newCompanyName: e.target.value })} /></Field><Field label="Courriel"><input type="email" style={input} value={form.newEmail} onChange={(e) => setForm({ ...form, newEmail: e.target.value })} /></Field><Field label="Téléphone"><input style={input} value={form.newPhone} onChange={(e) => setForm({ ...form, newPhone: e.target.value })} /></Field></div>}
 
               <h3 style={{ marginTop: 24 }}>Période de location</h3>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(190px,1fr))', gap: 14 }}>
-                <Field label="Début *"><input type="datetime-local" style={input} value={form.startDateTime} onChange={(e) => setForm({ ...form, startDateTime: e.target.value })} /></Field>
-                <Field label="Fin *"><input type="datetime-local" style={input} value={form.endDateTime} onChange={(e) => setForm({ ...form, endDateTime: e.target.value })} /></Field>
-                <Field label="Buffer avant (heures)"><input type="number" min="0" step="0.5" style={input} value={form.bufferBeforeHours} onChange={(e) => setForm({ ...form, bufferBeforeHours: e.target.value })} /></Field>
-                <Field label="Buffer après (heures)"><input type="number" min="0" step="0.5" style={input} value={form.bufferAfterHours} onChange={(e) => setForm({ ...form, bufferAfterHours: e.target.value })} /></Field>
-              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(190px,1fr))', gap: 14 }}><Field label="Début *"><input type="datetime-local" style={input} value={form.startDateTime} onChange={(e) => setForm({ ...form, startDateTime: e.target.value })} /></Field><Field label="Fin *"><input type="datetime-local" style={input} value={form.endDateTime} onChange={(e) => setForm({ ...form, endDateTime: e.target.value })} /></Field><Field label="Buffer avant (h)"><input type="number" min="0" step="0.5" style={input} value={form.bufferBeforeHours} onChange={(e) => setForm({ ...form, bufferBeforeHours: e.target.value })} /></Field><Field label="Buffer après (h)"><input type="number" min="0" step="0.5" style={input} value={form.bufferAfterHours} onChange={(e) => setForm({ ...form, bufferAfterHours: e.target.value })} /></Field></div>
 
               <h3 style={{ marginTop: 24 }}>Équipements</h3>
-              {!formDates.valid ? <div style={{ color: '#64748b' }}>Choisissez d’abord une période valide.</div> : <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(270px,1fr))', gap: 12 }}>{activeAssets.map((asset) => {
-                const id = asset._id || ''; const available = formAssetAvailability.get(id) === true; const selected = selectedAssetIds.includes(id);
-                return <label key={id || asset.assetNumber} style={{ border: `1px solid ${selected ? '#116dff' : '#e5e7eb'}`, borderRadius: 10, padding: 14, opacity: available ? 1 : .55, cursor: available ? 'pointer' : 'not-allowed', background: selected ? '#eff6ff' : '#fff' }}><div style={{ display: 'flex', gap: 10 }}><input type="checkbox" checked={selected} disabled={!available} onChange={() => available && toggleAsset(id)} /><div><strong>{asset.title || 'Sans nom'}</strong><div style={{ color: '#64748b', marginTop: 3 }}>{asset.assetNumber || '—'} · {asset.productType || 'Équipement'}</div><div style={{ marginTop: 6, color: available ? '#166534' : '#991b1b', fontWeight: 600 }}>{available ? 'Disponible' : 'Conflit avec réservation/buffer'}</div></div></div></label>;
-              })}</div>}
+              {!formDates.valid ? <div style={{ color: '#64748b' }}>Choisissez d’abord une période valide.</div> : <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(270px,1fr))', gap: 12 }}>{activeAssets.map((asset) => { const id = asset._id || ''; const available = formAssetAvailability.get(id) === true; const selected = selectedAssetIds.includes(id); return <label key={id || asset.assetNumber} style={{ border: `1px solid ${selected ? '#116dff' : '#e5e7eb'}`, borderRadius: 10, padding: 14, opacity: available ? 1 : .55, cursor: available ? 'pointer' : 'not-allowed', background: selected ? '#eff6ff' : '#fff' }}><div style={{ display: 'flex', gap: 10 }}><input type="checkbox" checked={selected} disabled={!available} onChange={() => available && toggleAsset(id)} /><div><strong>{asset.title || 'Sans nom'}</strong><div style={{ color: '#64748b' }}>{asset.assetNumber || '—'} · {asset.productType || 'Équipement'}</div><div style={{ marginTop: 5, color: available ? '#166534' : '#991b1b', fontWeight: 600 }}>{available ? 'Disponible' : 'Conflit avec une réservation/buffer'}</div></div></div></label>; })}</div>}
 
-              {priceLines.length > 0 && <div style={{ ...card, marginTop: 20, background: '#f8fafc' }}><h3 style={{ marginTop: 0 }}>Tarification</h3>{priceLines.map((line) => <div key={line.asset._id} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '7px 0', borderBottom: '1px solid #e5e7eb' }}><span>{line.asset.title} · {line.billableDays} jour(s) · {line.pricingMode}</span><strong>{money(line.totalCents, line.asset.currency || currency)}</strong></div>)}<div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 12 }}><span>Sous-total</span><strong>{money(subtotalCents, currency)}</strong></div>{customerDiscountPercent > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, color: '#166534' }}><span>Rabais client ({customerDiscountPercent} %)</span><strong>- {money(customerDiscountCents, currency)}</strong></div>}<div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10, fontSize: 18 }}><strong>Total</strong><strong>{money(totalCents, currency)}</strong></div></div>}
-
+              {priceLines.length > 0 && <div style={{ ...card, marginTop: 20, background: '#f8fafc' }}><h3 style={{ marginTop: 0 }}>Tarification</h3>{priceLines.map((line) => <div key={line.asset._id} style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 0', borderBottom: '1px solid #e5e7eb' }}><span>{line.asset.title} · {line.billableDays} jour(s) · {line.pricingMode}</span><strong>{money(line.totalCents, line.asset.currency || currency)}</strong></div>)}<div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10 }}><span>Sous-total</span><strong>{money(subtotalCents, currency)}</strong></div>{customerDiscountPercent > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, color: '#166534' }}><span>Rabais client ({customerDiscountPercent} %)</span><strong>-{money(customerDiscountCents, currency)}</strong></div>}<div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10, fontSize: 18 }}><strong>Total</strong><strong>{money(totalCents, currency)}</strong></div></div>}
               <div style={{ marginTop: 20 }}><Field label="Notes"><textarea style={{ ...input, minHeight: 90 }} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></Field></div>
             </div>
             <div style={{ padding: '16px 24px', borderTop: '1px solid #e5e7eb', display: 'flex', justifyContent: 'flex-end', gap: 10 }}><button type="button" style={secondary} onClick={() => !saving && setFormOpen(false)} disabled={saving}>Annuler</button><button type="submit" style={primary} disabled={saving}>{saving ? 'Création…' : 'Créer la réservation'}</button></div>
@@ -423,17 +364,62 @@ const ReservationsPage: FC = () => {
   );
 };
 
+const ReservationDetail: FC<{
+  reservation: Reservation; linkedItems: ReservationItem[]; tab: DetailTab; setTab: (tab: DetailTab) => void;
+  onClose: () => void; onCancel: () => void; onComplete: () => void; onSaveNotes: (notes: string) => void;
+}> = ({ reservation, linkedItems, tab, setTab, onClose, onCancel, onComplete, onSaveNotes }) => {
+  const [notes, setNotes] = useState(reservation.notes || '');
+  const tabs: { id: DetailTab; label: string }[] = [
+    { id: 'DETAILS', label: 'Détails' }, { id: 'EQUIPMENT', label: 'Équipements' }, { id: 'PAYMENTS', label: 'Paiements' },
+    { id: 'DOCUMENTS', label: 'Documents' }, { id: 'INSPECTION', label: 'Inspection' }, { id: 'NOTES', label: 'Notes' }, { id: 'HISTORY', label: 'Historique' },
+  ];
+  return <div onMouseDown={onClose} style={{ position: 'fixed', inset: 0, zIndex: 9998, background: 'rgba(15,23,42,.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 14 }}>
+    <div onMouseDown={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 1120, height: '92vh', background: '#fff', borderRadius: 14, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <div style={{ padding: '18px 22px', borderBottom: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', gap: 16, alignItems: 'center' }}>
+        <div><h2 style={{ margin: 0 }}>{reservation.reservationNumber || 'Réservation'}</h2><div style={{ color: '#64748b', marginTop: 4 }}>{reservation.customerName || 'Client'} · {dateTime(reservation.startDateTime)} → {dateTime(reservation.endDateTime)}</div></div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}><StatusBadge status={reservation.status || 'CONFIRMED'} /><button onClick={onClose} style={{ border: 0, background: 'transparent', fontSize: 26 }}>×</button></div>
+      </div>
+      <div style={{ display: 'flex', gap: 4, padding: '10px 14px', borderBottom: '1px solid #e5e7eb', overflowX: 'auto' }}>{tabs.map((entry) => <button key={entry.id} onClick={() => setTab(entry.id)} style={{ border: 0, borderBottom: tab === entry.id ? '3px solid #116dff' : '3px solid transparent', background: 'transparent', padding: '10px 12px', fontWeight: tab === entry.id ? 700 : 500, color: tab === entry.id ? '#116dff' : '#475569', cursor: 'pointer', whiteSpace: 'nowrap' }}>{entry.label}</button>)}</div>
+      <div style={{ padding: 22, overflowY: 'auto', flex: 1 }}>
+        {tab === 'DETAILS' && <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(280px,1fr))', gap: 18 }}>
+          <div style={card}><h3 style={{ marginTop: 0 }}>Client</h3><Info label="Nom" value={reservation.customerName || '—'} /><Info label="No client" value={reservation.customerNumber || '—'} /><Info label="Courriel" value={reservation.customerEmail || '—'} /><Info label="Téléphone" value={reservation.customerPhone || '—'} /></div>
+          <div style={card}><h3 style={{ marginTop: 0 }}>Location</h3><Info label="Début" value={dateTime(reservation.startDateTime)} /><Info label="Fin" value={dateTime(reservation.endDateTime)} /><Info label="Buffer avant" value={`${reservation.bufferBeforeHours || 0} h`} /><Info label="Buffer après" value={`${reservation.bufferAfterHours || 0} h`} /></div>
+          <div style={card}><h3 style={{ marginTop: 0 }}>Montants</h3><Info label="Sous-total" value={money(reservation.subtotalCents, reservation.currency || 'CAD')} /><Info label="Rabais client" value={`${reservation.customerDiscountPercent || 0} % · ${money(reservation.discountCents, reservation.currency || 'CAD')}`} /><Info label="Total" value={money(reservation.totalCents, reservation.currency || 'CAD')} /></div>
+          <div style={card}><h3 style={{ marginTop: 0 }}>Actions</h3>{reservation.status === 'CONFIRMED' ? <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}><button style={primary} onClick={onComplete}>Marquer terminée</button><button style={danger} onClick={onCancel}>Annuler la réservation</button></div> : <div style={{ color: '#64748b' }}>Cette réservation est {reservation.status === 'COMPLETED' ? 'terminée' : reservation.status === 'CANCELLED' ? 'annulée' : 'en erreur'}.</div>}</div>
+        </div>}
+
+        {tab === 'EQUIPMENT' && <div><h3 style={{ marginTop: 0 }}>Équipements réservés</h3>{linkedItems.length === 0 ? <Empty text="Aucun équipement lié." /> : linkedItems.map((item) => <div key={item._id || item.assetId} style={{ ...card, marginBottom: 12 }}><div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}><div><strong>{item.assetTitle || item.assetNumber || 'Équipement'}</strong><div style={{ color: '#64748b', marginTop: 4 }}>{item.assetNumber || '—'}</div></div><strong>{money(item.lineTotalCents, item.currency || reservation.currency || 'CAD')}</strong></div><div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(190px,1fr))', gap: 8 }}><Info label="Facturé" value={`${item.billableDays || 0} jour(s)`} /><Info label="Tarification" value={item.pricingMode || '—'} /><Info label="Bloqué dès" value={dateTime(item.blockedStartDateTime)} /><Info label="Bloqué jusqu’à" value={dateTime(item.blockedEndDateTime)} /></div></div>)}</div>}
+
+        {tab === 'PAYMENTS' && <div><h3 style={{ marginTop: 0 }}>Paiements</h3><div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(190px,1fr))', gap: 12 }}><Stat label="Total réservation" value={money(reservation.totalCents, reservation.currency || 'CAD')} /><Stat label="Payé" value={money(0, reservation.currency || 'CAD')} /><Stat label="Solde" value={money(reservation.totalCents, reservation.currency || 'CAD')} /></div><div style={{ ...card, marginTop: 18 }}><strong>Aucun paiement enregistré pour le moment.</strong><div style={{ color: '#64748b', marginTop: 6 }}>Le prochain module ajoutera paiements, remboursements, dépôts de sécurité et transactions Wix.</div></div></div>}
+
+        {tab === 'DOCUMENTS' && <div><h3 style={{ marginTop: 0 }}>Documents</h3><div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))', gap: 14 }}><FutureCard title="Devis" text="Créer, envoyer et convertir en réservation." /><FutureCard title="Contrat" text="Génération PDF et signature client." /><FutureCard title="Facture" text="Facturation, paiement et solde restant." /></div></div>}
+
+        {tab === 'INSPECTION' && <div><h3 style={{ marginTop: 0 }}>Inspection</h3><div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(260px,1fr))', gap: 14 }}><FutureCard title="Inspection de départ" text="Checklist, photos, état initial et signature." /><FutureCard title="Inspection de retour" text="Dommages, photos, frais et remise en disponibilité." /></div></div>}
+
+        {tab === 'NOTES' && <div><h3 style={{ marginTop: 0 }}>Notes internes</h3><textarea style={{ ...input, minHeight: 220 }} value={notes} onChange={(e) => setNotes(e.target.value)} /><div style={{ marginTop: 12, textAlign: 'right' }}><button style={primary} onClick={() => onSaveNotes(notes)}>Enregistrer les notes</button></div></div>}
+
+        {tab === 'HISTORY' && <div><h3 style={{ marginTop: 0 }}>Historique</h3><div style={card}><Timeline label="Création" value={dateTime(reservation._createdDate)} /><Timeline label="Dernière modification" value={dateTime(reservation._updatedDate)} /><Timeline label="Statut actuel" value={reservation.status || 'CONFIRMED'} /><Timeline label="Client lié" value={reservation.customerNumber || reservation.customerName || '—'} /><Timeline label="Équipements liés" value={String(linkedItems.length)} /></div><div style={{ color: '#64748b', marginTop: 12 }}>Un journal d’activité détaillé par utilisateur sera ajouté avec le module Historique avancé.</div></div>}
+      </div>
+    </div>
+  </div>;
+};
+
+const ReservationCards: FC<{ reservations: Reservation[]; reservationItems: ReservationItem[]; onOpen: (reservation: Reservation) => void }> = ({ reservations, reservationItems, onOpen }) => {
+  if (reservations.length === 0) return <Empty text="Aucune réservation dans cette période." />;
+  return <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>{reservations.map((reservation) => {
+    const linked = reservationItems.filter((item) => item.reservationId === reservation._id); const cancelled = reservation.status === 'CANCELLED';
+    return <div key={reservation._id || reservation.reservationNumber} style={{ border: '1px solid #e5e7eb', borderRadius: 10, padding: 15, opacity: cancelled ? .6 : 1 }}><div style={{ display: 'flex', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap' }}><div><div style={{ fontWeight: 700 }}>{reservation.reservationNumber || 'Réservation'} · {reservation.customerName || 'Client'}</div><div style={{ color: '#64748b', marginTop: 4 }}>{dateTime(reservation.startDateTime)} → {dateTime(reservation.endDateTime)}</div><div style={{ color: '#64748b', marginTop: 4 }}>{linked.map((item) => item.assetTitle || item.assetNumber).filter(Boolean).join(', ') || 'Aucun équipement'}</div><div style={{ color: '#64748b', marginTop: 4 }}>Buffer : {reservation.bufferBeforeHours || 0} h avant · {reservation.bufferAfterHours || 0} h après</div></div><div style={{ textAlign: 'right' }}><div style={{ fontWeight: 700 }}>{money(reservation.totalCents, reservation.currency || 'CAD')}</div><div style={{ marginTop: 5 }}><StatusBadge status={reservation.status || 'CONFIRMED'} /></div><button style={{ ...secondary, marginTop: 8, padding: '7px 12px' }} onClick={() => onOpen(reservation)}>Ouvrir</button></div></div></div>;
+  })}</div>;
+};
+
 const Field: FC<{ label: string; children: ReactNode }> = ({ label, children }) => <label style={{ display: 'block' }}><span style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 6 }}>{label}</span>{children}</label>;
 const ViewButton: FC<{ active: boolean; locked?: boolean; onClick: () => void; children: string }> = ({ active, locked, onClick, children }) => <button onClick={onClick} title={locked ? 'Plan Business requis' : undefined} style={{ ...secondary, background: active ? '#116dff' : '#fff', color: active ? '#fff' : locked ? '#94a3b8' : '#116dff', cursor: locked ? 'not-allowed' : 'pointer', opacity: locked ? .65 : 1 }}>{locked ? '🔒 ' : ''}{children}</button>;
 const CalendarHeader: FC<{ title: string; onPrevious: () => void; onNext: () => void }> = ({ title, onPrevious, onNext }) => <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 18 }}><button style={secondary} onClick={onPrevious}>‹</button><h2 style={{ margin: 0, textTransform: 'capitalize' }}>{title}</h2><button style={secondary} onClick={onNext}>›</button></div>;
-
-const ReservationCards: FC<{ reservations: Reservation[]; reservationItems: ReservationItem[]; onCancel: (reservation: Reservation) => void }> = ({ reservations, reservationItems, onCancel }) => {
-  if (reservations.length === 0) return <div style={{ padding: 36, textAlign: 'center', color: '#64748b', background: '#f8fafc', borderRadius: 10 }}>Aucune réservation dans cette période.</div>;
-  return <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>{reservations.map((reservation) => {
-    const linked = reservationItems.filter((item) => item.reservationId === reservation._id);
-    const cancelled = reservation.status === 'CANCELLED';
-    return <div key={reservation._id || reservation.reservationNumber} style={{ border: '1px solid #e5e7eb', borderRadius: 10, padding: 15, opacity: cancelled ? .55 : 1 }}><div style={{ display: 'flex', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap' }}><div><div style={{ fontWeight: 700 }}>{reservation.reservationNumber || 'Réservation'} · {reservation.customerName || 'Client'}</div><div style={{ color: '#64748b', marginTop: 4 }}>{reservation.customerNumber || ''}{reservation.customerEmail ? ` · ${reservation.customerEmail}` : ''}</div><div style={{ color: '#64748b', marginTop: 4 }}>{dateTime(reservation.startDateTime)} → {dateTime(reservation.endDateTime)}</div><div style={{ color: '#64748b', marginTop: 4 }}>{linked.map((item) => item.assetTitle || item.assetNumber).filter(Boolean).join(', ') || 'Aucun équipement'}</div><div style={{ color: '#64748b', marginTop: 4 }}>Buffer : {reservation.bufferBeforeHours || 0} h avant · {reservation.bufferAfterHours || 0} h après</div></div><div style={{ textAlign: 'right' }}>{(reservation.discountCents || 0) > 0 && <div style={{ color: '#166534', fontSize: 13 }}>Rabais : -{money(reservation.discountCents, reservation.currency || 'CAD')}</div>}<div style={{ fontWeight: 700, fontSize: 18 }}>{money(reservation.totalCents, reservation.currency || 'CAD')}</div><div style={{ marginTop: 5, fontSize: 13, fontWeight: 700, color: cancelled ? '#991b1b' : '#166534' }}>{reservation.status || 'CONFIRMED'}</div>{!cancelled && reservation.status !== 'COMPLETED' && <button style={{ ...secondary, marginTop: 8, padding: '6px 10px' }} onClick={() => onCancel(reservation)}>Annuler</button>}</div></div></div>;
-  })}</div>;
-};
+const StatusBadge: FC<{ status: ReservationStatus }> = ({ status }) => { const styles: Record<ReservationStatus, CSSProperties> = { CONFIRMED: { background: '#dcfce7', color: '#166534' }, COMPLETED: { background: '#e0e7ff', color: '#3730a3' }, CANCELLED: { background: '#fee2e2', color: '#991b1b' }, ERROR: { background: '#fef3c7', color: '#92400e' } }; const labels: Record<ReservationStatus, string> = { CONFIRMED: 'Confirmée', COMPLETED: 'Terminée', CANCELLED: 'Annulée', ERROR: 'Erreur' }; return <span style={{ ...styles[status], display: 'inline-block', padding: '4px 8px', borderRadius: 999, fontSize: 12, fontWeight: 700 }}>{labels[status]}</span>; };
+const Info: FC<{ label: string; value: string }> = ({ label, value }) => <div style={{ display: 'grid', gridTemplateColumns: '130px 1fr', gap: 10, padding: '6px 0' }}><strong>{label}</strong><span>{value}</span></div>;
+const Stat: FC<{ label: string; value: string }> = ({ label, value }) => <div style={{ ...card, padding: 14 }}><div style={{ color: '#64748b', fontSize: 13 }}>{label}</div><div style={{ fontSize: 20, fontWeight: 700, marginTop: 4 }}>{value}</div></div>;
+const Timeline: FC<{ label: string; value: string }> = ({ label, value }) => <div style={{ borderLeft: '3px solid #116dff', padding: '8px 0 8px 14px', marginBottom: 8 }}><strong>{label}</strong><div style={{ color: '#64748b', marginTop: 3 }}>{value}</div></div>;
+const FutureCard: FC<{ title: string; text: string }> = ({ title, text }) => <div style={card}><h3 style={{ marginTop: 0 }}>{title}</h3><div style={{ color: '#64748b' }}>{text}</div><div style={{ marginTop: 14, fontSize: 12, fontWeight: 700, color: '#7c3aed' }}>PROCHAIN MODULE</div></div>;
+const Empty: FC<{ text: string }> = ({ text }) => <div style={{ padding: 36, textAlign: 'center', color: '#64748b', background: '#f8fafc', borderRadius: 10 }}>{text}</div>;
 
 export default ReservationsPage;
