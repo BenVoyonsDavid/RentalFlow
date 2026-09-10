@@ -1,7 +1,13 @@
 import { app } from '@wix/astro/builders';
-import myPage from './extensions/dashboard/pages/my-page/my-page.extension.ts';
+import dashboardPage from './extensions/dashboard/pages/my-page/my-page.extension.ts';
+import equipmentPage from './extensions/dashboard/pages/equipment/equipment.extension.ts';
+import reservationsPage from './extensions/dashboard/pages/reservations/reservations.extension.ts';
+import settingsPage from './extensions/dashboard/pages/settings/settings.extension.ts';
 import dataCollections from './extensions/backend/data-collections/data-collections.extension.ts';
 
 export default app()
-  .use(myPage)
+  .use(dashboardPage)
+  .use(equipmentPage)
+  .use(reservationsPage)
+  .use(settingsPage)
   .use(dataCollections);
