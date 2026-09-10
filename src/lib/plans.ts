@@ -6,6 +6,11 @@ export type RentalFlowFeature =
   | 'LONG_TERM_DISCOUNT'
   | 'ADVANCED_CALENDAR_VIEWS'
   | 'CUSTOMER_DISCOUNT'
+  | 'DOCUMENTS'
+  | 'PAYMENTS'
+  | 'SECURITY_DEPOSIT'
+  | 'INSPECTIONS'
+  | 'FULL_HISTORY'
   | 'UNLIMITED_ASSETS';
 
 const planLevel: Record<RentalFlowPlan, number> = {
@@ -21,6 +26,11 @@ const minimumPlan: Record<RentalFlowFeature, RentalFlowPlan> = {
   LONG_TERM_DISCOUNT: 'BUSINESS',
   ADVANCED_CALENDAR_VIEWS: 'BUSINESS',
   CUSTOMER_DISCOUNT: 'BUSINESS',
+  DOCUMENTS: 'STARTER',
+  PAYMENTS: 'STARTER',
+  SECURITY_DEPOSIT: 'STARTER',
+  INSPECTIONS: 'BUSINESS',
+  FULL_HISTORY: 'BUSINESS',
   UNLIMITED_ASSETS: 'PRO',
 };
 
@@ -40,11 +50,15 @@ export function requiredPlan(feature: RentalFlowFeature): RentalFlowPlan {
 }
 
 /**
- * During local Wix development every feature is exposed so the complete
- * product can be tested before App Market pricing packages are configured.
- * Before public launch this function will resolve the real installed plan.
+ * During local Wix development every feature is exposed so the whole product
+ * can be tested before the Wix App Market pricing packages are configured.
+ *
+ * Before public launch this will be connected to Wix App Management
+ * getAppInstance(), using isFree/packageName to resolve the installed plan.
  */
 export function getCurrentPlan(): RentalFlowPlan {
   if (import.meta.env.DEV) return 'PRO';
+
+  // Safe production fallback until Wix pricing packages are configured.
   return 'FREE';
 }
