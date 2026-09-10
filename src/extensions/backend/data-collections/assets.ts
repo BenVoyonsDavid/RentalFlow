@@ -32,6 +32,26 @@ export default {
       key: 'dailyRateCents',
     },
     {
+      type: 'NUMBER',
+      displayName: 'Tarif hebdomadaire en cents',
+      key: 'weeklyRateCents',
+    },
+    {
+      type: 'NUMBER',
+      displayName: 'Tarif mensuel en cents',
+      key: 'monthlyRateCents',
+    },
+    {
+      type: 'NUMBER',
+      displayName: 'Rabais après nombre de jours',
+      key: 'discountAfterDays',
+    },
+    {
+      type: 'NUMBER',
+      displayName: 'Rabais longue durée en pourcentage',
+      key: 'discountPercent',
+    },
+    {
       type: 'TEXT',
       displayName: 'Devise',
       key: 'currency',
