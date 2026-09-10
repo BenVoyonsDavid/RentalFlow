@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="420" viewBox="0 0 640 420">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#eef5ff"/>
+      <stop offset="1" stop-color="#dceaff"/>
+    </linearGradient>
+  </defs>
+  <rect width="640" height="420" rx="32" fill="url(#g)"/>
+  <rect x="58" y="58" width="524" height="304" rx="22" fill="#fff" stroke="#b8d0ff" stroke-width="3"/>
+  <rect x="92" y="94" width="220" height="28" rx="8" fill="#116dff" opacity=".12"/>
+  <text x="92" y="116" font-family="Arial, sans-serif" font-size="22" font-weight="700" fill="#172033">RentalFlow</text>
+  <text x="92" y="150" font-family="Arial, sans-serif" font-size="16" fill="#64748b">Réservation en ligne</text>
+  <rect x="92" y="180" width="205" height="54" rx="10" fill="#f8fafc" stroke="#cbd5e1"/>
+  <rect x="317" y="180" width="205" height="54" rx="10" fill="#f8fafc" stroke="#cbd5e1"/>
+  <rect x="92" y="256" width="430" height="62" rx="12" fill="#eef5ff" stroke="#116dff" stroke-width="2"/>
+  <circle cx="122" cy="287" r="12" fill="#116dff"/>
+  <path d="M116 287l4 4 8-9" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="397" y="270" width="105" height="34" rx="9" fill="#116dff"/>
+  <text x="418" y="293" font-family="Arial, sans-serif" font-size="14" font-weight="700" fill="#fff">Réserver</text>
+</svg>
