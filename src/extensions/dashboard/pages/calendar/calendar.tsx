@@ -1,3 +1,7 @@
+import { statusLabel } from '../../../../lib/i18n/status';
+import { feedback, formatFeedback, type Feedback } from '../../../../lib/i18n';
+import { t, getLocale } from '../../../../lib/i18n';
+import { LanguageSelector, useLanguage } from '../../../../lib/i18n/react';
 import type { CSSProperties, FC } from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { items } from '@wix/data';
@@ -70,20 +74,21 @@ function monthCells(cursor: Date): Date[] {
 }
 
 function money(cents = 0, currency = 'CAD'): string {
-  return new Intl.NumberFormat('fr-CA', { style: 'currency', currency }).format(cents / 100);
+  return new Intl.NumberFormat(getLocale(), { style: 'currency', currency }).format(cents / 100);
 }
 
 function dateTime(value?: Date | string): string {
   const date = asDate(value);
   if (!date) return '—';
-  return new Intl.DateTimeFormat('fr-CA', { dateStyle: 'medium', timeStyle: 'short' }).format(date);
+  return new Intl.DateTimeFormat(getLocale(), { dateStyle: 'medium', timeStyle: 'short' }).format(date);
 }
 
 const CalendarPage: FC = () => {
+  const language = useLanguage();
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [reservationItems, setReservationItems] = useState<ReservationItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [error, setError] = useState<Feedback>('');
   const [cursor, setCursor] = useState(() => {
     const today = new Date();
     return new Date(today.getFullYear(), today.getMonth(), 1);
@@ -100,7 +105,7 @@ const CalendarPage: FC = () => {
       setReservations(reservationResult.items as Reservation[]);
       setReservationItems(itemResult.items as ReservationItem[]);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Impossible de charger le calendrier.');
+      setError(e instanceof Error ? e.message : feedback("Impossible de charger le calendrier."));
     } finally {
       setLoading(false);
     }
@@ -131,30 +136,32 @@ const CalendarPage: FC = () => {
 
   return (
     <WixDesignSystemProvider features={{ newColorsBranding: true }}>
+      <div lang={language}>
+      <LanguageSelector />
       <Page>
-        <Page.Header title="Calendrier" subtitle="Vue mensuelle réelle des locations, départs, retours et périodes réservées." />
+        <Page.Header title={t("Calendrier")} subtitle={t("Vue mensuelle réelle des locations, départs, retours et périodes réservées.")} />
         <Page.Content>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16, paddingBottom: 40 }}>
-            {error && <div style={{ ...card, background: '#fef2f2', borderColor: '#fecaca', color: '#991b1b' }}>{error}</div>}
+            {error && <div style={{ ...card, background: '#fef2f2', borderColor: '#fecaca', color: '#991b1b' }}>{formatFeedback(error)}</div>}
 
             <div style={{ ...card, padding: 14 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                 <div style={{ display: 'flex', gap: 8 }}>
                   <button style={button} onClick={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1))}>‹</button>
-                  <button style={button} onClick={() => { const d = new Date(); setCursor(new Date(d.getFullYear(), d.getMonth(), 1)); }}>Aujourd’hui</button>
+                  <button style={button} onClick={() => { const d = new Date(); setCursor(new Date(d.getFullYear(), d.getMonth(), 1)); }}>{t("Aujourd’hui")}</button>
                   <button style={button} onClick={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1))}>›</button>
                 </div>
-                <h2 style={{ margin: 0, textTransform: 'capitalize' }}>{new Intl.DateTimeFormat('fr-CA', { month: 'long', year: 'numeric' }).format(cursor)}</h2>
-                <div style={{ color: '#64748b', fontSize: 13 }}>{visibleReservations.length} réservation(s)</div>
+                <h2 style={{ margin: 0, textTransform: 'capitalize' }}>{new Intl.DateTimeFormat(getLocale(), { month: 'long', year: 'numeric' }).format(cursor)}</h2>
+                <div style={{ color: '#64748b', fontSize: 13 }}>{visibleReservations.length} {" " + t("réservation(s)")}</div>
               </div>
             </div>
 
             <div style={{ ...card, padding: 0, overflow: 'hidden' }}>
-              {loading ? <div style={{ padding: 40, textAlign: 'center' }}>Chargement du calendrier…</div> : (
+              {loading ? <div style={{ padding: 40, textAlign: 'center' }}>{t("Chargement du calendrier…")}</div> : (
                 <div style={{ overflowX: 'auto' }}>
                   <div style={{ minWidth: 980 }}>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', background: '#f8fafc', borderBottom: '1px solid #e5e7eb' }}>
-                      {weekdays.map((day) => <div key={day} style={{ padding: '10px 8px', fontSize: 13, fontWeight: 700, color: '#475569', textAlign: 'center' }}>{day}</div>)}
+                      {weekdays.map((day) => <div key={t(day)} style={{ padding: '10px 8px', fontSize: 13, fontWeight: 700, color: '#475569', textAlign: 'center' }}>{t(day)}</div>)}
                     </div>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)' }}>
                       {cells.map((day, index) => {
@@ -169,9 +176,9 @@ const CalendarPage: FC = () => {
                                 const cancelled = reservation.status === 'CANCELLED';
                                 const rented = reservation.status === 'RENTED';
                                 const returned = reservation.status === 'RETURNED' || reservation.status === 'COMPLETED';
-                                return <button key={reservation._id || reservation.reservationNumber} onClick={() => setSelected(reservation)} title={`${reservation.reservationNumber || ''} · ${reservation.customerName || ''}`} style={{ border: '1px solid', borderColor: cancelled ? '#fecaca' : rented ? '#bfdbfe' : returned ? '#bbf7d0' : '#ddd6fe', background: cancelled ? '#fef2f2' : rented ? '#eff6ff' : returned ? '#f0fdf4' : '#f5f3ff', color: cancelled ? '#991b1b' : rented ? '#1e40af' : returned ? '#166534' : '#5b21b6', borderRadius: 6, padding: '5px 6px', textAlign: 'left', cursor: 'pointer', fontSize: 11, overflow: 'hidden' }}><div style={{ fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{reservation.reservationNumber || 'Réservation'}</div><div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{reservation.customerName || 'Client'}</div></button>;
+                                return <button key={reservation._id || reservation.reservationNumber} onClick={() => setSelected(reservation)} title={`${reservation.reservationNumber || ''} · ${reservation.customerName || ''}`} style={{ border: '1px solid', borderColor: cancelled ? '#fecaca' : rented ? '#bfdbfe' : returned ? '#bbf7d0' : '#ddd6fe', background: cancelled ? '#fef2f2' : rented ? '#eff6ff' : returned ? '#f0fdf4' : '#f5f3ff', color: cancelled ? '#991b1b' : rented ? '#1e40af' : returned ? '#166534' : '#5b21b6', borderRadius: 6, padding: '5px 6px', textAlign: 'left', cursor: 'pointer', fontSize: 11, overflow: 'hidden' }}><div style={{ fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{reservation.reservationNumber || t("Réservation")}</div><div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{reservation.customerName || t("Client")}</div></button>;
                               })}
-                              {dayReservations.length > 4 ? <div style={{ fontSize: 11, color: '#64748b', paddingLeft: 4 }}>+ {dayReservations.length - 4} autre(s)</div> : null}
+                              {dayReservations.length > 4 ? <div style={{ fontSize: 11, color: '#64748b', paddingLeft: 4 }}>+ {dayReservations.length - 4} {" " + t("autre(s)")}</div> : null}
                             </div>
                           </div>
                         );
@@ -183,7 +190,7 @@ const CalendarPage: FC = () => {
             </div>
 
             <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: 13, color: '#475569' }}>
-              <span>🟣 Réservée / confirmée</span><span>🔵 En location</span><span>🟢 Retournée / clôturée</span><span>🔴 Annulée</span>
+              <span>{t("🟣 Réservée / confirmée")}</span><span>{t("🔵 En location")}</span><span>{t("🟢 Retournée / clôturée")}</span><span>{t("🔴 Annulée")}</span>
             </div>
           </div>
         </Page.Content>
@@ -192,21 +199,22 @@ const CalendarPage: FC = () => {
       {selected && (
         <div onMouseDown={() => setSelected(null)} style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(15,23,42,.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 18 }}>
           <div onMouseDown={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 620, background: '#fff', borderRadius: 14, padding: 24, boxShadow: '0 20px 60px rgba(0,0,0,.25)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}><div><h2 style={{ margin: 0 }}>{selected.reservationNumber || 'Réservation'}</h2><div style={{ color: '#64748b', marginTop: 4 }}>{selected.customerName || 'Client'}</div></div><button style={{ border: 0, background: 'transparent', fontSize: 26, cursor: 'pointer' }} onClick={() => setSelected(null)}>×</button></div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}><div><h2 style={{ margin: 0 }}>{selected.reservationNumber || t("Réservation")}</h2><div style={{ color: '#64748b', marginTop: 4 }}>{selected.customerName || t("Client")}</div></div><button style={{ border: 0, background: 'transparent', fontSize: 26, cursor: 'pointer' }} onClick={() => setSelected(null)}>×</button></div>
             <div style={{ marginTop: 20, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-              <Info label="Début" value={dateTime(selected.startDateTime)} />
-              <Info label="Fin" value={dateTime(selected.endDateTime)} />
-              <Info label="Statut" value={selected.status || 'CONFIRMED'} />
-              <Info label="Étape" value={selected.workflowStage || 'RESERVATION'} />
-              <Info label="Buffer avant" value={`${selected.bufferBeforeHours || 0} h`} />
-              <Info label="Buffer après" value={`${selected.bufferAfterHours || 0} h`} />
+              <Info label={t("Début")} value={dateTime(selected.startDateTime)} />
+              <Info label={t("Fin")} value={dateTime(selected.endDateTime)} />
+              <Info label={t("Statut")} value={statusLabel(selected.status || 'CONFIRMED')} />
+              <Info label={t("Étape")} value={statusLabel(selected.workflowStage || 'RESERVATION')} />
+              <Info label={t("Buffer avant")} value={`${selected.bufferBeforeHours || 0} h`} />
+              <Info label={t("Buffer après")} value={`${selected.bufferAfterHours || 0} h`} />
             </div>
-            <div style={{ marginTop: 16 }}><Info label="Équipements" value={itemsFor(selected) || 'Aucun équipement'} /></div>
-            <div style={{ marginTop: 16 }}><Info label="Total" value={money(selected.totalCents, selected.currency || 'CAD')} /></div>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 20 }}><button style={button} onClick={() => setSelected(null)}>Fermer</button></div>
+            <div style={{ marginTop: 16 }}><Info label={t("Équipements")} value={itemsFor(selected) || t("Aucun équipement")} /></div>
+            <div style={{ marginTop: 16 }}><Info label={t("Total")} value={money(selected.totalCents, selected.currency || 'CAD')} /></div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 20 }}><button style={button} onClick={() => setSelected(null)}>{t("Fermer")}</button></div>
           </div>
         </div>
       )}
+    </div>
     </WixDesignSystemProvider>
   );
 };

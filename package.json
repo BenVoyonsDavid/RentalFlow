@@ -16,7 +16,8 @@
     "release": "wix release",
     "generate": "wix generate",
     "skills": "wix skills",
-    "typecheck": "astro check"
+    "typecheck": "astro check",
+    "test:i18n": "node tests/i18n.unit.mjs && node tests/i18n.browser.mjs"
   },
   "dependencies": {
     "@wix/astro": "^2.70.0",
@@ -39,6 +40,8 @@
     "@wix/cli": "^1.1.245",
     "@wix/sdk-types": "^1.0.0",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "esbuild": "^0.27.7",
+    "playwright": "^1.62.1"
   }
 }

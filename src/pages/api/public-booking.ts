@@ -1,3 +1,4 @@
+import { normalizeLanguage, translate, type Parameters } from '../../lib/i18n';
 import type { APIRoute } from 'astro';
 import { items } from '@wix/data';
 import { auth } from '@wix/essentials';
@@ -260,6 +261,9 @@ function publicAsset(asset: Asset, start?: Date, end?: Date, settings?: AppSetti
 }
 
 export const GET: APIRoute = async ({ request }) => {
+  const language = normalizeLanguage(new URL(request.url).searchParams.get('lang'))
+    ?? normalizeLanguage(request.headers.get('accept-language')?.split(',')[0]) ?? 'fr';
+  const t = (source: string, values?: Parameters) => translate(source, language, values);
   try {
     await requireAppInstance();
     const url = new URL(request.url);
@@ -280,7 +284,7 @@ export const GET: APIRoute = async ({ request }) => {
 
     return json({
       company: {
-        name: settings.companyName || 'Location en ligne',
+        name: settings.companyName || '',
         logoUrl: settings.logoUrl || '',
       },
       settings: {
@@ -304,11 +308,14 @@ export const GET: APIRoute = async ({ request }) => {
       return json({ error: error.message }, 400);
     }
     console.error('RentalFlow public booking GET failed', error);
-    return json({ error: 'Impossible de charger la réservation en ligne.' }, 500);
+    return json({ error: t("Impossible de charger la réservation en ligne."), errorKey: "Impossible de charger la réservation en ligne." }, 500);
   }
 };
 
 export const POST: APIRoute = async ({ request }) => {
+  const language = normalizeLanguage(new URL(request.url).searchParams.get('lang'))
+    ?? normalizeLanguage(request.headers.get('accept-language')?.split(',')[0]) ?? 'fr';
+  const t = (source: string, values?: Parameters) => translate(source, language, values);
   let createdReservation: any = null;
   const createdItems: any[] = [];
 
@@ -317,7 +324,7 @@ export const POST: APIRoute = async ({ request }) => {
     const body = await request.json() as BookingRequest;
     const { start, end } = validatePeriod(body.startDateTime, body.endDateTime);
     const assetIds = [...new Set((body.assetIds || []).map((id) => clean(id, 80)).filter(Boolean))];
-    if (!assetIds.length || assetIds.length > 25) return json({ error: 'Sélection d’équipement invalide.' }, 400);
+    if (!assetIds.length || assetIds.length > 25) return json({ error: t("Sélection d’équipement invalide."), errorKey: "Sélection d’équipement invalide." }, 400);
 
     const customer = {
       name: clean(body.customer?.name, 150),
@@ -330,8 +337,8 @@ export const POST: APIRoute = async ({ request }) => {
       postalCode: clean(body.customer?.postalCode, 30).toUpperCase(),
       country: clean(body.customer?.country, 120) || 'Canada',
     };
-    if (!customer.name) return json({ error: 'Le nom du client est obligatoire.' }, 400);
-    if (!customer.email || !customer.email.includes('@')) return json({ error: 'Un courriel valide est obligatoire.' }, 400);
+    if (!customer.name) return json({ error: t("Le nom du client est obligatoire."), errorKey: "Le nom du client est obligatoire." }, 400);
+    if (!customer.email || !customer.email.includes('@')) return json({ error: t("Un courriel valide est obligatoire."), errorKey: "Un courriel valide est obligatoire." }, 400);
 
     const [{ settings, templates }, activeAssets, blockingItems] = await Promise.all([
       loadSettingsAndTemplates(),
@@ -353,16 +360,16 @@ export const POST: APIRoute = async ({ request }) => {
       endDateTime: body.endDateTime,
       selectedAssetCount: assetIds.length,
     });
-    if (missing.length) return json({ error: `Informations requises : ${missing.join(', ')}.` }, 400);
+    if (missing.length) return json({ error: t("Informations requises : {0}.", { 0: missing.map((field) => t(field)).join(', ') }), errorKey: "Informations requises : {0}.", errorValues: { 0: missing.map((field) => t(field)).join(', ') } }, 400);
 
     const selectedAssets = assetIds.map((id) => activeAssets.find((asset) => asset._id === id)).filter((asset): asset is Asset => !!asset);
-    if (selectedAssets.length !== assetIds.length) return json({ error: 'Un équipement sélectionné n’est plus disponible.' }, 409);
+    if (selectedAssets.length !== assetIds.length) return json({ error: t("Un équipement sélectionné n’est plus disponible."), errorKey: "Un équipement sélectionné n’est plus disponible." }, 409);
 
     const before = settings.defaultBufferBeforeHours || 0;
     const after = settings.defaultBufferAfterHours || 0;
     for (const asset of selectedAssets) {
       if (!asset._id || !isAssetAvailable(asset._id, start, end, before, after, blockingItems)) {
-        return json({ error: `${asset.title || 'Un équipement'} n’est plus disponible pour cette période.` }, 409);
+        return json({ error: t("{0} n’est plus disponible pour cette période.", { 0: asset.title || t("Un équipement") }), errorKey: "{0} n’est plus disponible pour cette période.", errorValues: { 0: asset.title || t("Un équipement") } }, 409);
       }
     }
 
@@ -489,7 +496,7 @@ export const POST: APIRoute = async ({ request }) => {
       reservationId: createdReservation._id,
       reservationNumber,
       actionType: 'ONLINE_RESERVATION_CREATED',
-      description: `Réservation en ligne ${reservationNumber} créée par ${customer.name}.`,
+      description: t("Réservation en ligne {0} créée par {1}.", { 0: reservationNumber, 1: customer.name }),
       actor: 'Client en ligne',
       eventDate: new Date(),
     });
@@ -510,10 +517,10 @@ export const POST: APIRoute = async ({ request }) => {
     const api = wixGetPaid.paymentLinks;
     if (!api?.createPaymentLink) throw new Error('PAYLINK_UNAVAILABLE');
     const createPaymentLink = auth.elevate(api.createPaymentLink);
-    const label = paymentMode === 'DEPOSIT' ? 'Dépôt de réservation' : 'Paiement de location';
+    const label = paymentMode === 'DEPOSIT' ? t("Dépôt de réservation") : t("Paiement de location");
     const paymentLinkResponse = await createPaymentLink({
       title: `${reservationNumber} — ${label}`,
-      description: `Paiement RentalFlow pour ${customer.name}`,
+      description: t("Paiement RentalFlow pour {0}", { 0: customer.name }),
       currency,
       type: 'ECOM',
       paymentsLimit: 1,
@@ -571,7 +578,7 @@ export const POST: APIRoute = async ({ request }) => {
       reservationId: createdReservation._id,
       reservationNumber,
       actionType: 'ONLINE_PAYMENT_LINK_CREATED',
-      description: `${label} créé pour ${(amount / 100).toFixed(2)} ${currency}.`,
+      description: t("{0} créé pour {1} {2}.", { 0: label, 1: (amount / 100).toFixed(2), 2: currency }),
       actor: 'RentalFlow Online Booking',
       eventDate: new Date(),
     });
@@ -603,8 +610,8 @@ export const POST: APIRoute = async ({ request }) => {
       return json({ error: error.message }, 400);
     }
     if (error instanceof Error && error.message.startsWith('PAYLINK')) {
-      return json({ error: 'La réservation n’a pas été confirmée parce que le paiement Wix n’a pas pu être préparé.' }, 502);
+      return json({ error: t("La réservation n’a pas été confirmée parce que le paiement Wix n’a pas pu être préparé."), errorKey: "La réservation n’a pas été confirmée parce que le paiement Wix n’a pas pu être préparé." }, 502);
     }
-    return json({ error: 'Impossible de compléter la réservation en ligne.' }, 500);
+    return json({ error: t("Impossible de compléter la réservation en ligne."), errorKey: "Impossible de compléter la réservation en ligne." }, 500);
   }
 };

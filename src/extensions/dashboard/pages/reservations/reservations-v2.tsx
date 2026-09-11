@@ -1,3 +1,7 @@
+import { feedback, formatFeedback, type Feedback } from '../../../../lib/i18n';
+import { statusLabel } from '../../../../lib/i18n/status';
+import { t, getLocale } from '../../../../lib/i18n';
+import { LanguageSelector, useLanguage } from '../../../../lib/i18n/react';
 import type { CSSProperties, FC, FormEvent, ReactNode } from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { items } from '@wix/data';
@@ -149,10 +153,10 @@ const input: CSSProperties = { width: '100%', boxSizing: 'border-box', border: '
 
 const stageOrder: WorkflowStage[] = ['RESERVATION', 'QUOTE', 'CONTRACT', 'INVOICE', 'PAYMENT', 'READY', 'RENTED', 'RETURNED', 'COMPLETED'];
 const stageLabels: Record<WorkflowStage, string> = {
-  RESERVATION: 'Réservation', QUOTE: 'Devis', CONTRACT: 'Contrat', INVOICE: 'Facture', PAYMENT: 'Paiement',
-  READY: 'Prêt au départ', RENTED: 'En location', RETURNED: 'Retourné', COMPLETED: 'Clôturé',
+  get RESERVATION() { return t("Réservation"); }, get QUOTE() { return t("Devis"); }, get CONTRACT() { return t("Contrat"); }, get INVOICE() { return t("Facture"); }, get PAYMENT() { return t("Paiement"); },
+  get READY() { return t("Prêt au départ"); }, get RENTED() { return t("En location"); }, get RETURNED() { return t("Retourné"); }, get COMPLETED() { return t("Clôturé"); },
 };
-const documentLabels: Record<DocumentType, string> = { QUOTE: 'Devis', CONTRACT: 'Contrat', INVOICE: 'Facture' };
+const documentLabels: Record<DocumentType, string> = { get QUOTE() { return t("Devis"); }, get CONTRACT() { return t("Contrat"); }, get INVOICE() { return t("Facture"); } };
 const weekdays = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
 
 function asDate(value?: Date | string): Date {
@@ -162,10 +166,10 @@ function asDate(value?: Date | string): Date {
 function dateTime(value?: Date | string): string {
   const date = asDate(value);
   if (!date.getTime()) return '—';
-  return new Intl.DateTimeFormat('fr-CA', { dateStyle: 'medium', timeStyle: 'short' }).format(date);
+  return new Intl.DateTimeFormat(getLocale(), { dateStyle: 'medium', timeStyle: 'short' }).format(date);
 }
 function money(cents = 0, currency = 'CAD'): string {
-  return new Intl.NumberFormat('fr-CA', { style: 'currency', currency }).format(cents / 100);
+  return new Intl.NumberFormat(getLocale(), { style: 'currency', currency }).format(cents / 100);
 }
 function numeric(value: string): number {
   const number = Number(value.replace(',', '.'));
@@ -177,7 +181,7 @@ function generatedNumber(prefix: string): string {
   return `${prefix}-${stamp}-${Math.floor(1000 + Math.random() * 9000)}`;
 }
 function customerDisplayName(customer: Customer): string {
-  return [customer.firstName, customer.lastName].filter(Boolean).join(' ').trim() || customer.companyName || 'Client sans nom';
+  return [customer.firstName, customer.lastName].filter(Boolean).join(' ').trim() || customer.companyName || t("Client sans nom");
 }
 function stageAtLeast(current: WorkflowStage | undefined, requested: WorkflowStage): WorkflowStage {
   const currentIndex = stageOrder.indexOf(current || 'RESERVATION');
@@ -206,6 +210,7 @@ function reservationPayload(reservation: Reservation, changes: Partial<Reservati
 }
 
 const ReservationsV2Page: FC = () => {
+  const language = useLanguage();
   const [view, setView] = useState<ViewMode>('MONTH');
   const [assets, setAssets] = useState<Asset[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -218,12 +223,12 @@ const ReservationsV2Page: FC = () => {
   const [templates, setTemplates] = useState<DocumentTemplate[]>([]);
   const [settings, setSettings] = useState<AppSettings>(defaultSettings);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
+  const [error, setError] = useState<Feedback>('');
+  const [success, setSuccess] = useState<Feedback>('');
 
   const [formOpen, setFormOpen] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [formError, setFormError] = useState('');
+  const [formError, setFormError] = useState<Feedback>('');
   const [selectedAssetIds, setSelectedAssetIds] = useState<string[]>([]);
   const [form, setForm] = useState<ReservationForm | null>(null);
 
@@ -257,14 +262,14 @@ const ReservationsV2Page: FC = () => {
       setTemplates(results[8].items as DocumentTemplate[]);
       setSettings({ ...defaultSettings, ...((results[9].items[0] as AppSettings | undefined) || {}) });
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Impossible de charger les données RentalFlow.');
+      setError(e instanceof Error ? e.message : feedback("Impossible de charger les données RentalFlow."));
     } finally { setLoading(false); }
   }, []);
 
   useEffect(() => { void load(); }, [load]);
 
   const activeAssets = useMemo(() => assets.filter((asset) => asset.active !== false && asset.status !== 'INACTIVE'), [assets]);
-  const activeCustomers = useMemo(() => customers.filter((customer) => customer.active !== false).sort((a, b) => customerDisplayName(a).localeCompare(customerDisplayName(b), 'fr')), [customers]);
+  const activeCustomers = useMemo(() => customers.filter((customer) => customer.active !== false).sort((a, b) => customerDisplayName(a).localeCompare(customerDisplayName(b), getLocale())), [customers, language]);
   const activeTemplates = useMemo(() => templates.filter((template) => template.active !== false), [templates]);
   const sortedReservations = useMemo(() => [...reservations].filter((r) => r.status !== 'ERROR').sort((a, b) => asDate(a.startDateTime).getTime() - asDate(b.startDateTime).getTime()), [reservations]);
 
@@ -276,7 +281,7 @@ const ReservationsV2Page: FC = () => {
         reservationNumber: reservation.reservationNumber || '',
         actionType,
         description,
-        actor: 'Utilisateur Wix',
+        actor: t("Utilisateur Wix"),
         eventDate: new Date(),
       });
     } catch { /* Activity logging must not block the operational action. */ }
@@ -372,10 +377,10 @@ const ReservationsV2Page: FC = () => {
     event.preventDefault();
     if (!form) return;
     setFormError('');
-    if (!formDates.valid || !formDates.start || !formDates.end) return setFormError('La période de location est invalide.');
-    if (selectedAssetIds.length < 1) return setFormError('Sélectionnez au moins un équipement.');
-    if (form.customerMode === 'EXISTING' && !form.customerId) return setFormError('Sélectionnez un client existant.');
-    if (form.customerMode === 'NEW' && !form.customerName.trim()) return setFormError('Le nom du nouveau client est obligatoire.');
+    if (!formDates.valid || !formDates.start || !formDates.end) return setFormError(feedback("La période de location est invalide."));
+    if (selectedAssetIds.length < 1) return setFormError(feedback("Sélectionnez au moins un équipement."));
+    if (form.customerMode === 'EXISTING' && !form.customerId) return setFormError(feedback("Sélectionnez un client existant."));
+    if (form.customerMode === 'NEW' && !form.customerName.trim()) return setFormError(feedback("Le nom du nouveau client est obligatoire."));
 
     const missing = validateRequiredFields(requiredFields, {
       customerName: form.customerName, customerEmail: form.customerEmail, customerPhone: form.customerPhone,
@@ -383,7 +388,7 @@ const ReservationsV2Page: FC = () => {
       customerPostalCode: form.customerPostalCode, customerCountry: form.customerCountry,
       startDateTime: form.startDateTime, endDateTime: form.endDateTime, selectedAssetCount: selectedAssetIds.length,
     });
-    if (missing.length) return setFormError(`Champs requis par les modèles sélectionnés : ${missing.join(', ')}.`);
+    if (missing.length) return setFormError(feedback("Champs requis par les modèles sélectionnés : {0}.", { 0: missing.map((field) => t(field)).join(', ') }));
 
     const before = numeric(form.bufferBeforeHours); const after = numeric(form.bufferAfterHours);
     setSaving(true);
@@ -392,7 +397,7 @@ const ReservationsV2Page: FC = () => {
       const blocked = getBlockedRange(formDates.start, formDates.end, before, after);
       for (const assetId of selectedAssetIds) {
         const conflict = latest.some((item) => item.assetId === assetId && item.status !== 'CANCELLED' && item.status !== 'COMPLETED' && rangesOverlap(blocked.blockedStart, blocked.blockedEnd, asDate(item.blockedStartDateTime), asDate(item.blockedEndDateTime)));
-        if (conflict) throw new Error(`${activeAssets.find((asset) => asset._id === assetId)?.title || 'Un équipement'} n’est plus disponible pour cette période.`);
+        if (conflict) throw new Error(t("{0} n’est plus disponible pour cette période.", { 0: activeAssets.find((asset) => asset._id === assetId)?.title || t("Un équipement") }));
       }
 
       let customerId = form.customerId;
@@ -405,7 +410,7 @@ const ReservationsV2Page: FC = () => {
           region: form.customerRegion.trim(), postalCode: form.customerPostalCode.trim().toUpperCase(), country: form.customerCountry.trim(),
           discountPercent: 0, active: true,
         }) as Customer;
-        if (!created._id) throw new Error('Impossible de créer le client.');
+        if (!created._id) throw new Error(t("Impossible de créer le client."));
         customerId = created._id; customerNumber = created.customerNumber || '';
       }
 
@@ -433,7 +438,7 @@ const ReservationsV2Page: FC = () => {
         depositAmountCents: depositPreview.depositAmountCents, amountDueNowCents: depositPreview.amountDueNowCents,
         balanceDueCents: depositPreview.balanceDueCents, paymentMode: form.paymentMode, notes: form.notes.trim(),
       }) as Reservation;
-      if (!created._id) throw new Error('Wix n’a pas retourné l’identifiant de la réservation.');
+      if (!created._id) throw new Error(t("Wix n’a pas retourné l’identifiant de la réservation."));
 
       for (const line of pricingLines) {
         if (!line.asset._id) continue;
@@ -446,11 +451,11 @@ const ReservationsV2Page: FC = () => {
           lineTotalCents: line.totalCents, pricingMode: line.pricingMode, currency: line.asset.currency || currency, status: 'CONFIRMED',
         });
       }
-      await logActivity(created, 'RESERVATION_CREATED', `Réservation ${number} créée.`);
-      setFormOpen(false); setForm(null); setSuccess(`Réservation ${number} créée.`); await load();
+      await logActivity(created, 'RESERVATION_CREATED', t("Réservation {0} créée.", { 0: number }));
+      setFormOpen(false); setForm(null); setSuccess(feedback("Réservation {0} créée.", { 0: number })); await load();
       setSelectedReservation(created); setNotesDraft(created.notes || ''); setDetailTab('DETAILS');
     } catch (e) {
-      setFormError(e instanceof Error ? e.message : 'Impossible de créer la réservation.');
+      setFormError(e instanceof Error ? e.message : feedback("Impossible de créer la réservation."));
     } finally { setSaving(false); }
   };
 
@@ -465,21 +470,21 @@ const ReservationsV2Page: FC = () => {
       const updated = await items.update(RESERVATIONS, reservationPayload(reservation, changes)) as Reservation;
       await logActivity(updated, action, description);
       setSelectedReservation(updated); setNotesDraft(updated.notes || ''); await load();
-    } catch (e) { setError(e instanceof Error ? e.message : 'Impossible de modifier la réservation.'); }
+    } catch (e) { setError(e instanceof Error ? e.message : feedback("Impossible de modifier la réservation.")); }
     finally { setProcessing(false); }
   };
 
   const cancelReservation = async (reservation: Reservation) => {
-    if (!reservation._id || !window.confirm(`Annuler ${reservation.reservationNumber || 'cette réservation'} ?`)) return;
+    if (!reservation._id || !window.confirm(`Annuler ${reservation.reservationNumber || t("cette réservation")} ?`)) return;
     setProcessing(true);
     try {
       const updated = await items.update(RESERVATIONS, reservationPayload(reservation, { status: 'CANCELLED' })) as Reservation;
       for (const item of reservationItems.filter((row) => row.reservationId === reservation._id && row._id)) {
         await items.update(RESERVATION_ITEMS, { ...item, status: 'CANCELLED' });
       }
-      await logActivity(updated, 'RESERVATION_CANCELLED', 'Réservation annulée; disponibilité libérée.');
+      await logActivity(updated, 'RESERVATION_CANCELLED', t('Réservation annulée; disponibilité libérée.'));
       setSelectedReservation(updated); await load();
-    } catch (e) { setError(e instanceof Error ? e.message : 'Impossible d’annuler la réservation.'); }
+    } catch (e) { setError(e instanceof Error ? e.message : feedback("Impossible d’annuler la réservation.")); }
     finally { setProcessing(false); }
   };
 
@@ -500,7 +505,7 @@ const ReservationsV2Page: FC = () => {
   const createDocument = async (type: DocumentType) => {
     if (!selectedReservation?._id) return;
     const template = templateForDocument(type, selectedReservation);
-    if (!template) return setError(`Aucun modèle ${documentLabels[type].toLowerCase()} n’est sélectionné sur cette réservation.`);
+    if (!template) return setError(feedback("Aucun modèle {0} n’est sélectionné sur cette réservation.", { 0: documentLabels[type].toLowerCase() }));
     setProcessing(true); setError('');
     try {
       const prefix = type === 'QUOTE' ? 'DEV' : type === 'CONTRACT' ? 'CTR' : 'FAC';
@@ -520,9 +525,9 @@ const ReservationsV2Page: FC = () => {
         amountCents: selectedReservation.totalCents || 0, currency: selectedReservation.currency || 'CAD', issuedDate: new Date(), notes: '',
       }) as RentalDocument;
       const nextStage: WorkflowStage = type === 'QUOTE' ? 'QUOTE' : type === 'CONTRACT' ? 'CONTRACT' : 'INVOICE';
-      await updateReservation(selectedReservation, { workflowStage: stageAtLeast(selectedReservation.workflowStage, nextStage) }, 'DOCUMENT_CREATED', `${documentLabels[type]} ${document.documentNumber || ''} créé.`);
+      await updateReservation(selectedReservation, { workflowStage: stageAtLeast(selectedReservation.workflowStage, nextStage) }, 'DOCUMENT_CREATED', t("{0} {1} créé.", { 0: documentLabels[type], 1: document.documentNumber || '' }));
       await load();
-    } catch (e) { setError(e instanceof Error ? e.message : 'Impossible de créer le document.'); }
+    } catch (e) { setError(e instanceof Error ? e.message : feedback("Impossible de créer le document.")); }
     finally { setProcessing(false); }
   };
 
@@ -539,7 +544,7 @@ const ReservationsV2Page: FC = () => {
       const requested: WorkflowStage = document.documentType === 'QUOTE' ? 'QUOTE' : document.documentType === 'CONTRACT' ? 'CONTRACT' : 'INVOICE';
       await updateReservation(selectedReservation, { workflowStage: stageAtLeast(selectedReservation.workflowStage, requested) }, 'DOCUMENT_UPDATED', `${documentLabels[document.documentType || 'QUOTE']} ${document.documentNumber || ''} : ${changes.status}.`);
       await load();
-    } catch (e) { setError(e instanceof Error ? e.message : 'Impossible de mettre à jour le document.'); }
+    } catch (e) { setError(e instanceof Error ? e.message : feedback("Impossible de mettre à jour le document.")); }
     finally { setProcessing(false); }
   };
 
@@ -551,26 +556,26 @@ const ReservationsV2Page: FC = () => {
       if (Array.isArray(parsed.equipment)) snapshotItems = parsed.equipment;
     } catch { /* Use current linked items. */ }
     const popup = window.open('', '_blank', 'noopener,noreferrer');
-    if (!popup) return setError('Le navigateur a bloqué la fenêtre du document. Autorisez les fenêtres contextuelles pour imprimer.');
+    if (!popup) return setError(feedback("Le navigateur a bloqué la fenêtre du document. Autorisez les fenêtres contextuelles pour imprimer."));
     const logo = document.logoUrl ? `<img src="${escapeHtml(document.logoUrl)}" style="max-height:90px;max-width:220px;object-fit:contain">` : '';
     const equipmentRows = snapshotItems.map((item) => `<tr><td>${escapeHtml(item.assetTitle || '')}</td><td>${escapeHtml(item.assetNumber || '')}</td><td>${item.billableDays || 0}</td><td style="text-align:right">${escapeHtml(money(item.lineTotalCents || 0, document.currency || 'CAD'))}</td></tr>`).join('');
-    popup.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(document.documentNumber || 'Document')}</title><style>body{font-family:Arial,sans-serif;color:#172033;max-width:900px;margin:30px auto;padding:20px}header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #172033;padding-bottom:18px}table{width:100%;border-collapse:collapse;margin-top:24px}th,td{padding:10px;border-bottom:1px solid #ddd;text-align:left}.totals{margin-left:auto;margin-top:24px;max-width:360px}.row{display:flex;justify-content:space-between;padding:6px 0}.total{font-size:19px;font-weight:bold;border-top:2px solid #222;margin-top:6px;padding-top:10px}.muted{color:#64748b}.terms{margin-top:30px;line-height:1.5}.footer{margin-top:40px;border-top:1px solid #ddd;padding-top:14px;color:#64748b;font-size:12px}@media print{button{display:none}}</style></head><body><header><div>${logo}<div class="muted">${escapeHtml(settings.companyName || 'RentalFlow')}</div></div><div style="text-align:right"><h1>${escapeHtml(document.titleText || documentLabels[document.documentType || 'QUOTE'])}</h1><strong>${escapeHtml(document.documentNumber || '')}</strong><div>${dateTime(document.issuedDate)}</div></div></header><section><h3>Client</h3><strong>${escapeHtml(selectedReservation.customerName || '')}</strong><div>${escapeHtml(selectedReservation.customerEmail || '')}</div><div>${escapeHtml(selectedReservation.customerPhone || '')}</div><div>${escapeHtml([selectedReservation.customerAddressLine1, selectedReservation.customerAddressLine2, selectedReservation.customerCity, selectedReservation.customerRegion, selectedReservation.customerPostalCode, selectedReservation.customerCountry].filter(Boolean).join(', '))}</div></section><p>${lines(document.introText || '')}</p><div><strong>Période :</strong> ${dateTime(selectedReservation.startDateTime)} → ${dateTime(selectedReservation.endDateTime)}</div><table><thead><tr><th>Équipement</th><th>No</th><th>Jours</th><th style="text-align:right">Montant</th></tr></thead><tbody>${equipmentRows}</tbody></table><div class="totals"><div class="row"><span>Sous-total</span><span>${money(document.subtotalCents || 0, document.currency || 'CAD')}</span></div>${(document.discountCents || 0) > 0 ? `<div class="row"><span>Rabais</span><span>-${money(document.discountCents || 0, document.currency || 'CAD')}</span></div>` : ''}<div class="row"><span>${escapeHtml(document.tax1Name || 'Taxe 1')}</span><span>${money(document.tax1Cents || 0, document.currency || 'CAD')}</span></div><div class="row"><span>${escapeHtml(document.tax2Name || 'Taxe 2')}</span><span>${money(document.tax2Cents || 0, document.currency || 'CAD')}</span></div><div class="row total"><span>Total</span><span>${money(document.amountCents || 0, document.currency || 'CAD')}</span></div></div><div class="terms">${lines(document.termsText || '')}</div>${document.signerName ? `<p><strong>Signataire :</strong> ${escapeHtml(document.signerName)}</p>` : ''}<div class="footer">${lines(document.footerText || '')}</div><button onclick="window.print()">Imprimer / Enregistrer en PDF</button></body></html>`);
+    popup.document.write(`<!doctype html><html lang="${language}"><head><meta charset="utf-8"><title>${escapeHtml(document.documentNumber || t("Document"))}</title><style>body{font-family:Arial,sans-serif;color:#172033;max-width:900px;margin:30px auto;padding:20px}header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #172033;padding-bottom:18px}table{width:100%;border-collapse:collapse;margin-top:24px}th,td{padding:10px;border-bottom:1px solid #ddd;text-align:left}.totals{margin-left:auto;margin-top:24px;max-width:360px}.row{display:flex;justify-content:space-between;padding:6px 0}.total{font-size:19px;font-weight:bold;border-top:2px solid #222;margin-top:6px;padding-top:10px}.muted{color:#64748b}.terms{margin-top:30px;line-height:1.5}.footer{margin-top:40px;border-top:1px solid #ddd;padding-top:14px;color:#64748b;font-size:12px}@media print{button{display:none}}</style></head><body><header><div>${logo}<div class="muted">${escapeHtml(settings.companyName || 'RentalFlow')}</div></div><div style="text-align:right"><h1>${escapeHtml(document.titleText || documentLabels[document.documentType || 'QUOTE'])}</h1><strong>${escapeHtml(document.documentNumber || '')}</strong><div>${dateTime(document.issuedDate)}</div></div></header><section><h3>${t("Client")}</h3><strong>${escapeHtml(selectedReservation.customerName || '')}</strong><div>${escapeHtml(selectedReservation.customerEmail || '')}</div><div>${escapeHtml(selectedReservation.customerPhone || '')}</div><div>${escapeHtml([selectedReservation.customerAddressLine1, selectedReservation.customerAddressLine2, selectedReservation.customerCity, selectedReservation.customerRegion, selectedReservation.customerPostalCode, selectedReservation.customerCountry].filter(Boolean).join(', '))}</div></section><p>${lines(document.introText || '')}</p><div><strong>${t("Période :")}</strong> ${dateTime(selectedReservation.startDateTime)} → ${dateTime(selectedReservation.endDateTime)}</div><table><thead><tr><th>${t("Équipement")}</th><th>${t("No")}</th><th>${t("Jours")}</th><th style="text-align:right">${t("Montant")}</th></tr></thead><tbody>${equipmentRows}</tbody></table><div class="totals"><div class="row"><span>${t("Sous-total")}</span><span>${money(document.subtotalCents || 0, document.currency || 'CAD')}</span></div>${(document.discountCents || 0) > 0 ? `<div class="row"><span>${t("Rabais")}</span><span>-${money(document.discountCents || 0, document.currency || 'CAD')}</span></div>` : ''}<div class="row"><span>${escapeHtml(document.tax1Name || t("Taxe 1"))}</span><span>${money(document.tax1Cents || 0, document.currency || 'CAD')}</span></div><div class="row"><span>${escapeHtml(document.tax2Name || t("Taxe 2"))}</span><span>${money(document.tax2Cents || 0, document.currency || 'CAD')}</span></div><div class="row total"><span>${t("Total")}</span><span>${money(document.amountCents || 0, document.currency || 'CAD')}</span></div></div><div class="terms">${lines(document.termsText || '')}</div>${document.signerName ? `<p><strong>${t("Signataire :")}</strong> ${escapeHtml(document.signerName)}</p>` : ''}<div class="footer">${lines(document.footerText || '')}</div><button onclick="window.print()">${t("Imprimer / Enregistrer en PDF")}</button></body></html>`);
     popup.document.close();
   };
 
   const createWixPaymentLink = async () => {
     if (!selectedReservation?._id || liveBalance <= 0) return;
     const amount = paidCents === 0 && initialDue > 0 ? initialDue : liveBalance;
-    if (amount <= 0) return setError('Aucun montant à percevoir.');
+    if (amount <= 0) return setError(feedback("Aucun montant à percevoir."));
     setProcessing(true); setError('');
     try {
       const wixGetPaid = (await import('@wix/get-paid')) as any;
       const api = wixGetPaid.paymentLinks;
-      if (!api?.createPaymentLink) throw new Error('Le module Wix Payment Links n’est pas disponible.');
-      const label = selectedReservation.paymentMode === 'DEPOSIT' && paidCents === 0 ? 'Dépôt de réservation' : 'Paiement de location';
+      if (!api?.createPaymentLink) throw new Error(t("Le module Wix Payment Links n’est pas disponible."));
+      const label = selectedReservation.paymentMode === 'DEPOSIT' && paidCents === 0 ? t("Dépôt de réservation") : t("Paiement de location");
       const response = await api.createPaymentLink({
         title: `${selectedReservation.reservationNumber || 'RentalFlow'} — ${label}`,
-        description: `Paiement RentalFlow pour ${selectedReservation.customerName || 'client'}`,
+        description: t("Paiement RentalFlow pour {0}", { 0: selectedReservation.customerName || 'client' }),
         currency: selectedReservation.currency || 'CAD',
         type: 'ECOM', paymentsLimit: 1, displayData: {},
         ecomPaymentLink: {
@@ -579,7 +584,7 @@ const ReservationsV2Page: FC = () => {
       });
       const link = response?.paymentLink || response;
       const linkId = link?._id || link?.id;
-      if (!linkId) throw new Error('Wix n’a pas retourné l’identifiant du lien de paiement.');
+      if (!linkId) throw new Error(t("Wix n’a pas retourné l’identifiant du lien de paiement."));
 
       let checkoutUrl = link?.links?.find?.((entry: any) => entry?.url?.url)?.url?.url || link?.links?.find?.((entry: any) => typeof entry?.url === 'string')?.url || link?.url?.url || link?.url || '';
       let checkoutId = '';
@@ -595,14 +600,14 @@ const ReservationsV2Page: FC = () => {
         method: 'WIX', status: 'PENDING', amountCents: amount, currency: selectedReservation.currency || 'CAD',
         paymentDate: new Date(), reference: label, wixPaymentLinkId: linkId, wixPaymentUrl: checkoutUrl,
         wixCheckoutId: checkoutId, wixOnlinePayment: true, remainingBalanceCents: Math.max(0, liveBalance - amount),
-        notes: 'Lien de paiement Wix créé par RentalFlow.',
+        notes: t("Lien de paiement Wix créé par RentalFlow."),
       }) as Payment;
-      await logActivity(selectedReservation, 'WIX_PAYMENT_LINK_CREATED', `${label} ${money(amount, selectedReservation.currency || 'CAD')} — lien Wix créé.`);
+      await logActivity(selectedReservation, 'WIX_PAYMENT_LINK_CREATED', t("{0} {1} — lien Wix créé.", { 0: label, 1: money(amount, selectedReservation.currency || 'CAD') }));
       await load();
       if (checkoutUrl) window.open(checkoutUrl, '_blank', 'noopener,noreferrer');
-      else setSuccess(`Lien Wix ${payment.wixPaymentLinkId || ''} créé. Utilisez Actualiser le statut pour le suivre.`);
+      else setSuccess(feedback("Lien Wix {0} créé. Utilisez Actualiser le statut pour le suivre.", { 0: payment.wixPaymentLinkId || '' }));
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Impossible de créer le lien de paiement Wix. Vérifiez le droit Manage Paylinks et les moyens de paiement du site.');
+      setError(e instanceof Error ? e.message : feedback("Impossible de créer le lien de paiement Wix. Vérifiez le droit Manage Paylinks et les moyens de paiement du site."));
     } finally { setProcessing(false); }
   };
 
@@ -612,32 +617,32 @@ const ReservationsV2Page: FC = () => {
     try {
       const wixGetPaid = (await import('@wix/get-paid')) as any;
       const api = wixGetPaid.paymentLinks;
-      if (!api?.getPaymentLink) throw new Error('Le module Wix Payment Links n’est pas disponible.');
+      if (!api?.getPaymentLink) throw new Error(t("Le module Wix Payment Links n’est pas disponible."));
       const response = await api.getPaymentLink(payment.wixPaymentLinkId);
       const link = response?.paymentLink || response;
       const wixStatus = String(link?.status || '').toUpperCase();
       const paid = wixStatus === 'PAID';
       await items.update(PAYMENTS, { ...payment, status: paid ? 'PAID' : payment.status || 'PENDING', paymentDate: paid ? new Date() : payment.paymentDate });
       if (paid && selectedReservation) {
-        await logActivity(selectedReservation, 'PAYMENT_CONFIRMED', `Paiement Wix ${payment.paymentNumber || ''} confirmé.`);
-        await updateReservation(selectedReservation, { workflowStage: stageAtLeast(selectedReservation.workflowStage, 'PAYMENT') }, 'WORKFLOW_PAYMENT', 'Étape paiement atteinte.');
+        await logActivity(selectedReservation, 'PAYMENT_CONFIRMED', t("Paiement Wix {0} confirmé.", { 0: payment.paymentNumber || '' }));
+        await updateReservation(selectedReservation, { workflowStage: stageAtLeast(selectedReservation.workflowStage, 'PAYMENT') }, 'WORKFLOW_PAYMENT', t("Étape paiement atteinte."));
       }
       await load();
-      setSuccess(paid ? 'Paiement Wix confirmé.' : `Statut Wix : ${wixStatus || 'en attente'}.`);
-    } catch (e) { setError(e instanceof Error ? e.message : 'Impossible d’actualiser le paiement Wix.'); }
+      setSuccess(paid ? feedback("Paiement Wix confirmé.") : feedback("Statut Wix : {0}.", { 0: wixStatus || t("en attente") }));
+    } catch (e) { setError(e instanceof Error ? e.message : feedback("Impossible d’actualiser le paiement Wix.")); }
     finally { setProcessing(false); }
   };
 
   const saveNotes = async () => {
     if (!selectedReservation) return;
-    await updateReservation(selectedReservation, { notes: notesDraft }, 'NOTES_UPDATED', 'Notes de la réservation modifiées.');
+    await updateReservation(selectedReservation, { notes: notesDraft }, 'NOTES_UPDATED', t("Notes de la réservation modifiées."));
   };
 
   const saveInspection = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!selectedReservation?._id) return;
     const asset = linkedItems.find((item) => item.assetId === inspectionForm.assetId);
-    if (!asset) return setError('Sélectionnez un équipement de la réservation.');
+    if (!asset) return setError(feedback("Sélectionnez un équipement de la réservation."));
     setProcessing(true); setError('');
     try {
       const damage = Math.round(numeric(inspectionForm.damageAmount) * 100);
@@ -659,29 +664,29 @@ const ReservationsV2Page: FC = () => {
           notes: inspectionForm.damageDescription.trim(),
         });
       }
-      await logActivity(selectedReservation, 'INSPECTION_COMPLETED', `Inspection ${inspectionForm.inspectionType === 'DEPARTURE' ? 'départ' : 'retour'} — ${asset.assetTitle || asset.assetNumber || ''}.`);
+      await logActivity(selectedReservation, 'INSPECTION_COMPLETED', `Inspection ${inspectionForm.inspectionType === 'DEPARTURE' ? t("départ") : t("retour")} — ${asset.assetTitle || asset.assetNumber || ''}.`);
       setInspectionOpen(false); setInspectionForm(blankInspection); await load();
-    } catch (e) { setError(e instanceof Error ? e.message : 'Impossible d’enregistrer l’inspection.'); }
+    } catch (e) { setError(e instanceof Error ? e.message : feedback("Impossible d’enregistrer l’inspection.")); }
     finally { setProcessing(false); }
   };
 
   const checkout = async () => {
     if (!selectedReservation) return;
     const hasDeparture = linkedInspections.some((inspection) => inspection.inspectionType === 'DEPARTURE' && inspection.status === 'COMPLETED');
-    if (!hasDeparture) return setError('Une inspection de départ complétée est requise avant de confirmer le départ.');
-    await updateReservation(selectedReservation, { status: 'RENTED', workflowStage: 'RENTED', checkoutDateTime: new Date() }, 'CHECKOUT', 'Départ confirmé; réservation en location.');
+    if (!hasDeparture) return setError(feedback("Une inspection de départ complétée est requise avant de confirmer le départ."));
+    await updateReservation(selectedReservation, { status: 'RENTED', workflowStage: 'RENTED', checkoutDateTime: new Date() }, 'CHECKOUT', t("Départ confirmé; réservation en location."));
   };
 
   const returnRental = async () => {
     if (!selectedReservation) return;
     const hasReturn = linkedInspections.some((inspection) => inspection.inspectionType === 'RETURN' && inspection.status === 'COMPLETED');
-    if (!hasReturn) return setError('Une inspection de retour complétée est requise avant de confirmer le retour.');
-    await updateReservation(selectedReservation, { status: 'RETURNED', workflowStage: 'RETURNED', returnDateTime: new Date() }, 'RETURN', 'Retour confirmé.');
+    if (!hasReturn) return setError(feedback("Une inspection de retour complétée est requise avant de confirmer le retour."));
+    await updateReservation(selectedReservation, { status: 'RETURNED', workflowStage: 'RETURNED', returnDateTime: new Date() }, 'RETURN', t("Retour confirmé."));
   };
 
   const closeRental = async () => {
     if (!selectedReservation) return;
-    await updateReservation(selectedReservation, { status: 'COMPLETED', workflowStage: 'COMPLETED', closedDateTime: new Date() }, 'CLOSED', 'Réservation clôturée.');
+    await updateReservation(selectedReservation, { status: 'COMPLETED', workflowStage: 'COMPLETED', closedDateTime: new Date() }, 'CLOSED', t("Réservation clôturée."));
     for (const item of linkedItems.filter((item) => item._id)) await items.update(RESERVATION_ITEMS, { ...item, status: 'COMPLETED' });
     await load();
   };
@@ -702,32 +707,34 @@ const ReservationsV2Page: FC = () => {
 
   return (
     <WixDesignSystemProvider features={{ newColorsBranding: true }}>
+      <div lang={language}>
+      <LanguageSelector />
       <Page>
-        <Page.Header title="Réservations" subtitle="Réservez, facturez, encaissez et suivez chaque location de bout en bout." />
+        <Page.Header title={t("Réservations")} subtitle={t("Réservez, facturez, encaissez et suivez chaque location de bout en bout.")} />
         <Page.Content>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16, paddingBottom: 50 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                <ViewButton active={view === 'MONTH'} onClick={() => setView('MONTH')}>Mois</ViewButton>
-                <ViewButton active={view === 'LIST'} onClick={() => setView('LIST')}>Liste</ViewButton>
-                <ViewButton active={view === 'AVAILABILITY'} onClick={() => setView('AVAILABILITY')}>Disponibilité</ViewButton>
+                <ViewButton active={view === 'MONTH'} onClick={() => setView('MONTH')}>{t("Mois")}</ViewButton>
+                <ViewButton active={view === 'LIST'} onClick={() => setView('LIST')}>{t("Liste")}</ViewButton>
+                <ViewButton active={view === 'AVAILABILITY'} onClick={() => setView('AVAILABILITY')}>{t("Disponibilité")}</ViewButton>
               </div>
-              <button style={primary} onClick={openNewReservation}>+ Nouvelle réservation</button>
+              <button style={primary} onClick={openNewReservation}>{t("+ Nouvelle réservation")}</button>
             </div>
-            {error && <div style={{ ...card, background: '#fef2f2', borderColor: '#fecaca', color: '#991b1b' }}>{error}</div>}
-            {success && <div style={{ ...card, background: '#f0fdf4', borderColor: '#86efac', color: '#166534' }}>{success}</div>}
+            {error && <div style={{ ...card, background: '#fef2f2', borderColor: '#fecaca', color: '#991b1b' }}>{formatFeedback(error)}</div>}
+            {success && <div style={{ ...card, background: '#f0fdf4', borderColor: '#86efac', color: '#166534' }}>{formatFeedback(success)}</div>}
 
-            {loading ? <div style={card}>Chargement…</div> : null}
+            {loading ? <div style={card}>{t("Chargement…")}</div> : null}
 
             {!loading && view === 'MONTH' && (
               <div style={{ ...card, padding: 0, overflow: 'hidden' }}>
                 <div style={{ padding: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
                   <button style={secondary} onClick={() => setMonthCursor(new Date(monthCursor.getFullYear(), monthCursor.getMonth() - 1, 1))}>‹</button>
-                  <h2 style={{ margin: 0, textTransform: 'capitalize' }}>{new Intl.DateTimeFormat('fr-CA', { month: 'long', year: 'numeric' }).format(monthCursor)}</h2>
+                  <h2 style={{ margin: 0, textTransform: 'capitalize' }}>{new Intl.DateTimeFormat(getLocale(), { month: 'long', year: 'numeric' }).format(monthCursor)}</h2>
                   <button style={secondary} onClick={() => setMonthCursor(new Date(monthCursor.getFullYear(), monthCursor.getMonth() + 1, 1))}>›</button>
                 </div>
                 <div style={{ overflowX: 'auto' }}><div style={{ minWidth: 980 }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', background: '#f8fafc', borderTop: '1px solid #e5e7eb', borderBottom: '1px solid #e5e7eb' }}>{weekdays.map((day) => <div key={day} style={{ padding: 9, textAlign: 'center', fontWeight: 700, fontSize: 13 }}>{day}</div>)}</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', background: '#f8fafc', borderTop: '1px solid #e5e7eb', borderBottom: '1px solid #e5e7eb' }}>{weekdays.map((day) => <div key={t(day)} style={{ padding: 9, textAlign: 'center', fontWeight: 700, fontSize: 13 }}>{t(day)}</div>)}</div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)' }}>{monthDays.map((day, index) => {
                     const dayReservations = reservationsForDay(day); const inMonth = day.getMonth() === monthCursor.getMonth(); const today = dayStart(day).getTime() === dayStart(new Date()).getTime();
                     return <div key={day.toISOString()} style={{ minHeight: 132, padding: 7, borderRight: (index + 1) % 7 === 0 ? 0 : '1px solid #e5e7eb', borderBottom: index >= 35 ? 0 : '1px solid #e5e7eb', background: inMonth ? '#fff' : '#f8fafc' }}><div style={{ width: 28, height: 28, borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', background: today ? '#116dff' : 'transparent', color: today ? '#fff' : inMonth ? '#0f172a' : '#94a3b8', fontWeight: today ? 700 : 500 }}>{day.getDate()}</div><div style={{ display: 'grid', gap: 4, marginTop: 4 }}>{dayReservations.slice(0, 4).map((reservation) => <button key={reservation._id || reservation.reservationNumber} onClick={() => openReservation(reservation)} style={{ border: '1px solid #ddd6fe', background: reservation.status === 'RENTED' ? '#eff6ff' : reservation.status === 'RETURNED' || reservation.status === 'COMPLETED' ? '#f0fdf4' : '#f5f3ff', borderRadius: 6, padding: '4px 5px', textAlign: 'left', fontSize: 11, cursor: 'pointer', overflow: 'hidden' }}><strong style={{ display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{reservation.reservationNumber}</strong><span style={{ display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{reservation.customerName}</span></button>)}{dayReservations.length > 4 ? <span style={{ fontSize: 11, color: '#64748b' }}>+ {dayReservations.length - 4}</span> : null}</div></div>;
@@ -740,14 +747,14 @@ const ReservationsV2Page: FC = () => {
 
             {!loading && view === 'AVAILABILITY' && (
               <div style={card}>
-                <h2 style={{ marginTop: 0 }}>Recherche de disponibilité</h2>
+                <h2 style={{ marginTop: 0 }}>{t("Recherche de disponibilité")}</h2>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(190px,1fr))', gap: 14 }}>
-                  <Field label="Début"><input type="datetime-local" style={input} value={availabilityStart} onChange={(e) => setAvailabilityStart(e.target.value)} /></Field>
-                  <Field label="Fin"><input type="datetime-local" style={input} value={availabilityEnd} onChange={(e) => setAvailabilityEnd(e.target.value)} /></Field>
-                  <Field label="Buffer avant (h)"><input type="number" min="0" step="0.5" style={input} value={availabilityBefore} onChange={(e) => setAvailabilityBefore(e.target.value)} /></Field>
-                  <Field label="Buffer après (h)"><input type="number" min="0" step="0.5" style={input} value={availabilityAfter} onChange={(e) => setAvailabilityAfter(e.target.value)} /></Field>
+                  <Field label={t("Début")}><input type="datetime-local" style={input} value={availabilityStart} onChange={(e) => setAvailabilityStart(e.target.value)} /></Field>
+                  <Field label={t("Fin")}><input type="datetime-local" style={input} value={availabilityEnd} onChange={(e) => setAvailabilityEnd(e.target.value)} /></Field>
+                  <Field label={t("Buffer avant (h)")}><input type="number" min="0" step="0.5" style={input} value={availabilityBefore} onChange={(e) => setAvailabilityBefore(e.target.value)} /></Field>
+                  <Field label={t("Buffer après (h)")}><input type="number" min="0" step="0.5" style={input} value={availabilityAfter} onChange={(e) => setAvailabilityAfter(e.target.value)} /></Field>
                 </div>
-                <div style={{ marginTop: 18, display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))', gap: 10 }}>{availabilityResult?.map(({ asset, available }) => <div key={asset._id} style={{ border: `1px solid ${available ? '#86efac' : '#fecaca'}`, background: available ? '#f0fdf4' : '#fef2f2', borderRadius: 9, padding: 12 }}><strong>{asset.title}</strong><div style={{ color: '#64748b' }}>{asset.assetNumber}</div><div style={{ marginTop: 6, fontWeight: 700 }}>{available ? 'Disponible' : 'Indisponible'}</div></div>)}</div>
+                <div style={{ marginTop: 18, display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))', gap: 10 }}>{availabilityResult?.map(({ asset, available }) => <div key={asset._id} style={{ border: `1px solid ${available ? '#86efac' : '#fecaca'}`, background: available ? '#f0fdf4' : '#fef2f2', borderRadius: 9, padding: 12 }}><strong>{asset.title}</strong><div style={{ color: '#64748b' }}>{asset.assetNumber}</div><div style={{ marginTop: 6, fontWeight: 700 }}>{available ? t("Disponible") : t("Indisponible")}</div></div>)}</div>
               </div>
             )}
           </div>
@@ -758,49 +765,49 @@ const ReservationsV2Page: FC = () => {
         <div onMouseDown={() => !saving && setFormOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(15,23,42,.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', padding: 18 }}>
           <div onMouseDown={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 1050, maxHeight: '94vh', overflowY: 'auto', background: '#fff', borderRadius: 14 }}>
             <form onSubmit={saveReservation}>
-              <div style={{ padding: '20px 24px', borderBottom: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between' }}><div><h2 style={{ margin: 0 }}>Nouvelle réservation</h2><div style={{ color: '#64748b', marginTop: 4 }}>Les champs obligatoires sont déterminés par les modèles de documents sélectionnés.</div></div><button type="button" disabled={saving} onClick={() => setFormOpen(false)} style={{ border: 0, background: 'transparent', fontSize: 26 }}>×</button></div>
+              <div style={{ padding: '20px 24px', borderBottom: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between' }}><div><h2 style={{ margin: 0 }}>{t("Nouvelle réservation")}</h2><div style={{ color: '#64748b', marginTop: 4 }}>{t("Les champs obligatoires sont déterminés par les modèles de documents sélectionnés.")}</div></div><button type="button" disabled={saving} onClick={() => setFormOpen(false)} style={{ border: 0, background: 'transparent', fontSize: 26 }}>×</button></div>
               <div style={{ padding: 24 }}>
-                {formError && <div style={{ background: '#fef2f2', color: '#991b1b', padding: 12, borderRadius: 8, marginBottom: 16 }}>{formError}</div>}
-                <h3>Client</h3>
-                <div style={{ display: 'flex', gap: 12, marginBottom: 14 }}><label><input type="radio" checked={form.customerMode === 'EXISTING'} onChange={() => setForm({ ...form, customerMode: 'EXISTING' })} /> Client existant</label><label><input type="radio" checked={form.customerMode === 'NEW'} onChange={() => setForm({ ...form, customerMode: 'NEW', customerId: '' })} /> Nouveau client</label></div>
-                {form.customerMode === 'EXISTING' ? <Field label="Client *"><select style={input} value={form.customerId} onChange={(e) => chooseCustomer(e.target.value)}><option value="">Sélectionner…</option>{activeCustomers.map((customer) => <option key={customer._id} value={customer._id}>{customerDisplayName(customer)} · {customer.customerNumber || ''}</option>)}</select></Field> : <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(200px,1fr))', gap: 12 }}><Field label="Prénom"><input style={input} value={form.newFirstName} onChange={(e) => { const first = e.target.value; setForm({ ...form, newFirstName: first, customerName: [first, form.newLastName].filter(Boolean).join(' ').trim() || form.newCompanyName }); }} /></Field><Field label="Nom"><input style={input} value={form.newLastName} onChange={(e) => { const last = e.target.value; setForm({ ...form, newLastName: last, customerName: [form.newFirstName, last].filter(Boolean).join(' ').trim() || form.newCompanyName }); }} /></Field><Field label="Entreprise"><input style={input} value={form.newCompanyName} onChange={(e) => { const company = e.target.value; setForm({ ...form, newCompanyName: company, customerName: [form.newFirstName, form.newLastName].filter(Boolean).join(' ').trim() || company }); }} /></Field></div>}
+                {formError && <div style={{ background: '#fef2f2', color: '#991b1b', padding: 12, borderRadius: 8, marginBottom: 16 }}>{formatFeedback(formError)}</div>}
+                <h3>{t("Client")}</h3>
+                <div style={{ display: 'flex', gap: 12, marginBottom: 14 }}><label><input type="radio" checked={form.customerMode === 'EXISTING'} onChange={() => setForm({ ...form, customerMode: 'EXISTING' })} /> {" " + t("Client existant")}</label><label><input type="radio" checked={form.customerMode === 'NEW'} onChange={() => setForm({ ...form, customerMode: 'NEW', customerId: '' })} /> {" " + t("Nouveau client")}</label></div>
+                {form.customerMode === 'EXISTING' ? <Field label={t("Client *")}><select style={input} value={form.customerId} onChange={(e) => chooseCustomer(e.target.value)}><option value="">{t("Sélectionner…")}</option>{activeCustomers.map((customer) => <option key={customer._id} value={customer._id}>{customerDisplayName(customer)} · {customer.customerNumber || ''}</option>)}</select></Field> : <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(200px,1fr))', gap: 12 }}><Field label={t("Prénom")}><input style={input} value={form.newFirstName} onChange={(e) => { const first = e.target.value; setForm({ ...form, newFirstName: first, customerName: [first, form.newLastName].filter(Boolean).join(' ').trim() || form.newCompanyName }); }} /></Field><Field label={t("Nom")}><input style={input} value={form.newLastName} onChange={(e) => { const last = e.target.value; setForm({ ...form, newLastName: last, customerName: [form.newFirstName, last].filter(Boolean).join(' ').trim() || form.newCompanyName }); }} /></Field><Field label={t("Entreprise")}><input style={input} value={form.newCompanyName} onChange={(e) => { const company = e.target.value; setForm({ ...form, newCompanyName: company, customerName: [form.newFirstName, form.newLastName].filter(Boolean).join(' ').trim() || company }); }} /></Field></div>}
 
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(210px,1fr))', gap: 12, marginTop: 14 }}>
-                  <Field label={`Nom affiché${isRequired('CUSTOMER_NAME') ? ' *' : ''}`}><input style={input} value={form.customerName} onChange={(e) => setForm({ ...form, customerName: e.target.value })} /></Field>
+                  <Field label={t("Nom affiché{0}", { 0: isRequired('CUSTOMER_NAME') ? ' *' : '' })}><input style={input} value={form.customerName} onChange={(e) => setForm({ ...form, customerName: e.target.value })} /></Field>
                   <Field label={`Courriel${isRequired('CUSTOMER_EMAIL') ? ' *' : ''}`}><input type="email" style={input} value={form.customerEmail} onChange={(e) => setForm({ ...form, customerEmail: e.target.value })} /></Field>
-                  <Field label={`Téléphone${isRequired('CUSTOMER_PHONE') ? ' *' : ''}`}><input style={input} value={form.customerPhone} onChange={(e) => setForm({ ...form, customerPhone: e.target.value })} /></Field>
+                  <Field label={t("Téléphone{0}", { 0: isRequired('CUSTOMER_PHONE') ? ' *' : '' })}><input style={input} value={form.customerPhone} onChange={(e) => setForm({ ...form, customerPhone: e.target.value })} /></Field>
                   <Field label={`Adresse${isRequired('CUSTOMER_ADDRESS') ? ' *' : ''}`}><input style={input} value={form.customerAddressLine1} onChange={(e) => setForm({ ...form, customerAddressLine1: e.target.value })} /></Field>
-                  <Field label="Adresse 2"><input style={input} value={form.customerAddressLine2} onChange={(e) => setForm({ ...form, customerAddressLine2: e.target.value })} /></Field>
+                  <Field label={t("Adresse 2")}><input style={input} value={form.customerAddressLine2} onChange={(e) => setForm({ ...form, customerAddressLine2: e.target.value })} /></Field>
                   <Field label={`Ville${isRequired('CUSTOMER_ADDRESS') ? ' *' : ''}`}><input style={input} value={form.customerCity} onChange={(e) => setForm({ ...form, customerCity: e.target.value })} /></Field>
-                  <Field label={`Province / État${isRequired('CUSTOMER_ADDRESS') ? ' *' : ''}`}><input style={input} value={form.customerRegion} onChange={(e) => setForm({ ...form, customerRegion: e.target.value })} /></Field>
-                  <Field label={`Code postal${isRequired('CUSTOMER_ADDRESS') ? ' *' : ''}`}><input style={input} value={form.customerPostalCode} onChange={(e) => setForm({ ...form, customerPostalCode: e.target.value })} /></Field>
+                  <Field label={t("Province / État{0}", { 0: isRequired('CUSTOMER_ADDRESS') ? ' *' : '' })}><input style={input} value={form.customerRegion} onChange={(e) => setForm({ ...form, customerRegion: e.target.value })} /></Field>
+                  <Field label={t("Code postal{0}", { 0: isRequired('CUSTOMER_ADDRESS') ? ' *' : '' })}><input style={input} value={form.customerPostalCode} onChange={(e) => setForm({ ...form, customerPostalCode: e.target.value })} /></Field>
                   <Field label={`Pays${isRequired('CUSTOMER_ADDRESS') ? ' *' : ''}`}><input style={input} value={form.customerCountry} onChange={(e) => setForm({ ...form, customerCountry: e.target.value })} /></Field>
                 </div>
 
-                <h3 style={{ marginTop: 24 }}>Modèles de documents</h3>
+                <h3 style={{ marginTop: 24 }}>{t("Modèles de documents")}</h3>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(230px,1fr))', gap: 12 }}>
-                  <TemplatePicker label="Modèle de devis" type="QUOTE" value={form.quoteTemplateId} templates={activeTemplates} onChange={(value) => setForm({ ...form, quoteTemplateId: value })} />
-                  <TemplatePicker label="Modèle de contrat" type="CONTRACT" value={form.contractTemplateId} templates={activeTemplates} onChange={(value) => setForm({ ...form, contractTemplateId: value })} />
-                  <TemplatePicker label="Modèle de facture" type="INVOICE" value={form.invoiceTemplateId} templates={activeTemplates} onChange={(value) => setForm({ ...form, invoiceTemplateId: value })} />
+                  <TemplatePicker label={t("Modèle de devis")} type="QUOTE" value={form.quoteTemplateId} templates={activeTemplates} onChange={(value) => setForm({ ...form, quoteTemplateId: value })} />
+                  <TemplatePicker label={t("Modèle de contrat")} type="CONTRACT" value={form.contractTemplateId} templates={activeTemplates} onChange={(value) => setForm({ ...form, contractTemplateId: value })} />
+                  <TemplatePicker label={t("Modèle de facture")} type="INVOICE" value={form.invoiceTemplateId} templates={activeTemplates} onChange={(value) => setForm({ ...form, invoiceTemplateId: value })} />
                 </div>
-                {requiredFields.length ? <div style={{ marginTop: 9, fontSize: 13, color: '#64748b' }}>Champs exigés par les modèles : {requiredFields.join(', ')}</div> : null}
+                {requiredFields.length ? <div style={{ marginTop: 9, fontSize: 13, color: '#64748b' }}>{t("Champs exigés par les modèles :") + " "}{requiredFields.join(', ')}</div> : null}
 
-                <h3 style={{ marginTop: 24 }}>Période</h3>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(200px,1fr))', gap: 12 }}><Field label="Début *"><input type="datetime-local" style={input} value={form.startDateTime} onChange={(e) => setForm({ ...form, startDateTime: e.target.value })} /></Field><Field label="Fin *"><input type="datetime-local" style={input} value={form.endDateTime} onChange={(e) => setForm({ ...form, endDateTime: e.target.value })} /></Field><Field label="Buffer avant (h)"><input type="number" min="0" step="0.5" style={input} value={form.bufferBeforeHours} onChange={(e) => setForm({ ...form, bufferBeforeHours: e.target.value })} /></Field><Field label="Buffer après (h)"><input type="number" min="0" step="0.5" style={input} value={form.bufferAfterHours} onChange={(e) => setForm({ ...form, bufferAfterHours: e.target.value })} /></Field></div>
+                <h3 style={{ marginTop: 24 }}>{t("Période")}</h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(200px,1fr))', gap: 12 }}><Field label={t("Début *")}><input type="datetime-local" style={input} value={form.startDateTime} onChange={(e) => setForm({ ...form, startDateTime: e.target.value })} /></Field><Field label={t("Fin *")}><input type="datetime-local" style={input} value={form.endDateTime} onChange={(e) => setForm({ ...form, endDateTime: e.target.value })} /></Field><Field label={t("Buffer avant (h)")}><input type="number" min="0" step="0.5" style={input} value={form.bufferBeforeHours} onChange={(e) => setForm({ ...form, bufferBeforeHours: e.target.value })} /></Field><Field label={t("Buffer après (h)")}><input type="number" min="0" step="0.5" style={input} value={form.bufferAfterHours} onChange={(e) => setForm({ ...form, bufferAfterHours: e.target.value })} /></Field></div>
 
-                <h3 style={{ marginTop: 24 }}>Équipements</h3>
-                {!formDates.valid ? <div style={{ color: '#64748b' }}>Choisissez une période valide pour voir la disponibilité.</div> : <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(260px,1fr))', gap: 10 }}>{activeAssets.map((asset) => { const id = asset._id || ''; const available = formAvailability.get(id) === true; const selected = selectedAssetIds.includes(id); return <label key={id} style={{ border: `1px solid ${selected ? '#116dff' : '#e5e7eb'}`, borderRadius: 9, padding: 12, opacity: available ? 1 : .5, background: selected ? '#eff6ff' : '#fff' }}><input type="checkbox" checked={selected} disabled={!available} onChange={() => available && toggleAsset(id)} /> <strong>{asset.title}</strong> · {asset.assetNumber}<div style={{ marginTop: 4, fontSize: 12, color: available ? '#166534' : '#991b1b' }}>{available ? 'Disponible' : 'Conflit de réservation / buffer'}</div></label>; })}</div>}
+                <h3 style={{ marginTop: 24 }}>{t("Équipements")}</h3>
+                {!formDates.valid ? <div style={{ color: '#64748b' }}>{t("Choisissez une période valide pour voir la disponibilité.")}</div> : <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(260px,1fr))', gap: 10 }}>{activeAssets.map((asset) => { const id = asset._id || ''; const available = formAvailability.get(id) === true; const selected = selectedAssetIds.includes(id); return <label key={id} style={{ border: `1px solid ${selected ? '#116dff' : '#e5e7eb'}`, borderRadius: 9, padding: 12, opacity: available ? 1 : .5, background: selected ? '#eff6ff' : '#fff' }}><input type="checkbox" checked={selected} disabled={!available} onChange={() => available && toggleAsset(id)} /> <strong>{asset.title}</strong> · {asset.assetNumber}<div style={{ marginTop: 4, fontSize: 12, color: available ? '#166534' : '#991b1b' }}>{available ? t("Disponible") : t("Conflit de réservation / buffer")}</div></label>; })}</div>}
 
-                <h3 style={{ marginTop: 24 }}>Paiement</h3>
+                <h3 style={{ marginTop: 24 }}>{t("Paiement")}</h3>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(230px,1fr))', gap: 12 }}>
-                  <Field label="Paiement à la réservation"><select style={input} value={form.paymentMode} onChange={(e) => setForm({ ...form, paymentMode: e.target.value as PaymentMode })}><option value="NONE">Aucun paiement maintenant</option><option value="FULL">Paiement complet</option><option value="DEPOSIT">Dépôt de réservation</option></select></Field>
-                  {form.paymentMode === 'DEPOSIT' ? <><Field label="Type de dépôt"><select style={input} value={form.depositType} onChange={(e) => setForm({ ...form, depositType: e.target.value as DepositType })}><option value="PERCENT">Pourcentage</option><option value="FIXED">Montant fixe</option></select></Field><Field label={form.depositType === 'PERCENT' ? 'Dépôt (%)' : 'Dépôt fixe'}><input type="number" min="0" step="0.01" style={input} value={form.depositValue} onChange={(e) => setForm({ ...form, depositValue: e.target.value })} /></Field></> : null}
+                  <Field label={t("Paiement à la réservation")}><select style={input} value={form.paymentMode} onChange={(e) => setForm({ ...form, paymentMode: e.target.value as PaymentMode })}><option value="NONE">{t("Aucun paiement maintenant")}</option><option value="FULL">{t("Paiement complet")}</option><option value="DEPOSIT">{t("Dépôt de réservation")}</option></select></Field>
+                  {form.paymentMode === 'DEPOSIT' ? <><Field label={t("Type de dépôt")}><select style={input} value={form.depositType} onChange={(e) => setForm({ ...form, depositType: e.target.value as DepositType })}><option value="PERCENT">{t("Pourcentage")}</option><option value="FIXED">{t("Montant fixe")}</option></select></Field><Field label={form.depositType === 'PERCENT' ? t("Dépôt (%)") : t("Dépôt fixe")}><input type="number" min="0" step="0.01" style={input} value={form.depositValue} onChange={(e) => setForm({ ...form, depositValue: e.target.value })} /></Field></> : null}
                 </div>
 
-                {pricingLines.length > 0 && <div style={{ ...card, background: '#f8fafc', marginTop: 18 }}><h3 style={{ marginTop: 0 }}>Résumé financier</h3>{pricingLines.map((line) => <div key={line.asset._id} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0' }}><span>{line.asset.title} · {line.billableDays} jour(s) · {line.pricingMode}</span><strong>{money(line.totalCents, currency)}</strong></div>)}<hr style={{ border: 0, borderTop: '1px solid #e5e7eb' }} /><FinanceRow label="Sous-total" value={money(subtotalCents, currency)} />{discountCents > 0 ? <FinanceRow label={`Rabais client (${discountPercent} %)`} value={`-${money(discountCents, currency)}`} /> : null}<FinanceRow label="Avant taxes" value={money(taxPreview.preTaxTotalCents, currency)} />{taxPreview.tax1Cents > 0 ? <FinanceRow label={`${settings.tax1Name || 'Taxe 1'} (${settings.tax1Rate || 0} %)`} value={money(taxPreview.tax1Cents, currency)} /> : null}{taxPreview.tax2Cents > 0 ? <FinanceRow label={`${settings.tax2Name || 'Taxe 2'} (${settings.tax2Rate || 0} %)`} value={money(taxPreview.tax2Cents, currency)} /> : null}<FinanceRow strong label="Total" value={money(taxPreview.totalCents, currency)} /><FinanceRow label="À payer maintenant" value={money(depositPreview.amountDueNowCents, currency)} /><FinanceRow label="Solde après ce paiement" value={money(depositPreview.balanceDueCents, currency)} /></div>}
-                <div style={{ marginTop: 18 }}><Field label="Notes"><textarea style={{ ...input, minHeight: 80 }} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></Field></div>
+                {pricingLines.length > 0 && <div style={{ ...card, background: '#f8fafc', marginTop: 18 }}><h3 style={{ marginTop: 0 }}>{t("Résumé financier")}</h3>{pricingLines.map((line) => <div key={line.asset._id} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0' }}><span>{line.asset.title} · {line.billableDays} {" " + t("jour(s) ·") + " "}{t(line.pricingMode)}</span><strong>{money(line.totalCents, currency)}</strong></div>)}<hr style={{ border: 0, borderTop: '1px solid #e5e7eb' }} /><FinanceRow label={t("Sous-total")} value={money(subtotalCents, currency)} />{discountCents > 0 ? <FinanceRow label={t("Rabais client ({0} %)", { 0: discountPercent })} value={`-${money(discountCents, currency)}`} /> : null}<FinanceRow label={t("Avant taxes")} value={money(taxPreview.preTaxTotalCents, currency)} />{taxPreview.tax1Cents > 0 ? <FinanceRow label={`${settings.tax1Name || t("Taxe 1")} (${settings.tax1Rate || 0} %)`} value={money(taxPreview.tax1Cents, currency)} /> : null}{taxPreview.tax2Cents > 0 ? <FinanceRow label={`${settings.tax2Name || t("Taxe 2")} (${settings.tax2Rate || 0} %)`} value={money(taxPreview.tax2Cents, currency)} /> : null}<FinanceRow strong label={t("Total")} value={money(taxPreview.totalCents, currency)} /><FinanceRow label={t("À payer maintenant")} value={money(depositPreview.amountDueNowCents, currency)} /><FinanceRow label={t("Solde après ce paiement")} value={money(depositPreview.balanceDueCents, currency)} /></div>}
+                <div style={{ marginTop: 18 }}><Field label={t("Notes")}><textarea style={{ ...input, minHeight: 80 }} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></Field></div>
               </div>
-              <div style={{ padding: '16px 24px', borderTop: '1px solid #e5e7eb', display: 'flex', justifyContent: 'flex-end', gap: 10 }}><button type="button" style={secondary} onClick={() => setFormOpen(false)} disabled={saving}>Annuler</button><button type="submit" style={primary} disabled={saving}>{saving ? 'Création…' : 'Créer la réservation'}</button></div>
+              <div style={{ padding: '16px 24px', borderTop: '1px solid #e5e7eb', display: 'flex', justifyContent: 'flex-end', gap: 10 }}><button type="button" style={secondary} onClick={() => setFormOpen(false)} disabled={saving}>{t("Annuler")}</button><button type="submit" style={primary} disabled={saving}>{saving ? t("Création…") : t("Créer la réservation")}</button></div>
             </form>
           </div>
         </div>
@@ -809,30 +816,31 @@ const ReservationsV2Page: FC = () => {
       {selectedReservation && (
         <div onMouseDown={() => !processing && setSelectedReservation(null)} style={{ position: 'fixed', inset: 0, zIndex: 9998, background: 'rgba(15,23,42,.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', padding: 18 }}>
           <div onMouseDown={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 1120, maxHeight: '94vh', overflowY: 'auto', background: '#fff', borderRadius: 14 }}>
-            <div style={{ padding: '20px 24px', borderBottom: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' }}><div><h2 style={{ margin: 0 }}>{selectedReservation.reservationNumber}</h2><div style={{ color: '#64748b', marginTop: 5 }}>{selectedReservation.customerName} · {stageLabels[selectedReservation.workflowStage || 'RESERVATION']}</div></div><div style={{ display: 'flex', gap: 8 }}><button style={danger} disabled={processing || selectedReservation.status === 'CANCELLED' || selectedReservation.status === 'COMPLETED'} onClick={() => void cancelReservation(selectedReservation)}>Annuler</button><button onClick={() => setSelectedReservation(null)} style={{ border: 0, background: 'transparent', fontSize: 26 }}>×</button></div></div>
-            <div style={{ display: 'flex', gap: 6, padding: '12px 24px', overflowX: 'auto', borderBottom: '1px solid #e5e7eb' }}>{([['DETAILS','Détails'],['EQUIPMENT','Équipements'],['PAYMENTS','Paiements'],['DOCUMENTS','Documents'],['INSPECTION','Inspection'],['NOTES','Notes'],['HISTORY','Historique']] as [DetailTab,string][]).map(([key,label]) => <ViewButton key={key} active={detailTab === key} onClick={() => setDetailTab(key)}>{label}</ViewButton>)}</div>
+            <div style={{ padding: '20px 24px', borderBottom: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' }}><div><h2 style={{ margin: 0 }}>{selectedReservation.reservationNumber}</h2><div style={{ color: '#64748b', marginTop: 5 }}>{selectedReservation.customerName} · {stageLabels[selectedReservation.workflowStage || 'RESERVATION']}</div></div><div style={{ display: 'flex', gap: 8 }}><button style={danger} disabled={processing || selectedReservation.status === 'CANCELLED' || selectedReservation.status === 'COMPLETED'} onClick={() => void cancelReservation(selectedReservation)}>{t("Annuler")}</button><button onClick={() => setSelectedReservation(null)} style={{ border: 0, background: 'transparent', fontSize: 26 }}>×</button></div></div>
+            <div style={{ display: 'flex', gap: 6, padding: '12px 24px', overflowX: 'auto', borderBottom: '1px solid #e5e7eb' }}>{([['DETAILS',t("Détails")],['EQUIPMENT',t("Équipements")],['PAYMENTS',t("Paiements")],['DOCUMENTS',t("Documents")],['INSPECTION',t("Inspection")],['NOTES',t("Notes")],['HISTORY',t("Historique")]] as [DetailTab,string][]).map(([key,label]) => <ViewButton key={key} active={detailTab === key} onClick={() => setDetailTab(key)}>{label}</ViewButton>)}</div>
             <div style={{ padding: 24 }}>
-              {detailTab === 'DETAILS' && <div><div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))', gap: 12 }}><Info label="Client" value={selectedReservation.customerName || '—'} /><Info label="Début" value={dateTime(selectedReservation.startDateTime)} /><Info label="Fin" value={dateTime(selectedReservation.endDateTime)} /><Info label="Buffer" value={`${selectedReservation.bufferBeforeHours || 0} h avant · ${selectedReservation.bufferAfterHours || 0} h après`} /><Info label="Étape" value={stageLabels[selectedReservation.workflowStage || 'RESERVATION']} /><Info label="Total" value={money(selectedReservation.totalCents, selectedReservation.currency || 'CAD')} /><Info label="À payer initialement" value={money(selectedReservation.amountDueNowCents, selectedReservation.currency || 'CAD')} /><Info label="Solde actuel" value={money(liveBalance, selectedReservation.currency || 'CAD')} /></div><div style={{ display: 'flex', gap: 9, flexWrap: 'wrap', marginTop: 20 }}>{selectedReservation.status === 'CONFIRMED' ? <button style={successButton} disabled={processing} onClick={() => void checkout()}>Confirmer le départ</button> : null}{selectedReservation.status === 'RENTED' ? <button style={successButton} disabled={processing} onClick={() => void returnRental()}>Confirmer le retour</button> : null}{selectedReservation.status === 'RETURNED' ? <button style={successButton} disabled={processing} onClick={() => void closeRental()}>Clôturer</button> : null}</div></div>}
+              {detailTab === 'DETAILS' && <div><div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))', gap: 12 }}><Info label={t("Client")} value={selectedReservation.customerName || '—'} /><Info label={t("Début")} value={dateTime(selectedReservation.startDateTime)} /><Info label={t("Fin")} value={dateTime(selectedReservation.endDateTime)} /><Info label={t("Buffer")} value={t("{0} h avant · {1} h après", { 0: selectedReservation.bufferBeforeHours || 0, 1: selectedReservation.bufferAfterHours || 0 })} /><Info label={t("Étape")} value={stageLabels[selectedReservation.workflowStage || 'RESERVATION']} /><Info label={t("Total")} value={money(selectedReservation.totalCents, selectedReservation.currency || 'CAD')} /><Info label={t("À payer initialement")} value={money(selectedReservation.amountDueNowCents, selectedReservation.currency || 'CAD')} /><Info label={t("Solde actuel")} value={money(liveBalance, selectedReservation.currency || 'CAD')} /></div><div style={{ display: 'flex', gap: 9, flexWrap: 'wrap', marginTop: 20 }}>{selectedReservation.status === 'CONFIRMED' ? <button style={successButton} disabled={processing} onClick={() => void checkout()}>{t("Confirmer le départ")}</button> : null}{selectedReservation.status === 'RENTED' ? <button style={successButton} disabled={processing} onClick={() => void returnRental()}>{t("Confirmer le retour")}</button> : null}{selectedReservation.status === 'RETURNED' ? <button style={successButton} disabled={processing} onClick={() => void closeRental()}>{t("Clôturer")}</button> : null}</div></div>}
 
-              {detailTab === 'EQUIPMENT' && <div style={{ display: 'grid', gap: 10 }}>{linkedItems.map((item) => <div key={item._id} style={{ ...card, padding: 14 }}><strong>{item.assetTitle || item.assetNumber}</strong><div style={{ color: '#64748b', marginTop: 4 }}>{item.assetNumber} · {item.billableDays || 0} jour(s) · {item.pricingMode}</div><div style={{ marginTop: 4 }}>{dateTime(item.blockedStartDateTime)} → {dateTime(item.blockedEndDateTime)} (période bloquée)</div><div style={{ marginTop: 4, fontWeight: 700 }}>{money(item.lineTotalCents, item.currency || selectedReservation.currency || 'CAD')}</div></div>)}</div>}
+              {detailTab === 'EQUIPMENT' && <div style={{ display: 'grid', gap: 10 }}>{linkedItems.map((item) => <div key={item._id} style={{ ...card, padding: 14 }}><strong>{item.assetTitle || item.assetNumber}</strong><div style={{ color: '#64748b', marginTop: 4 }}>{item.assetNumber} · {item.billableDays || 0} {" " + t("jour(s) ·") + " "}{t(item.pricingMode || '')}</div><div style={{ marginTop: 4 }}>{dateTime(item.blockedStartDateTime)} → {dateTime(item.blockedEndDateTime)} {" " + t("(période bloquée)")}</div><div style={{ marginTop: 4, fontWeight: 700 }}>{money(item.lineTotalCents, item.currency || selectedReservation.currency || 'CAD')}</div></div>)}</div>}
 
-              {detailTab === 'PAYMENTS' && <div><div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(190px,1fr))', gap: 10, marginBottom: 18 }}><Info label="Total" value={money(selectedReservation.totalCents, selectedReservation.currency || 'CAD')} /><Info label="Payé" value={money(paidCents, selectedReservation.currency || 'CAD')} /><Info label="Solde" value={money(liveBalance, selectedReservation.currency || 'CAD')} /></div>{liveBalance > 0 ? <button style={primary} disabled={processing} onClick={() => void createWixPaymentLink()}>Créer lien de paiement Wix — {money(paidCents === 0 && initialDue > 0 ? initialDue : liveBalance, selectedReservation.currency || 'CAD')}</button> : <div style={{ ...card, background: '#f0fdf4', color: '#166534' }}>Réservation payée en totalité.</div>}<div style={{ display: 'grid', gap: 10, marginTop: 18 }}>{linkedPayments.length === 0 ? <div style={{ color: '#64748b' }}>Aucun paiement.</div> : linkedPayments.map((payment) => <div key={payment._id} style={{ ...card, padding: 14 }}><div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}><div><strong>{payment.paymentNumber}</strong><div style={{ color: '#64748b', marginTop: 3 }}>{payment.method} · {payment.status} · {payment.paymentType}</div></div><strong>{money(payment.amountCents, payment.currency || 'CAD')}</strong></div>{payment.wixPaymentUrl ? <button style={{ ...secondary, marginTop: 8 }} onClick={() => window.open(payment.wixPaymentUrl, '_blank', 'noopener,noreferrer')}>Ouvrir le checkout Wix</button> : null}{payment.wixPaymentLinkId && payment.status !== 'PAID' ? <button style={{ ...secondary, marginTop: 8, marginLeft: 8 }} disabled={processing} onClick={() => void refreshWixPayment(payment)}>Actualiser le statut Wix</button> : null}</div>)}</div></div>}
+              {detailTab === 'PAYMENTS' && <div><div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(190px,1fr))', gap: 10, marginBottom: 18 }}><Info label={t("Total")} value={money(selectedReservation.totalCents, selectedReservation.currency || 'CAD')} /><Info label={t("Payé")} value={money(paidCents, selectedReservation.currency || 'CAD')} /><Info label={t("Solde")} value={money(liveBalance, selectedReservation.currency || 'CAD')} /></div>{liveBalance > 0 ? <button style={primary} disabled={processing} onClick={() => void createWixPaymentLink()}>{t("Créer lien de paiement Wix —") + " "}{money(paidCents === 0 && initialDue > 0 ? initialDue : liveBalance, selectedReservation.currency || 'CAD')}</button> : <div style={{ ...card, background: '#f0fdf4', color: '#166534' }}>{t("Réservation payée en totalité.")}</div>}<div style={{ display: 'grid', gap: 10, marginTop: 18 }}>{linkedPayments.length === 0 ? <div style={{ color: '#64748b' }}>{t("Aucun paiement.")}</div> : linkedPayments.map((payment) => <div key={payment._id} style={{ ...card, padding: 14 }}><div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}><div><strong>{payment.paymentNumber}</strong><div style={{ color: '#64748b', marginTop: 3 }}>{statusLabel(payment.method)} · {statusLabel(payment.status)} · {statusLabel(payment.paymentType)}</div></div><strong>{money(payment.amountCents, payment.currency || 'CAD')}</strong></div>{payment.wixPaymentUrl ? <button style={{ ...secondary, marginTop: 8 }} onClick={() => window.open(payment.wixPaymentUrl, '_blank', 'noopener,noreferrer')}>{t("Ouvrir le checkout Wix")}</button> : null}{payment.wixPaymentLinkId && payment.status !== 'PAID' ? <button style={{ ...secondary, marginTop: 8, marginLeft: 8 }} disabled={processing} onClick={() => void refreshWixPayment(payment)}>{t("Actualiser le statut Wix")}</button> : null}</div>)}</div></div>}
 
-              {detailTab === 'DOCUMENTS' && <div><div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 18 }}><button style={secondary} disabled={processing} onClick={() => void createDocument('QUOTE')}>+ Devis</button><button style={secondary} disabled={processing} onClick={() => void createDocument('CONTRACT')}>+ Contrat</button><button style={secondary} disabled={processing} onClick={() => void createDocument('INVOICE')}>+ Facture</button></div><div style={{ display: 'grid', gap: 10 }}>{linkedDocuments.length === 0 ? <div style={{ color: '#64748b' }}>Aucun document généré.</div> : linkedDocuments.map((document) => <div key={document._id} style={{ ...card, padding: 14 }}><div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}><div><strong>{documentLabels[document.documentType || 'QUOTE']} · {document.documentNumber}</strong><div style={{ color: '#64748b', marginTop: 3 }}>Modèle : {document.templateName || '—'} · {document.status}</div></div><strong>{money(document.amountCents, document.currency || 'CAD')}</strong></div><div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginTop: 10 }}><button style={secondary} onClick={() => printDocument(document)}>Aperçu / PDF</button>{document.documentType === 'QUOTE' && document.status !== 'ACCEPTED' ? <button style={successButton} onClick={() => void updateDocumentStatus(document, 'ACCEPT')}>Accepter le devis</button> : null}{document.documentType === 'CONTRACT' && document.status !== 'SIGNED' ? <button style={successButton} onClick={() => void updateDocumentStatus(document, 'SIGN')}>Signer le contrat</button> : null}{document.documentType === 'INVOICE' && document.status !== 'ISSUED' ? <button style={successButton} onClick={() => void updateDocumentStatus(document, 'ISSUE')}>Émettre la facture</button> : null}</div></div>)}</div></div>}
+              {detailTab === 'DOCUMENTS' && <div><div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 18 }}><button style={secondary} disabled={processing} onClick={() => void createDocument('QUOTE')}>{t("+ Devis")}</button><button style={secondary} disabled={processing} onClick={() => void createDocument('CONTRACT')}>{t("+ Contrat")}</button><button style={secondary} disabled={processing} onClick={() => void createDocument('INVOICE')}>{t("+ Facture")}</button></div><div style={{ display: 'grid', gap: 10 }}>{linkedDocuments.length === 0 ? <div style={{ color: '#64748b' }}>{t("Aucun document généré.")}</div> : linkedDocuments.map((document) => <div key={document._id} style={{ ...card, padding: 14 }}><div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}><div><strong>{documentLabels[document.documentType || 'QUOTE']} · {document.documentNumber}</strong><div style={{ color: '#64748b', marginTop: 3 }}>{t("Modèle :") + " "}{document.templateName || '—'} · {statusLabel(document.status)}</div></div><strong>{money(document.amountCents, document.currency || 'CAD')}</strong></div><div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginTop: 10 }}><button style={secondary} onClick={() => printDocument(document)}>{t("Aperçu / PDF")}</button>{document.documentType === 'QUOTE' && document.status !== 'ACCEPTED' ? <button style={successButton} onClick={() => void updateDocumentStatus(document, 'ACCEPT')}>{t("Accepter le devis")}</button> : null}{document.documentType === 'CONTRACT' && document.status !== 'SIGNED' ? <button style={successButton} onClick={() => void updateDocumentStatus(document, 'SIGN')}>{t("Signer le contrat")}</button> : null}{document.documentType === 'INVOICE' && document.status !== 'ISSUED' ? <button style={successButton} onClick={() => void updateDocumentStatus(document, 'ISSUE')}>{t("Émettre la facture")}</button> : null}</div></div>)}</div></div>}
 
-              {detailTab === 'INSPECTION' && <div><button style={primary} onClick={() => { setInspectionForm({ ...blankInspection, inspectionType: selectedReservation.status === 'RENTED' ? 'RETURN' : 'DEPARTURE', assetId: linkedItems[0]?.assetId || '' }); setInspectionOpen(true); }}>+ Inspection</button><div style={{ display: 'grid', gap: 10, marginTop: 16 }}>{linkedInspections.length === 0 ? <div style={{ color: '#64748b' }}>Aucune inspection.</div> : linkedInspections.map((inspection) => <div key={inspection._id} style={{ ...card, padding: 14 }}><strong>{inspection.inspectionType === 'DEPARTURE' ? 'Départ' : 'Retour'} · {inspection.assetTitle}</strong><div style={{ color: '#64748b', marginTop: 3 }}>{dateTime(inspection.inspectionDate)} · État : {inspection.condition}</div>{inspection.hasDamage ? <div style={{ marginTop: 6, color: '#991b1b' }}>Dommage : {inspection.damageDescription} · {money(inspection.damageAmountCents, selectedReservation.currency || 'CAD')}</div> : null}{inspection.signerName ? <div style={{ marginTop: 5 }}>Signataire : {inspection.signerName}</div> : null}</div>)}</div></div>}
+              {detailTab === 'INSPECTION' && <div><button style={primary} onClick={() => { setInspectionForm({ ...blankInspection, inspectionType: selectedReservation.status === 'RENTED' ? 'RETURN' : 'DEPARTURE', assetId: linkedItems[0]?.assetId || '' }); setInspectionOpen(true); }}>{t("+ Inspection")}</button><div style={{ display: 'grid', gap: 10, marginTop: 16 }}>{linkedInspections.length === 0 ? <div style={{ color: '#64748b' }}>{t("Aucune inspection.")}</div> : linkedInspections.map((inspection) => <div key={inspection._id} style={{ ...card, padding: 14 }}><strong>{inspection.inspectionType === 'DEPARTURE' ? t("Départ") : t("Retour")} · {inspection.assetTitle}</strong><div style={{ color: '#64748b', marginTop: 3 }}>{dateTime(inspection.inspectionDate)} {" " + t("· État :") + " "}{statusLabel(inspection.condition)}</div>{inspection.hasDamage ? <div style={{ marginTop: 6, color: '#991b1b' }}>{t("Dommage :") + " "}{inspection.damageDescription} · {money(inspection.damageAmountCents, selectedReservation.currency || 'CAD')}</div> : null}{inspection.signerName ? <div style={{ marginTop: 5 }}>{t("Signataire :") + " "}{inspection.signerName}</div> : null}</div>)}</div></div>}
 
-              {detailTab === 'NOTES' && <div><textarea style={{ ...input, minHeight: 180 }} value={notesDraft} onChange={(e) => setNotesDraft(e.target.value)} /><button style={{ ...primary, marginTop: 10 }} disabled={processing} onClick={() => void saveNotes()}>Enregistrer les notes</button></div>}
+              {detailTab === 'NOTES' && <div><textarea style={{ ...input, minHeight: 180 }} value={notesDraft} onChange={(e) => setNotesDraft(e.target.value)} /><button style={{ ...primary, marginTop: 10 }} disabled={processing} onClick={() => void saveNotes()}>{t("Enregistrer les notes")}</button></div>}
 
-              {detailTab === 'HISTORY' && <div style={{ display: 'grid', gap: 9 }}>{linkedActivity.length === 0 ? <div style={{ color: '#64748b' }}>Aucun événement enregistré.</div> : linkedActivity.map((entry) => <div key={entry._id} style={{ borderLeft: '3px solid #116dff', padding: '7px 12px' }}><strong>{entry.description || entry.actionType}</strong><div style={{ color: '#64748b', fontSize: 12, marginTop: 3 }}>{dateTime(entry.eventDate || entry._createdDate)} · {entry.actor || 'RentalFlow'}</div></div>)}</div>}
+              {detailTab === 'HISTORY' && <div style={{ display: 'grid', gap: 9 }}>{linkedActivity.length === 0 ? <div style={{ color: '#64748b' }}>{t("Aucun événement enregistré.")}</div> : linkedActivity.map((entry) => <div key={entry._id} style={{ borderLeft: '3px solid #116dff', padding: '7px 12px' }}><strong>{entry.description || entry.actionType}</strong><div style={{ color: '#64748b', fontSize: 12, marginTop: 3 }}>{dateTime(entry.eventDate || entry._createdDate)} · {entry.actor || 'RentalFlow'}</div></div>)}</div>}
             </div>
           </div>
         </div>
       )}
 
       {inspectionOpen && selectedReservation && (
-        <div onMouseDown={() => !processing && setInspectionOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 10000, background: 'rgba(15,23,42,.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', padding: 18 }}><div onMouseDown={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 720, background: '#fff', borderRadius: 14 }}><form onSubmit={saveInspection}><div style={{ padding: 20, borderBottom: '1px solid #e5e7eb' }}><h2 style={{ margin: 0 }}>Inspection</h2></div><div style={{ padding: 20, display: 'grid', gap: 12 }}><Field label="Type"><select style={input} value={inspectionForm.inspectionType} onChange={(e) => setInspectionForm({ ...inspectionForm, inspectionType: e.target.value as InspectionType })}><option value="DEPARTURE">Départ</option><option value="RETURN">Retour</option></select></Field><Field label="Équipement"><select style={input} value={inspectionForm.assetId} onChange={(e) => setInspectionForm({ ...inspectionForm, assetId: e.target.value })}><option value="">Sélectionner…</option>{linkedItems.map((item) => <option key={item.assetId} value={item.assetId}>{item.assetTitle} · {item.assetNumber}</option>)}</select></Field><Field label="État"><select style={input} value={inspectionForm.condition} onChange={(e) => setInspectionForm({ ...inspectionForm, condition: e.target.value })}><option value="GOOD">Bon</option><option value="FAIR">Acceptable</option><option value="DAMAGED">Endommagé</option></select></Field><label><input type="checkbox" checked={inspectionForm.hasDamage} onChange={(e) => setInspectionForm({ ...inspectionForm, hasDamage: e.target.checked })} /> Dommage constaté</label>{inspectionForm.hasDamage ? <><Field label="Description"><textarea style={{ ...input, minHeight: 70 }} value={inspectionForm.damageDescription} onChange={(e) => setInspectionForm({ ...inspectionForm, damageDescription: e.target.value })} /></Field><Field label="Montant dommage"><input type="number" min="0" step="0.01" style={input} value={inspectionForm.damageAmount} onChange={(e) => setInspectionForm({ ...inspectionForm, damageAmount: e.target.value })} /></Field></> : null}<Field label="Photos (URL, séparées par virgules)"><input style={input} value={inspectionForm.photoUrls} onChange={(e) => setInspectionForm({ ...inspectionForm, photoUrls: e.target.value })} /></Field><Field label="Signataire"><input style={input} value={inspectionForm.signerName} onChange={(e) => setInspectionForm({ ...inspectionForm, signerName: e.target.value })} /></Field><Field label="Notes"><textarea style={{ ...input, minHeight: 70 }} value={inspectionForm.notes} onChange={(e) => setInspectionForm({ ...inspectionForm, notes: e.target.value })} /></Field></div><div style={{ padding: 16, borderTop: '1px solid #e5e7eb', display: 'flex', justifyContent: 'flex-end', gap: 8 }}><button type="button" style={secondary} onClick={() => setInspectionOpen(false)}>Annuler</button><button type="submit" style={primary} disabled={processing}>Enregistrer</button></div></form></div></div>
+        <div onMouseDown={() => !processing && setInspectionOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 10000, background: 'rgba(15,23,42,.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', padding: 18 }}><div onMouseDown={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 720, background: '#fff', borderRadius: 14 }}><form onSubmit={saveInspection}><div style={{ padding: 20, borderBottom: '1px solid #e5e7eb' }}><h2 style={{ margin: 0 }}>{t("Inspection")}</h2></div><div style={{ padding: 20, display: 'grid', gap: 12 }}><Field label={t("Type")}><select style={input} value={inspectionForm.inspectionType} onChange={(e) => setInspectionForm({ ...inspectionForm, inspectionType: e.target.value as InspectionType })}><option value="DEPARTURE">{t("Départ")}</option><option value="RETURN">{t("Retour")}</option></select></Field><Field label={t("Équipement")}><select style={input} value={inspectionForm.assetId} onChange={(e) => setInspectionForm({ ...inspectionForm, assetId: e.target.value })}><option value="">{t("Sélectionner…")}</option>{linkedItems.map((item) => <option key={item.assetId} value={item.assetId}>{item.assetTitle} · {item.assetNumber}</option>)}</select></Field><Field label={t("État")}><select style={input} value={inspectionForm.condition} onChange={(e) => setInspectionForm({ ...inspectionForm, condition: e.target.value })}><option value="GOOD">{t("Bon")}</option><option value="FAIR">{t("Acceptable")}</option><option value="DAMAGED">{t("Endommagé")}</option></select></Field><label><input type="checkbox" checked={inspectionForm.hasDamage} onChange={(e) => setInspectionForm({ ...inspectionForm, hasDamage: e.target.checked })} /> {" " + t("Dommage constaté")}</label>{inspectionForm.hasDamage ? <><Field label={t("Description")}><textarea style={{ ...input, minHeight: 70 }} value={inspectionForm.damageDescription} onChange={(e) => setInspectionForm({ ...inspectionForm, damageDescription: e.target.value })} /></Field><Field label={t("Montant dommage")}><input type="number" min="0" step="0.01" style={input} value={inspectionForm.damageAmount} onChange={(e) => setInspectionForm({ ...inspectionForm, damageAmount: e.target.value })} /></Field></> : null}<Field label={t("Photos (URL, séparées par virgules)")}><input style={input} value={inspectionForm.photoUrls} onChange={(e) => setInspectionForm({ ...inspectionForm, photoUrls: e.target.value })} /></Field><Field label={t("Signataire")}><input style={input} value={inspectionForm.signerName} onChange={(e) => setInspectionForm({ ...inspectionForm, signerName: e.target.value })} /></Field><Field label={t("Notes")}><textarea style={{ ...input, minHeight: 70 }} value={inspectionForm.notes} onChange={(e) => setInspectionForm({ ...inspectionForm, notes: e.target.value })} /></Field></div><div style={{ padding: 16, borderTop: '1px solid #e5e7eb', display: 'flex', justifyContent: 'flex-end', gap: 8 }}><button type="button" style={secondary} onClick={() => setInspectionOpen(false)}>{t("Annuler")}</button><button type="submit" style={primary} disabled={processing}>{t("Enregistrer")}</button></div></form></div></div>
       )}
+    </div>
     </WixDesignSystemProvider>
   );
 };
@@ -841,7 +849,7 @@ const Field: FC<{ label: string; children: ReactNode }> = ({ label, children }) 
 const ViewButton: FC<{ active: boolean; onClick: () => void; children: string }> = ({ active, onClick, children }) => <button onClick={onClick} style={{ ...secondary, background: active ? '#116dff' : '#fff', color: active ? '#fff' : '#116dff', whiteSpace: 'nowrap' }}>{children}</button>;
 const FinanceRow: FC<{ label: string; value: string; strong?: boolean }> = ({ label, value, strong }) => <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontWeight: strong ? 700 : 400, fontSize: strong ? 17 : 14 }}><span>{label}</span><span>{value}</span></div>;
 const Info: FC<{ label: string; value: string }> = ({ label, value }) => <div style={{ background: '#f8fafc', borderRadius: 9, padding: 13 }}><div style={{ color: '#64748b', fontSize: 12 }}>{label}</div><div style={{ fontWeight: 700, marginTop: 4 }}>{value}</div></div>;
-const TemplatePicker: FC<{ label: string; type: DocumentType; value: string; templates: DocumentTemplate[]; onChange: (value: string) => void }> = ({ label, type, value, templates, onChange }) => <Field label={label}><select style={input} value={value} onChange={(e) => onChange(e.target.value)}><option value="">Aucun modèle</option>{templates.filter((template) => template.documentType === type).map((template) => <option key={template._id} value={template._id}>{template.name}</option>)}</select></Field>;
-const ReservationList: FC<{ reservations: Reservation[]; onOpen: (reservation: Reservation) => void }> = ({ reservations, onOpen }) => <div style={card}>{reservations.length === 0 ? <div style={{ color: '#64748b' }}>Aucune réservation.</div> : <div style={{ display: 'grid', gap: 10 }}>{reservations.map((reservation) => <div key={reservation._id} style={{ border: '1px solid #e5e7eb', borderRadius: 9, padding: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', opacity: reservation.status === 'CANCELLED' ? .55 : 1 }}><div><strong>{reservation.reservationNumber} · {reservation.customerName}</strong><div style={{ color: '#64748b', marginTop: 3 }}>{dateTime(reservation.startDateTime)} → {dateTime(reservation.endDateTime)} · {stageLabels[reservation.workflowStage || 'RESERVATION']}</div></div><div style={{ display: 'flex', alignItems: 'center', gap: 10 }}><strong>{money(reservation.totalCents, reservation.currency || 'CAD')}</strong><button style={secondary} onClick={() => onOpen(reservation)}>Ouvrir</button></div></div>)}</div>}</div>;
+const TemplatePicker: FC<{ label: string; type: DocumentType; value: string; templates: DocumentTemplate[]; onChange: (value: string) => void }> = ({ label, type, value, templates, onChange }) => <Field label={label}><select style={input} value={value} onChange={(e) => onChange(e.target.value)}><option value="">{t("Aucun modèle")}</option>{templates.filter((template) => template.documentType === type).map((template) => <option key={template._id} value={template._id}>{template.name}</option>)}</select></Field>;
+const ReservationList: FC<{ reservations: Reservation[]; onOpen: (reservation: Reservation) => void }> = ({ reservations, onOpen }) => <div style={card}>{reservations.length === 0 ? <div style={{ color: '#64748b' }}>{t("Aucune réservation.")}</div> : <div style={{ display: 'grid', gap: 10 }}>{reservations.map((reservation) => <div key={reservation._id} style={{ border: '1px solid #e5e7eb', borderRadius: 9, padding: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', opacity: reservation.status === 'CANCELLED' ? .55 : 1 }}><div><strong>{reservation.reservationNumber} · {reservation.customerName}</strong><div style={{ color: '#64748b', marginTop: 3 }}>{dateTime(reservation.startDateTime)} → {dateTime(reservation.endDateTime)} · {stageLabels[reservation.workflowStage || 'RESERVATION']}</div></div><div style={{ display: 'flex', alignItems: 'center', gap: 10 }}><strong>{money(reservation.totalCents, reservation.currency || 'CAD')}</strong><button style={secondary} onClick={() => onOpen(reservation)}>{t("Ouvrir")}</button></div></div>)}</div>}</div>;
 
 export default ReservationsV2Page;
