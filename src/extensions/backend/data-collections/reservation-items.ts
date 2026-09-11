@@ -32,7 +32,6 @@ export default {
   },
   indexes: [
     {
-      name: 'reservation_item_asset_blocked',
       fields: [
         { path: 'assetId', order: 'ASC' },
         { path: 'blockedStartDateTime', order: 'ASC' },
@@ -42,7 +41,6 @@ export default {
       caseInsensitive: false,
     },
     {
-      name: 'reservation_item_blocked_window',
       fields: [
         { path: 'blockedStartDateTime', order: 'ASC' },
         { path: 'blockedEndDateTime', order: 'ASC' },
@@ -51,7 +49,6 @@ export default {
       caseInsensitive: false,
     },
     {
-      name: 'reservation_item_reservation',
       fields: [{ path: 'reservationId', order: 'ASC' }],
       unique: false,
       caseInsensitive: false,
