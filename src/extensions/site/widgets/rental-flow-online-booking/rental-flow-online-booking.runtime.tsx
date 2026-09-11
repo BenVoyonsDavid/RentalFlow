@@ -1,4 +1,5 @@
 import RentalFlowBookingElement from './rental-flow-online-booking';
+import { localizeDom, resolveLanguage, resolveLocale } from '../../../../intl';
 
 // Wix's current CLI tutorial recommends deriving the app backend origin from
 // the module URL so the same endpoint URL works in local development and after
@@ -18,5 +19,24 @@ const Element = RentalFlowBookingElement as unknown as {
   const url = `${appOrigin}/api/public-booking`;
   return params ? `${url}?${params}` : url;
 };
+
+// The public widget follows the site's active Wix language automatically.
+// Keep currency formatting aligned with Wix's locale as well.
+(Element.prototype as any).money = function money(cents = 0, currency = 'CAD'): string {
+  return new Intl.NumberFormat(resolveLocale('site', 'auto'), { style: 'currency', currency }).format(cents / 100);
+};
+
+// The existing booking component predates RentalFlow's i18n layer and contains
+// French source strings. Localize its Shadow DOM immediately after each render
+// so existing screens become bilingual without duplicating the booking logic.
+const originalRender = (Element.prototype as any).render;
+if (typeof originalRender === 'function') {
+  (Element.prototype as any).render = function localizedRender(...args: unknown[]) {
+    const result = originalRender.apply(this, args);
+    const root = this.shadowRoot as ShadowRoot | null;
+    if (root) localizeDom(root, resolveLanguage('site', 'auto'));
+    return result;
+  };
+}
 
 export default Element;
