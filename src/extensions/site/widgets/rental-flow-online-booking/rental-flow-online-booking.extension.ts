@@ -23,5 +23,5 @@ export default extensions.customElement({
   ],
   tagName: 'rental-flow-online-booking',
   element: './extensions/site/widgets/rental-flow-online-booking/rental-flow-online-booking.runtime.tsx',
-  settings: './extensions/site/widgets/rental-flow-online-booking/rental-flow-online-booking.panel.tsx',
+  settings: './extensions/site/widgets/rental-flow-online-booking/rental-flow-online-booking.panel.localized.tsx',
 });
