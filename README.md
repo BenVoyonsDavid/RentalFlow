@@ -1,36 +1,32 @@
 # RentalFlow
 
-RentalFlow is a Wix app for managing physical rental inventory from reservation to return.
+**Rentals that move with you.**
 
-## Current development milestone
+RentalFlow is a Wix rental-management app for businesses that rent equipment, vehicles, RVs, vacation assets, and other physical inventory.
 
-- Wix CLI / Astro project
-- Dashboard page registered in Wix
-- `assets` app data collection
-- Asset inventory dashboard
-- Create-asset form
-- Duplicate asset-number validation
-- Live inventory counters
+## v1 capabilities
 
-## Development
+- Reservation management and availability calendar
+- Customer records and rental history
+- Daily, weekly, monthly, and long-term rental pricing
+- Quotes, contracts, invoices, payments, deposits, inspections, and damage tracking
+- Public online booking widget with Wix Payment Links
+- French / English localization
+- Wix pricing plans with inventory limits:
+  - Basic: 5 active assets
+  - Starter: 25 active assets
+  - Business: 100 active assets
+  - Pro: unlimited active assets
+- Concurrent public-booking protection and indexed data collections
+- Automatic reconciliation of pending Wix Payment Links when the RentalFlow dashboard loads
 
-```powershell
-npm install
-npm run dev
-```
+## Validation
 
-## Build
+Before releasing a production version:
 
-```powershell
+```bash
+npm run typecheck
 npm run build
 ```
 
-## Wix identifiers
-
-- Project ID: `rental-flow`
-- Namespace: `@pilotedavid1/rental-flow`
-- Code identifier: `rentalflow`
-
-## Security
-
-Local Wix environment files such as `.env.local`, `.wix/`, generated `.astro/` files and `node_modules/` are intentionally excluded from Git.
+See `BETA_RELEASE_CHECKLIST.md` for the full App Market release checklist.
