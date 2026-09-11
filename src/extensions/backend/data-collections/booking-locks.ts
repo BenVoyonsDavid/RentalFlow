@@ -19,7 +19,6 @@ export default {
   },
   indexes: [
     {
-      name: 'booking_lock_asset_unique',
       fields: [{ path: 'assetId', order: 'ASC' }],
       unique: true,
       caseInsensitive: false,
