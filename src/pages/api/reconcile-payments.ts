@@ -1,4 +1,4 @@
-import type { APIRoute } from 'astro';
+﻿import type { APIRoute } from 'astro';
 import { items } from '@wix/data';
 import { auth } from '@wix/essentials';
 
@@ -50,7 +50,9 @@ async function elevatedFind(query: any): Promise<any> {
 
 async function elevatedUpdate(collectionId: string, item: Record<string, unknown>): Promise<any> {
   const update = auth.elevate(items.update);
-  return update(collectionId, item);
+  const itemId = item._id;
+  if (typeof itemId !== 'string' || !itemId) throw new Error('MISSING_ITEM_ID');
+  return update(collectionId, { ...item, _id: itemId });
 }
 
 async function elevatedInsert(collectionId: string, item: Record<string, unknown>): Promise<any> {
@@ -135,7 +137,7 @@ async function reconcilePendingPayments(): Promise<{ checked: number; updated: n
         amountCents,
         paymentDate: link?.lastPaymentDate ? new Date(link.lastPaymentDate) : payment.paymentDate || new Date(),
         wixTransactionId: transactionId,
-        notes: [payment.notes, 'Paiement confirmé automatiquement depuis Wix Payment Links.'].filter(Boolean).join(' '),
+        notes: [payment.notes, 'Paiement confirmÃ© automatiquement depuis Wix Payment Links.'].filter(Boolean).join(' '),
       });
 
       let balanceDueCents = payment.remainingBalanceCents || 0;
@@ -145,7 +147,7 @@ async function reconcilePendingPayments(): Promise<{ checked: number; updated: n
         reservationId: payment.reservationId || '',
         reservationNumber: payment.reservationNumber || '',
         actionType: 'ONLINE_PAYMENT_CONFIRMED',
-        description: `Paiement Wix ${payment.paymentNumber || ''} confirmé${amountCents ? ` pour ${(amountCents / 100).toFixed(2)} ${payment.currency || ''}` : ''}.`,
+        description: `Paiement Wix ${payment.paymentNumber || ''} confirmÃ©${amountCents ? ` pour ${(amountCents / 100).toFixed(2)} ${payment.currency || ''}` : ''}.`,
         actor: 'RentalFlow Payment Sync',
         eventDate: new Date(),
       });
@@ -158,7 +160,7 @@ async function reconcilePendingPayments(): Promise<{ checked: number; updated: n
           paymentDate: link?.lastPaymentDate ? new Date(link.lastPaymentDate) : payment.paymentDate || new Date(),
           wixTransactionId: transactionId,
           remainingBalanceCents: balanceDueCents,
-          notes: [payment.notes, 'Paiement confirmé automatiquement depuis Wix Payment Links.'].filter(Boolean).join(' '),
+          notes: [payment.notes, 'Paiement confirmÃ© automatiquement depuis Wix Payment Links.'].filter(Boolean).join(' '),
         });
       }
 
@@ -181,3 +183,4 @@ export const POST: APIRoute = async () => {
     return json({ error: 'Impossible de synchroniser les paiements Wix.' }, 500);
   }
 };
+

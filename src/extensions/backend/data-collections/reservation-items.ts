@@ -38,7 +38,6 @@ export default {
         { path: 'blockedEndDateTime', order: 'ASC' },
       ],
       unique: false,
-      caseInsensitive: false,
     },
     {
       fields: [
@@ -46,12 +45,10 @@ export default {
         { path: 'blockedEndDateTime', order: 'ASC' },
       ],
       unique: false,
-      caseInsensitive: false,
     },
     {
       fields: [{ path: 'reservationId', order: 'ASC' }],
       unique: false,
-      caseInsensitive: false,
     },
   ],
   initialData: [],

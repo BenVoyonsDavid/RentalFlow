@@ -33,12 +33,10 @@ export default {
     {
       fields: [{ path: 'customerNumber', order: 'ASC' }],
       unique: true,
-      caseInsensitive: true,
     },
     {
       fields: [{ path: 'email', order: 'ASC' }],
       unique: false,
-      caseInsensitive: true,
     },
   ],
   initialData: [],

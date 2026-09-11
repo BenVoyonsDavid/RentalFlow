@@ -164,7 +164,7 @@ function maxStage(current: WorkflowStage | undefined, requested: WorkflowStage):
 }
 function reservationPayload(reservation: Reservation, changes: Partial<Reservation> = {}) {
   return {
-    _id: reservation._id,
+    _id: reservation._id!,
     reservationNumber: reservation.reservationNumber || '', customerId: reservation.customerId || '',
     customerNumber: reservation.customerNumber || '', customerName: reservation.customerName || '',
     customerEmail: reservation.customerEmail || '', customerPhone: reservation.customerPhone || '',
@@ -292,7 +292,7 @@ const ReservationsPage: FC = () => {
     return selectedAssetIds.flatMap((id) => {
       const asset = activeAssets.find((candidate) => candidate._id === id);
       if (!asset) return [];
-      try { return [{ asset, ...calculateRentalPrice(asset, formDates.start, formDates.end, pricingOptions) }]; }
+      try { return [{ asset, ...calculateRentalPrice(asset, formDates.start!, formDates.end!, pricingOptions) }]; }
       catch { return []; }
     });
   }, [activeAssets, formDates, pricingOptions, selectedAssetIds]);

@@ -32,12 +32,10 @@ export default {
     {
       fields: [{ path: 'assetNumber', order: 'ASC' }],
       unique: true,
-      caseInsensitive: true,
     },
     {
       fields: [{ path: 'status', order: 'ASC' }, { path: 'active', order: 'ASC' }],
       unique: false,
-      caseInsensitive: false,
     },
   ],
   initialData: [],
