@@ -13,19 +13,18 @@ export default extensions.customElement({
   height: {
     defaultHeight: 940,
   },
-  // Wix docs now use staticContainer, but @wix/astro 2.70.0 still reads
-  // the legacy autoAdd/essential fields while generating app metadata.
-  // Keep both shapes temporarily for compatibility.
+  // Keep the legacy fields temporarily because @wix/astro 2.70.0 still
+  // reads them while generating app metadata. Omitting staticContainer keeps
+  // the widget manual-add, so it appears in the editor's App Widgets panel.
   installation: {
-    staticContainer: 'HOMEPAGE',
-    autoAdd: true,
+    autoAdd: false,
     essential: false,
   } as any,
   presets: [
     {
       id: '50de07f4-e873-474e-b979-286d1956a5a7',
       name: 'Réservation RentalFlow',
-      thumbnailUrl: '{{BASE_URL}}/public/rentalflow-booking.svg',
+      thumbnailUrl: '{{BASE_URL}}/public/rentalflow-booking.png',
     },
   ],
 });
