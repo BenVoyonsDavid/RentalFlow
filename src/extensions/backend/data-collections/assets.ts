@@ -30,13 +30,11 @@ export default {
   },
   indexes: [
     {
-      name: 'asset_number_unique',
       fields: [{ path: 'assetNumber', order: 'ASC' }],
       unique: true,
       caseInsensitive: true,
     },
     {
-      name: 'asset_status_active',
       fields: [{ path: 'status', order: 'ASC' }, { path: 'active', order: 'ASC' }],
       unique: false,
       caseInsensitive: false,
