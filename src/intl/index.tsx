@@ -72,6 +72,7 @@ function translateDynamic(value: string, language: RentalFlowLanguage): string |
     if (match) return `${match[1]} required field(s)`;
     match = value.match(/^(\d+) jour\(s\)$/);
     if (match) return `${match[1]} day(s)`;
+    if (value === 'jour(s) ·') return 'day(s) ·';
     match = value.match(/^(.+)% après (\d+) jours$/);
     if (match) return `${match[1]}% after ${match[2]} days`;
     match = value.match(/^(\d+) équipement(?:s)? disponible(?:s)?\.$/);
@@ -95,6 +96,7 @@ function translateDynamic(value: string, language: RentalFlowLanguage): string |
     if (match) return `${match[1]} champ(s) obligatoire(s)`;
     match = value.match(/^(\d+) day\(s\)$/);
     if (match) return `${match[1]} jour(s)`;
+    if (value === 'day(s) ·') return 'jour(s) ·';
     match = value.match(/^(.+)% after (\d+) days$/);
     if (match) return `${match[1]}% après ${match[2]} jours`;
     match = value.match(/^(\d+) piece\(s\) of equipment available\.$/);
@@ -107,6 +109,19 @@ function translateDynamic(value: string, language: RentalFlowLanguage): string |
   return null;
 }
 
+function translateDecorated(value: string, dictionary: Record<string, string>): string | null {
+  let match = value.match(/^(.+?)\s+\*$/);
+  if (match && dictionary[match[1]]) return `${dictionary[match[1]]} *`;
+
+  match = value.match(/^(.+?)\s+\((.+)\)$/);
+  if (match && dictionary[match[1]]) return `${dictionary[match[1]]} (${match[2]})`;
+
+  match = value.match(/^(.+?)\s*:\s*$/);
+  if (match && dictionary[match[1]]) return `${dictionary[match[1]]}:`;
+
+  return null;
+}
+
 export function translateText(value: string, language: RentalFlowLanguage): string {
   if (!value) return value;
   const leading = value.match(/^\s*/)?.[0] || '';
@@ -115,7 +130,7 @@ export function translateText(value: string, language: RentalFlowLanguage): stri
   if (!trimmed) return value;
 
   const dictionary = language === 'en' ? frToEn : enToFr;
-  const translated = dictionary[trimmed] || translateDynamic(trimmed, language);
+  const translated = dictionary[trimmed] || translateDecorated(trimmed, dictionary) || translateDynamic(trimmed, language);
   return translated == null ? value : `${leading}${translated}${trailing}`;
 }
 
