@@ -15,7 +15,8 @@ type CallResult = {
 
 type DiagnosticState = {
   loading: boolean;
-  baseApiUrl?: string;
+  moduleOrigin?: string;
+  endpointUrl?: string;
   plain?: CallResult;
   authenticated?: CallResult;
 };
@@ -32,13 +33,13 @@ const Panel: FC = () => {
   const [diagnostic, setDiagnostic] = useState<DiagnosticState>({ loading: true });
 
   const runDiagnostic = useCallback(async () => {
-    const baseApiUrl = import.meta.env.BASE_API_URL;
-    const url = `${baseApiUrl}/api/public-booking`;
-    setDiagnostic({ loading: true, baseApiUrl });
+    const moduleOrigin = new URL(import.meta.url).origin;
+    const endpointUrl = `${moduleOrigin}/api/public-booking`;
+    setDiagnostic({ loading: true, moduleOrigin, endpointUrl });
 
     let plain: CallResult;
     try {
-      plain = await readResponse(await fetch(url));
+      plain = await readResponse(await fetch(endpointUrl));
     } catch (error) {
       plain = {
         error: error instanceof Error ? error.message : String(error),
@@ -47,7 +48,7 @@ const Panel: FC = () => {
 
     let authenticated: CallResult;
     try {
-      authenticated = await readResponse(await httpClient.fetchWithAuth(url));
+      authenticated = await readResponse(await httpClient.fetchWithAuth(endpointUrl));
     } catch (error) {
       authenticated = {
         error: error instanceof Error ? error.message : String(error),
@@ -56,7 +57,8 @@ const Panel: FC = () => {
 
     setDiagnostic({
       loading: false,
-      baseApiUrl,
+      moduleOrigin,
+      endpointUrl,
       plain,
       authenticated,
     });
@@ -83,8 +85,11 @@ const Panel: FC = () => {
 
               {!diagnostic.loading ? (
                 <>
-                  <div style={{ marginTop: 10 }}><strong>BASE_API_URL</strong></div>
-                  <pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{diagnostic.baseApiUrl || '(vide)'}</pre>
+                  <div style={{ marginTop: 10 }}><strong>Origine du module</strong></div>
+                  <pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{diagnostic.moduleOrigin || '(vide)'}</pre>
+
+                  <div style={{ marginTop: 10 }}><strong>URL de l’endpoint</strong></div>
+                  <pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{diagnostic.endpointUrl || '(vide)'}</pre>
 
                   <div style={{ marginTop: 10 }}><strong>1. fetch() sans authentification</strong></div>
                   <pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', maxHeight: 180, overflow: 'auto' }}>
