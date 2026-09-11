@@ -4,6 +4,6 @@ export default extensions.dashboardPage({
   id: 'c5635248-110a-4f29-aeee-a84bfaee3a91',
   title: 'Réservations',
   routePath: 'reservations',
-  component: './extensions/dashboard/pages/reservations/reservations-v2.tsx',
+  component: './extensions/dashboard/pages/reservations/reservations.localized.tsx',
   fullPage: false,
 });
