@@ -30,6 +30,23 @@ export default {
     itemRemove: 'CMS_EDITOR',
     itemUpdate: 'CMS_EDITOR',
   },
-  indexes: [],
+  indexes: [
+    {
+      name: 'reservation_item_asset_blocked',
+      fields: [
+        { path: 'assetId', order: 'ASC' },
+        { path: 'blockedStartDateTime', order: 'ASC' },
+        { path: 'blockedEndDateTime', order: 'ASC' },
+      ],
+      unique: false,
+      caseInsensitive: false,
+    },
+    {
+      name: 'reservation_item_reservation',
+      fields: [{ path: 'reservationId', order: 'ASC' }],
+      unique: false,
+      caseInsensitive: false,
+    },
+  ],
   initialData: [],
 } satisfies DataCollection;
