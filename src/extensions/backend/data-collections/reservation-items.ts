@@ -42,6 +42,15 @@ export default {
       caseInsensitive: false,
     },
     {
+      name: 'reservation_item_blocked_window',
+      fields: [
+        { path: 'blockedStartDateTime', order: 'ASC' },
+        { path: 'blockedEndDateTime', order: 'ASC' },
+      ],
+      unique: false,
+      caseInsensitive: false,
+    },
+    {
       name: 'reservation_item_reservation',
       fields: [{ path: 'reservationId', order: 'ASC' }],
       unique: false,
