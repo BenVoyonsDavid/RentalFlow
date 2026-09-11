@@ -79,7 +79,13 @@ const png = Buffer.concat([
   chunk('IEND', Buffer.alloc(0)),
 ]);
 
-const output = resolve('public', 'rentalflow-booking.png');
-mkdirSync(dirname(output), { recursive: true });
-writeFileSync(output, png);
-console.log(`Generated ${output}`);
+const outputs = [
+  resolve('public', 'rental-flow-online-booking-thumbnail.png'),
+  resolve('public', 'rentalflow-booking.png'),
+];
+
+for (const output of outputs) {
+  mkdirSync(dirname(output), { recursive: true });
+  writeFileSync(output, png);
+  console.log(`Generated ${output}`);
+}
