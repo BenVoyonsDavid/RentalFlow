@@ -226,7 +226,7 @@ const CustomersPage: FC = () => {
     if (ask && !next && !window.confirm(`Désactiver ${fullName(customer)} ? Son historique sera conservé.`)) return;
     setError(''); setSuccess('');
     try {
-      await items.update(CUSTOMERS, { ...customer, active: next });
+      await items.update(CUSTOMERS, { ...customer, _id: customer._id, active: next });
       setSuccess(next ? `${fullName(customer)} a été réactivé.` : `${fullName(customer)} a été désactivé.`);
       setDetailCustomer(null); await load();
     } catch (e) {

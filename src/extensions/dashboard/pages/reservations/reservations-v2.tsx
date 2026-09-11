@@ -475,7 +475,7 @@ const ReservationsV2Page: FC = () => {
     try {
       const updated = await items.update(RESERVATIONS, reservationPayload(reservation, { status: 'CANCELLED' })) as Reservation;
       for (const item of reservationItems.filter((row) => row.reservationId === reservation._id && row._id)) {
-        await items.update(RESERVATION_ITEMS, { ...item, status: 'CANCELLED' });
+        await items.update(RESERVATION_ITEMS, { ...item, _id: item._id!, status: 'CANCELLED' });
       }
       await logActivity(updated, 'RESERVATION_CANCELLED', 'Réservation annulée; disponibilité libérée.');
       setSelectedReservation(updated); await load();
@@ -535,7 +535,7 @@ const ReservationsV2Page: FC = () => {
         : action === 'SIGN'
           ? { status: 'SIGNED', signedDate: new Date(), signerName: selectedReservation.customerName || '' }
           : { status: 'ISSUED', sentDate: new Date() };
-      await items.update(DOCUMENTS, { ...document, ...changes });
+      await items.update(DOCUMENTS, { ...document, _id: document._id, ...changes });
       const requested: WorkflowStage = document.documentType === 'QUOTE' ? 'QUOTE' : document.documentType === 'CONTRACT' ? 'CONTRACT' : 'INVOICE';
       await updateReservation(selectedReservation, { workflowStage: stageAtLeast(selectedReservation.workflowStage, requested) }, 'DOCUMENT_UPDATED', `${documentLabels[document.documentType || 'QUOTE']} ${document.documentNumber || ''} : ${changes.status}.`);
       await load();
@@ -617,7 +617,7 @@ const ReservationsV2Page: FC = () => {
       const link = response?.paymentLink || response;
       const wixStatus = String(link?.status || '').toUpperCase();
       const paid = wixStatus === 'PAID';
-      await items.update(PAYMENTS, { ...payment, status: paid ? 'PAID' : payment.status || 'PENDING', paymentDate: paid ? new Date() : payment.paymentDate });
+      await items.update(PAYMENTS, { ...payment, _id: payment._id, status: paid ? 'PAID' : payment.status || 'PENDING', paymentDate: paid ? new Date() : payment.paymentDate });
       if (paid && selectedReservation) {
         await logActivity(selectedReservation, 'PAYMENT_CONFIRMED', `Paiement Wix ${payment.paymentNumber || ''} confirmé.`);
         await updateReservation(selectedReservation, { workflowStage: stageAtLeast(selectedReservation.workflowStage, 'PAYMENT') }, 'WORKFLOW_PAYMENT', 'Étape paiement atteinte.');
@@ -682,7 +682,7 @@ const ReservationsV2Page: FC = () => {
   const closeRental = async () => {
     if (!selectedReservation) return;
     await updateReservation(selectedReservation, { status: 'COMPLETED', workflowStage: 'COMPLETED', closedDateTime: new Date() }, 'CLOSED', 'Réservation clôturée.');
-    for (const item of linkedItems.filter((item) => item._id)) await items.update(RESERVATION_ITEMS, { ...item, status: 'COMPLETED' });
+    for (const item of linkedItems.filter((item) => item._id)) await items.update(RESERVATION_ITEMS, { ...item, _id: item._id!, status: 'COMPLETED' });
     await load();
   };
 

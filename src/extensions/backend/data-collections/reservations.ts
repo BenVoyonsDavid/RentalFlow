@@ -66,17 +66,14 @@ export default {
     {
       fields: [{ path: 'reservationNumber', order: 'ASC' }],
       unique: true,
-      caseInsensitive: true,
     },
     {
       fields: [{ path: 'startDateTime', order: 'ASC' }, { path: 'status', order: 'ASC' }],
       unique: false,
-      caseInsensitive: false,
     },
     {
       fields: [{ path: 'customerId', order: 'ASC' }, { path: 'startDateTime', order: 'DESC' }],
       unique: false,
-      caseInsensitive: false,
     },
   ],
   initialData: [],

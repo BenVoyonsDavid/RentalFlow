@@ -21,7 +21,6 @@ export default {
     {
       fields: [{ path: 'assetId', order: 'ASC' }],
       unique: true,
-      caseInsensitive: false,
     },
   ],
   initialData: [],
