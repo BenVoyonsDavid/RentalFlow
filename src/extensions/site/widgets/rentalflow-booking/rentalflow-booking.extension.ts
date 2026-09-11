@@ -13,9 +13,14 @@ export default extensions.customElement({
   height: {
     defaultHeight: 940,
   },
+  // Wix docs now use staticContainer, but @wix/astro 2.70.0 still reads
+  // the legacy autoAdd/essential fields while generating app metadata.
+  // Keep both shapes temporarily for compatibility.
   installation: {
     staticContainer: 'HOMEPAGE',
-  },
+    autoAdd: true,
+    essential: false,
+  } as any,
   presets: [
     {
       id: '50de07f4-e873-474e-b979-286d1956a5a7',
