@@ -34,19 +34,16 @@ export default {
   },
   indexes: [
     {
-      name: 'payment_number_unique',
       fields: [{ path: 'paymentNumber', order: 'ASC' }],
       unique: true,
       caseInsensitive: true,
     },
     {
-      name: 'payment_reservation',
       fields: [{ path: 'reservationId', order: 'ASC' }, { path: 'paymentDate', order: 'DESC' }],
       unique: false,
       caseInsensitive: false,
     },
     {
-      name: 'payment_wix_link',
       fields: [{ path: 'wixPaymentLinkId', order: 'ASC' }],
       unique: false,
       caseInsensitive: false,
