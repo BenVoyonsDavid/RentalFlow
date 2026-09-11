@@ -50,6 +50,9 @@ export const planLabels: Record<RentalFlowPlan, string> = {
   PRO: 'Pro',
 };
 
+let resolvedPlanCache: RentalFlowPlan | null = import.meta.env.DEV ? 'PRO' : null;
+let resolvePlanPromise: Promise<RentalFlowPlan> | null = null;
+
 export function hasFeature(plan: RentalFlowPlan, feature: RentalFlowFeature): boolean {
   return planLevel[plan] >= planLevel[minimumPlan[feature]];
 }
@@ -85,14 +88,14 @@ export function planFromPackageName(packageName: unknown, isFree?: boolean): Ren
   if (normalized.includes('STARTER')) return 'STARTER';
   if (normalized.includes('BASIC') || normalized.includes('FREE') || normalized.includes('GRATUIT')) return 'FREE';
 
-  // A paid package unknown to this app is restricted to the lowest paid tier.
+  // Unknown paid packages fail closed to the lowest paid tier.
   return isFree === false ? 'STARTER' : 'FREE';
 }
 
 /**
  * Supports both current SDK response shapes (`response.data`) and older/direct
- * app instance shapes. Billing packageName is the authoritative tier when
- * multiple paid plans are configured in Wix.
+ * app instance shapes. Billing packageName is authoritative when multiple paid
+ * plans are configured in Wix.
  */
 export function planFromAppInstanceResponse(response: unknown): RentalFlowPlan {
   const root = (response as any)?.data ?? response ?? {};
@@ -108,25 +111,34 @@ export function planFromAppInstanceResponse(response: unknown): RentalFlowPlan {
 }
 
 /**
- * Dashboard resolver. Wix recommends getAppInstance() for pricing-plan gates.
- * On any lookup failure we fail closed to Basic rather than granting premium
- * functionality without confirming the subscription.
+ * Resolves the installed Wix pricing plan once per page session and caches it.
+ * Any lookup failure fails closed to Basic rather than granting paid features.
  */
 export async function resolveDashboardPlan(): Promise<RentalFlowPlan> {
-  if (import.meta.env.DEV) return 'PRO';
-  try {
-    const response = await appInstances.getAppInstance();
-    return planFromAppInstanceResponse(response);
-  } catch (error) {
-    console.error('RentalFlow could not resolve the Wix pricing plan.', error);
-    return 'FREE';
-  }
+  if (resolvedPlanCache) return resolvedPlanCache;
+  if (resolvePlanPromise) return resolvePlanPromise;
+
+  resolvePlanPromise = (async () => {
+    try {
+      const response = await appInstances.getAppInstance();
+      resolvedPlanCache = planFromAppInstanceResponse(response);
+    } catch (error) {
+      console.error('RentalFlow could not resolve the Wix pricing plan.', error);
+      resolvedPlanCache = 'FREE';
+    } finally {
+      resolvePlanPromise = null;
+    }
+    return resolvedPlanCache || 'FREE';
+  })();
+
+  return resolvePlanPromise;
 }
 
 /**
- * Synchronous fallback for legacy UI while pages migrate to async Wix plan
- * detection. Production always fails closed; development keeps full access.
+ * Synchronous compatibility accessor for legacy pages. Dashboard localization
+ * resolves the plan before/while those pages render, so subsequent renders use
+ * this cache. Production defaults to Basic until Wix confirms a paid package.
  */
 export function getCurrentPlan(): RentalFlowPlan {
-  return import.meta.env.DEV ? 'PRO' : 'FREE';
+  return import.meta.env.DEV ? 'PRO' : resolvedPlanCache || 'FREE';
 }
