@@ -19,7 +19,7 @@
     "typecheck": "astro check"
   },
   "dependencies": {
-    "@wix/app-management": "^1.0.0",
+    "@wix/app-management": "^1.0.159",
     "@wix/astro": "^2.70.0",
     "@wix/dashboard": "^1.3.43",
     "@wix/data": "^1.0.519",
