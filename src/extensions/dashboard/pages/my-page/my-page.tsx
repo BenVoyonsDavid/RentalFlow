@@ -1,3 +1,7 @@
+import { feedback, formatFeedback, type Feedback } from '../../../../lib/i18n';
+import { statusLabel } from '../../../../lib/i18n/status';
+import { t, getLocale } from '../../../../lib/i18n';
+import { LanguageSelector, useLanguage } from '../../../../lib/i18n/react';
 import type { CSSProperties, FC } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { items } from '@wix/data';
@@ -26,17 +30,18 @@ function sameDay(a: Date, b: Date): boolean {
 function dateTime(value?: Date | string): string {
   const date = asDate(value);
   if (!date.getTime()) return '—';
-  return new Intl.DateTimeFormat('fr-CA', { dateStyle: 'medium', timeStyle: 'short' }).format(date);
+  return new Intl.DateTimeFormat(getLocale(), { dateStyle: 'medium', timeStyle: 'short' }).format(date);
 }
 function money(cents = 0, currency = 'CAD'): string {
-  return new Intl.NumberFormat('fr-CA', { style: 'currency', currency }).format(cents / 100);
+  return new Intl.NumberFormat(getLocale(), { style: 'currency', currency }).format(cents / 100);
 }
 
 const DashboardPage: FC = () => {
+  const language = useLanguage();
   const [assets, setAssets] = useState<Asset[]>([]);
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [error, setError] = useState<Feedback>('');
 
   useEffect(() => {
     let active = true;
@@ -51,7 +56,7 @@ const DashboardPage: FC = () => {
           setReservations(reservationResult.items as Reservation[]);
         }
       } catch (e) {
-        if (active) setError(e instanceof Error ? e.message : 'Impossible de charger les données RentalFlow.');
+        if (active) setError(e instanceof Error ? e.message : feedback("Impossible de charger les données RentalFlow."));
       } finally { if (active) setLoading(false); }
     };
     void load();
@@ -89,59 +94,62 @@ const DashboardPage: FC = () => {
 
   return (
     <WixDesignSystemProvider features={{ newColorsBranding: true }}>
+      <div lang={language}>
+      <LanguageSelector />
       <Page>
-        <Page.Header title="Tableau de bord" subtitle="Vue d’ensemble de votre activité de location." />
+        <Page.Header title={t("Tableau de bord")} subtitle={t("Vue d’ensemble de votre activité de location.")} />
         <Page.Content>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 24, paddingBottom: 40 }}>
-            {error && <div style={{ ...card, background: '#fef2f2', color: '#991b1b', borderColor: '#fecaca' }}>{error}</div>}
+            {error && <div style={{ ...card, background: '#fef2f2', color: '#991b1b', borderColor: '#fecaca' }}>{formatFeedback(error)}</div>}
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: 16 }}>
-              <Stat label="Équipements actifs" value={inventory.total} loading={loading} />
-              <Stat label="Disponibles" value={inventory.available} loading={loading} />
-              <Stat label="Réservations actives" value={reservations.filter((r) => !['CANCELLED', 'COMPLETED', 'ERROR'].includes(r.status || '')).length} loading={loading} />
-              <Stat label="En location" value={reservations.filter((r) => r.status === 'RENTED').length} loading={loading} />
-              <Stat label="Revenus réservés" value={money(operations.bookedRevenue)} loading={loading} text />
+              <Stat label={t("Équipements actifs")} value={inventory.total} loading={loading} />
+              <Stat label={t("Disponibles")} value={inventory.available} loading={loading} />
+              <Stat label={t("Réservations actives")} value={reservations.filter((r) => !['CANCELLED', 'COMPLETED', 'ERROR'].includes(r.status || '')).length} loading={loading} />
+              <Stat label={t("En location")} value={reservations.filter((r) => r.status === 'RENTED').length} loading={loading} />
+              <Stat label={t("Revenus réservés")} value={money(operations.bookedRevenue)} loading={loading} text />
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(300px,1fr))', gap: 16 }}>
               <div style={card}>
-                <h2 style={{ marginTop: 0 }}>Aujourd’hui</h2>
+                <h2 style={{ marginTop: 0 }}>{t("Aujourd’hui")}</h2>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-                  <MiniStat label="Départs" value={operations.departures.length} />
-                  <MiniStat label="Retours" value={operations.returns.length} />
-                  <MiniStat label="Retards" value={operations.late.length} alert={operations.late.length > 0} />
-                  <MiniStat label="À préparer (24 h)" value={operations.prepare.length} />
+                  <MiniStat label={t("Départs")} value={operations.departures.length} />
+                  <MiniStat label={t("Retours")} value={operations.returns.length} />
+                  <MiniStat label={t("Retards")} value={operations.late.length} alert={operations.late.length > 0} />
+                  <MiniStat label={t("À préparer (24 h)")} value={operations.prepare.length} />
                 </div>
               </div>
 
               <div style={card}>
-                <h2 style={{ marginTop: 0 }}>État de l’inventaire</h2>
+                <h2 style={{ marginTop: 0 }}>{t("État de l’inventaire")}</h2>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-                  <MiniStat label="Disponible" value={inventory.available} />
-                  <MiniStat label="Réservé manuel" value={inventory.reserved} />
-                  <MiniStat label="En location manuel" value={inventory.rented} />
-                  <MiniStat label="Entretien" value={inventory.maintenance} />
+                  <MiniStat label={t("Disponible")} value={inventory.available} />
+                  <MiniStat label={t("Réservé manuel")} value={inventory.reserved} />
+                  <MiniStat label={t("En location manuel")} value={inventory.rented} />
+                  <MiniStat label={t("Entretien")} value={inventory.maintenance} />
                 </div>
               </div>
             </div>
 
             <div style={card}>
-              <h2 style={{ marginTop: 0 }}>Prochaines réservations</h2>
-              {loading ? <div>Chargement…</div> : operations.upcoming.length === 0 ? <div style={{ color: '#64748b' }}>Aucune réservation à venir.</div> : <div style={{ display: 'grid', gap: 9 }}>{operations.upcoming.map((reservation) => <div key={reservation._id || reservation.reservationNumber} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: 13, background: '#f8fafc', borderRadius: 10, flexWrap: 'wrap' }}><div><strong>{reservation.reservationNumber || 'Réservation'} · {reservation.customerName || 'Client'}</strong><div style={{ color: '#64748b', marginTop: 3 }}>{dateTime(reservation.startDateTime)} → {dateTime(reservation.endDateTime)}</div></div><div style={{ textAlign: 'right' }}><strong>{money(reservation.totalCents, reservation.currency || 'CAD')}</strong><div style={{ color: '#64748b', marginTop: 3 }}>{reservation.workflowStage || 'RESERVATION'}</div></div></div>)}</div>}
+              <h2 style={{ marginTop: 0 }}>{t("Prochaines réservations")}</h2>
+              {loading ? <div>{t("Chargement…")}</div> : operations.upcoming.length === 0 ? <div style={{ color: '#64748b' }}>{t("Aucune réservation à venir.")}</div> : <div style={{ display: 'grid', gap: 9 }}>{operations.upcoming.map((reservation) => <div key={reservation._id || reservation.reservationNumber} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: 13, background: '#f8fafc', borderRadius: 10, flexWrap: 'wrap' }}><div><strong>{reservation.reservationNumber || t("Réservation")} · {reservation.customerName || t("Client")}</strong><div style={{ color: '#64748b', marginTop: 3 }}>{dateTime(reservation.startDateTime)} → {dateTime(reservation.endDateTime)}</div></div><div style={{ textAlign: 'right' }}><strong>{money(reservation.totalCents, reservation.currency || 'CAD')}</strong><div style={{ color: '#64748b', marginTop: 3 }}>{statusLabel(reservation.workflowStage || 'RESERVATION')}</div></div></div>)}</div>}
             </div>
 
             <div style={card}>
-              <h2 style={{ marginTop: 0 }}>Espaces RentalFlow</h2>
+              <h2 style={{ marginTop: 0 }}>{t("Espaces RentalFlow")}</h2>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))', gap: 10 }}>
-                <Quick label="Équipements" text="Inventaire, statuts et tarification" />
-                <Quick label="Calendrier / Réservations" text="Disponibilités et flux complet" />
-                <Quick label="Clients" text="Fiches clients et historique" />
-                <Quick label="Paramètres" text="Abonnements et options" />
+                <Quick label={t("Équipements")} text={t("Inventaire, statuts et tarification")} />
+                <Quick label={t("Calendrier / Réservations")} text={t("Disponibilités et flux complet")} />
+                <Quick label={t("Clients")} text={t("Fiches clients et historique")} />
+                <Quick label={t("Paramètres")} text={t("Abonnements et options")} />
               </div>
             </div>
           </div>
         </Page.Content>
       </Page>
+    </div>
     </WixDesignSystemProvider>
   );
 };

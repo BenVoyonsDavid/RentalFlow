@@ -1,3 +1,4 @@
+import { t } from './i18n';
 export type RentalFlowPlan = 'FREE' | 'STARTER' | 'BUSINESS' | 'PRO';
 
 export type RentalFlowFeature =
@@ -37,7 +38,7 @@ const minimumPlan: Record<RentalFlowFeature, RentalFlowPlan> = {
 };
 
 export const planLabels: Record<RentalFlowPlan, string> = {
-  FREE: 'Gratuit',
+  get FREE() { return t('Gratuit'); },
   STARTER: 'Starter',
   BUSINESS: 'Business',
   PRO: 'Pro',

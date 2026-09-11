@@ -2,7 +2,7 @@ import { extensions } from '@wix/astro/builders';
 
 export default extensions.dashboardPage({
   id: 'aded2636-c1a8-48aa-ae81-db5264196ce4',
-  title: 'Clients',
+  title: 'Clients / Customers',
   routePath: 'customers',
   component: './extensions/dashboard/pages/customers/customers.tsx',
   fullPage: false,

@@ -1,3 +1,6 @@
+import { feedback, formatFeedback, type Feedback } from '../../../../lib/i18n';
+import { t, getLocale } from '../../../../lib/i18n';
+import { LanguageSelector, useLanguage } from '../../../../lib/i18n/react';
 import type { CSSProperties, FC, FormEvent, ReactNode } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { items } from '@wix/data';
@@ -58,11 +61,11 @@ const blankForm: AssetForm = {
 };
 
 const statusLabels: Record<AssetStatus, string> = {
-  AVAILABLE: 'Disponible',
-  RESERVED: 'Réservé',
-  RENTED: 'En location',
-  MAINTENANCE: 'Entretien',
-  INACTIVE: 'Inactif',
+  get AVAILABLE() { return t("Disponible"); },
+  get RESERVED() { return t("Réservé"); },
+  get RENTED() { return t("En location"); },
+  get MAINTENANCE() { return t("Entretien"); },
+  get INACTIVE() { return t("Inactif"); },
 };
 
 const card: CSSProperties = {
@@ -109,7 +112,7 @@ const input: CSSProperties = {
 
 function toCents(value: string): number {
   const amount = Number(value.trim().replace(',', '.'));
-  if (!Number.isFinite(amount) || amount < 0) throw new Error('Le tarif doit être un montant valide.');
+  if (!Number.isFinite(amount) || amount < 0) throw new Error(t("Le tarif doit être un montant valide."));
   return Math.round(amount * 100);
 }
 
@@ -117,13 +120,13 @@ function optionalNumber(value: string): number {
   const normalized = value.trim().replace(',', '.');
   if (!normalized) return 0;
   const number = Number(normalized);
-  if (!Number.isFinite(number) || number < 0) throw new Error('Une valeur de tarification est invalide.');
+  if (!Number.isFinite(number) || number < 0) throw new Error(t("Une valeur de tarification est invalide."));
   return number;
 }
 
 function money(cents?: number, currency = 'CAD'): string {
   if (!cents) return '—';
-  return new Intl.NumberFormat('fr-CA', { style: 'currency', currency }).format(cents / 100);
+  return new Intl.NumberFormat(getLocale(), { style: 'currency', currency }).format(cents / 100);
 }
 
 function rateToInput(cents?: number): string {
@@ -131,6 +134,7 @@ function rateToInput(cents?: number): string {
 }
 
 const EquipmentPage: FC = () => {
+  const language = useLanguage();
   const plan = getCurrentPlan();
   const weeklyEnabled = hasFeature(plan, 'WEEKLY_PRICING');
   const monthlyEnabled = hasFeature(plan, 'MONTHLY_PRICING');
@@ -138,14 +142,14 @@ const EquipmentPage: FC = () => {
 
   const [assets, setAssets] = useState<Asset[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
+  const [error, setError] = useState<Feedback>('');
+  const [success, setSuccess] = useState<Feedback>('');
   const [filter, setFilter] = useState<'ALL' | AssetStatus>('ALL');
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Asset | null>(null);
   const [form, setForm] = useState<AssetForm>(blankForm);
   const [saving, setSaving] = useState(false);
-  const [formError, setFormError] = useState('');
+  const [formError, setFormError] = useState<Feedback>('');
 
   const loadAssets = async () => {
     setLoading(true);
@@ -154,7 +158,7 @@ const EquipmentPage: FC = () => {
       const result = await items.query(COLLECTION).limit(1000).find();
       setAssets(result.items as Asset[]);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Impossible de charger les équipements.');
+      setError(e instanceof Error ? e.message : feedback("Impossible de charger les équipements."));
     } finally {
       setLoading(false);
     }
@@ -176,7 +180,7 @@ const EquipmentPage: FC = () => {
 
   const editAsset = (asset: Asset) => {
     if (!asset._id) {
-      setError('Identifiant Wix manquant pour cet équipement.');
+      setError(feedback("Identifiant Wix manquant pour cet équipement."));
       return;
     }
 
@@ -214,14 +218,14 @@ const EquipmentPage: FC = () => {
 
     const title = form.title.trim();
     const assetNumber = form.assetNumber.trim().toUpperCase();
-    if (!title) return setFormError('Le nom de l’équipement est obligatoire.');
-    if (!assetNumber) return setFormError('Le numéro d’actif est obligatoire.');
+    if (!title) return setFormError(feedback("Le nom de l’équipement est obligatoire."));
+    if (!assetNumber) return setFormError(feedback("Le numéro d’actif est obligatoire."));
 
     setSaving(true);
     try {
       const matches = await items.query(COLLECTION).eq('assetNumber', assetNumber).limit(5).find();
       const conflict = (matches.items as Asset[]).some((asset) => asset._id !== editing?._id);
-      if (conflict) return setFormError(`Le numéro d’actif ${assetNumber} existe déjà.`);
+      if (conflict) return setFormError(feedback("Le numéro d’actif {0} existe déjà.", { 0: assetNumber }));
 
       const payload: Asset = {
         title,
@@ -239,7 +243,7 @@ const EquipmentPage: FC = () => {
         active: form.status !== 'INACTIVE',
       };
 
-      if ((payload.discountPercent ?? 0) > 100) throw new Error('Le rabais ne peut pas dépasser 100 %.');
+      if ((payload.discountPercent ?? 0) > 100) throw new Error(t("Le rabais ne peut pas dépasser 100 %."));
 
       if (editing?._id) {
         const updated = await items.update(COLLECTION, {
@@ -248,18 +252,18 @@ const EquipmentPage: FC = () => {
           image: editing.image,
         }) as Asset;
         setAssets((current) => current.map((asset) => asset._id === editing._id ? updated : asset));
-        setSuccess(`${title} a été modifié.`);
+        setSuccess(feedback("{0} a été modifié.", { 0: title }));
       } else {
         const created = await items.insert(COLLECTION, payload) as Asset;
         setAssets((current) => [...current, created]);
-        setSuccess(`${title} a été ajouté.`);
+        setSuccess(feedback("{0} a été ajouté.", { 0: title }));
       }
 
       setOpen(false);
       setEditing(null);
       setForm(blankForm);
     } catch (e) {
-      setFormError(e instanceof Error ? e.message : 'Erreur pendant l’enregistrement.');
+      setFormError(e instanceof Error ? e.message : feedback("Erreur pendant l’enregistrement."));
     } finally {
       setSaving(false);
     }
@@ -267,7 +271,7 @@ const EquipmentPage: FC = () => {
 
   const deactivate = async (asset: Asset) => {
     if (!asset._id) return;
-    if (!window.confirm(`Désactiver ${asset.title ?? asset.assetNumber ?? 'cet équipement'} ? Il restera dans l’historique.`)) return;
+    if (!window.confirm(t("Désactiver {0} ? Il restera dans l’historique.", { 0: asset.title ?? asset.assetNumber ?? t("cet équipement") }))) return;
 
     setError('');
     setSuccess('');
@@ -290,73 +294,74 @@ const EquipmentPage: FC = () => {
         active: false,
       }) as Asset;
       setAssets((current) => current.map((item) => item._id === asset._id ? updated : item));
-      setSuccess(`${asset.title ?? 'L’équipement'} a été désactivé.`);
+      setSuccess(feedback("{0} a été désactivé.", { 0: asset.title ?? t("L’équipement") }));
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Impossible de désactiver cet équipement.');
+      setError(e instanceof Error ? e.message : feedback("Impossible de désactiver cet équipement."));
     }
   };
 
   return (
     <WixDesignSystemProvider features={{ newColorsBranding: true }}>
+      <div lang={language}>
+      <LanguageSelector />
       <Page>
         <Page.Header
-          title="Équipements"
-          subtitle="Inventaire physique, statuts et tarification de chaque unité."
+          title={t("Équipements")}
+          subtitle={t("Inventaire physique, statuts et tarification de chaque unité.")}
         />
         <Page.Content>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 20, paddingBottom: 40 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 14, alignItems: 'center', flexWrap: 'wrap' }}>
               <div>
-                <strong>Plan : {planLabels[plan]}</strong>
+                <strong>{t("Plan :") + " "}{planLabels[plan]}</strong>
                 <div style={{ color: '#64748b', fontSize: 13, marginTop: 3 }}>
-                  En développement, toutes les fonctions sont déverrouillées pour les tests.
-                </div>
+                  {" " + t("En développement, toutes les fonctions sont déverrouillées pour les tests.") + " "}</div>
               </div>
-              <button style={primary} onClick={addAsset}>+ Ajouter un équipement</button>
+              <button style={primary} onClick={addAsset}>{t("+ Ajouter un équipement")}</button>
             </div>
 
-            {success && <div style={{ ...card, background: '#f0fdf4', borderColor: '#86efac', color: '#166534' }}>{success}</div>}
-            {error && <div style={{ ...card, background: '#fef2f2', borderColor: '#fecaca', color: '#991b1b' }}>{error}</div>}
+            {success && <div style={{ ...card, background: '#f0fdf4', borderColor: '#86efac', color: '#166534' }}>{formatFeedback(success)}</div>}
+            {error && <div style={{ ...card, background: '#fef2f2', borderColor: '#fecaca', color: '#991b1b' }}>{formatFeedback(error)}</div>}
 
             <div style={{ ...card, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-              <strong>Filtrer :</strong>
+              <strong>{t("Filtrer :")}</strong>
               <select style={{ ...input, width: 220 }} value={filter} onChange={(e) => setFilter(e.target.value as 'ALL' | AssetStatus)}>
-                <option value="ALL">Tous</option>
-                <option value="AVAILABLE">Disponibles</option>
-                <option value="RESERVED">Réservés</option>
-                <option value="RENTED">En location</option>
-                <option value="MAINTENANCE">Entretien</option>
-                <option value="INACTIVE">Inactifs</option>
+                <option value="ALL">{t("Tous")}</option>
+                <option value="AVAILABLE">{t("Disponibles")}</option>
+                <option value="RESERVED">{t("Réservés")}</option>
+                <option value="RENTED">{t("En location")}</option>
+                <option value="MAINTENANCE">{t("Entretien")}</option>
+                <option value="INACTIVE">{t("Inactifs")}</option>
               </select>
-              <span style={{ color: '#64748b' }}>{filteredAssets.length} résultat(s)</span>
+              <span style={{ color: '#64748b' }}>{filteredAssets.length} {" " + t("résultat(s)")}</span>
             </div>
 
             <div style={card}>
               {loading ? (
-                <div>Chargement…</div>
+                <div>{t("Chargement…")}</div>
               ) : filteredAssets.length === 0 ? (
-                <div style={{ padding: 40, textAlign: 'center', color: '#64748b' }}>Aucun équipement dans cette vue.</div>
+                <div style={{ padding: 40, textAlign: 'center', color: '#64748b' }}>{t("Aucun équipement dans cette vue.")}</div>
               ) : (
                 <div style={{ overflowX: 'auto' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1100 }}>
                     <thead>
                       <tr style={{ textAlign: 'left', color: '#64748b' }}>
-                        <th style={{ padding: 10 }}>Équipement</th>
-                        <th>Numéro</th>
-                        <th>Statut</th>
-                        <th style={{ textAlign: 'right' }}>Jour</th>
-                        <th style={{ textAlign: 'right' }}>Semaine</th>
-                        <th style={{ textAlign: 'right' }}>Mois</th>
-                        <th>Rabais longue durée</th>
-                        <th style={{ textAlign: 'right' }}>Actions</th>
+                        <th style={{ padding: 10 }}>{t("Équipement")}</th>
+                        <th>{t("Numéro")}</th>
+                        <th>{t("Statut")}</th>
+                        <th style={{ textAlign: 'right' }}>{t("Jour")}</th>
+                        <th style={{ textAlign: 'right' }}>{t("Semaine")}</th>
+                        <th style={{ textAlign: 'right' }}>{t("Mois")}</th>
+                        <th>{t("Rabais longue durée")}</th>
+                        <th style={{ textAlign: 'right' }}>{t("Actions")}</th>
                       </tr>
                     </thead>
                     <tbody>
                       {filteredAssets.map((asset, index) => (
                         <tr key={asset._id ?? `${asset.assetNumber}-${index}`} style={{ borderTop: '1px solid #e5e7eb' }}>
                           <td style={{ padding: 12 }}>
-                            <div style={{ fontWeight: 700 }}>{asset.title || 'Sans nom'}</div>
-                            <div style={{ color: '#64748b', fontSize: 12 }}>{asset.productType || 'Type non défini'}</div>
+                            <div style={{ fontWeight: 700 }}>{asset.title || t("Sans nom")}</div>
+                            <div style={{ color: '#64748b', fontSize: 12 }}>{asset.productType || t("Type non défini")}</div>
                           </td>
                           <td>{asset.assetNumber || '—'}</td>
                           <td>{asset.status ? statusLabels[asset.status] : '—'}</td>
@@ -365,13 +370,13 @@ const EquipmentPage: FC = () => {
                           <td style={{ textAlign: 'right' }}>{money(asset.monthlyRateCents, asset.currency)}</td>
                           <td>
                             {asset.discountAfterDays && asset.discountPercent
-                              ? `${asset.discountPercent}% après ${asset.discountAfterDays} jours`
+                              ? t("{0}% après {1} jours", { 0: asset.discountPercent, 1: asset.discountAfterDays })
                               : '—'}
                           </td>
                           <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                            <button style={{ ...secondary, padding: '7px 11px', marginRight: 8 }} onClick={() => editAsset(asset)}>Modifier</button>
+                            <button style={{ ...secondary, padding: '7px 11px', marginRight: 8 }} onClick={() => editAsset(asset)}>{t("Modifier")}</button>
                             {asset.status !== 'INACTIVE' && (
-                              <button style={{ ...danger, padding: '7px 11px' }} onClick={() => void deactivate(asset)}>Désactiver</button>
+                              <button style={{ ...danger, padding: '7px 11px' }} onClick={() => void deactivate(asset)}>{t("Désactiver")}</button>
                             )}
                           </td>
                         </tr>
@@ -391,46 +396,47 @@ const EquipmentPage: FC = () => {
             <form onSubmit={saveAsset}>
               <div style={{ padding: '20px 24px', borderBottom: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', gap: 16 }}>
                 <div>
-                  <h2 style={{ margin: 0 }}>{editing ? 'Modifier l’équipement' : 'Ajouter un équipement'}</h2>
-                  <div style={{ color: '#64748b', marginTop: 4 }}>Identification, statut et tarification de l’unité physique.</div>
+                  <h2 style={{ margin: 0 }}>{editing ? t("Modifier l’équipement") : t("Ajouter un équipement")}</h2>
+                  <div style={{ color: '#64748b', marginTop: 4 }}>{t("Identification, statut et tarification de l’unité physique.")}</div>
                 </div>
                 <button type="button" onClick={close} disabled={saving} style={{ border: 0, background: 'transparent', fontSize: 26, cursor: 'pointer' }}>×</button>
               </div>
 
               <div style={{ padding: 24 }}>
-                {formError && <div style={{ background: '#fef2f2', color: '#991b1b', padding: 12, borderRadius: 8, marginBottom: 18 }}>{formError}</div>}
+                {formError && <div style={{ background: '#fef2f2', color: '#991b1b', padding: 12, borderRadius: 8, marginBottom: 18 }}>{formatFeedback(formError)}</div>}
 
-                <h3 style={{ marginTop: 0 }}>Informations</h3>
+                <h3 style={{ marginTop: 0 }}>{t("Informations")}</h3>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(240px,1fr))', gap: 18 }}>
-                  <Field label="Nom de l’équipement *"><input autoFocus style={input} value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="Ex. Kayak Pelican" /></Field>
-                  <Field label="Numéro d’actif *"><input style={input} value={form.assetNumber} onChange={(e) => setForm({ ...form, assetNumber: e.target.value })} placeholder="Ex. KAY-001" /></Field>
-                  <Field label="Type de produit"><input style={input} value={form.productType} onChange={(e) => setForm({ ...form, productType: e.target.value })} placeholder="Ex. Kayak" /></Field>
-                  <Field label="Numéro de série"><input style={input} value={form.serialNumber} onChange={(e) => setForm({ ...form, serialNumber: e.target.value })} /></Field>
-                  <Field label="Statut"><select style={input} value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value as AssetStatus })}><option value="AVAILABLE">Disponible</option><option value="RESERVED">Réservé</option><option value="RENTED">En location</option><option value="MAINTENANCE">Entretien</option><option value="INACTIVE">Inactif</option></select></Field>
-                  <Field label="Devise"><select style={input} value={form.currency} onChange={(e) => setForm({ ...form, currency: e.target.value })}><option value="CAD">CAD</option><option value="USD">USD</option><option value="EUR">EUR</option></select></Field>
+                  <Field label={t("Nom de l’équipement *")}><input autoFocus style={input} value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder={t("Ex. Kayak Pelican")} /></Field>
+                  <Field label={t("Numéro d’actif *")}><input style={input} value={form.assetNumber} onChange={(e) => setForm({ ...form, assetNumber: e.target.value })} placeholder={t("Ex. KAY-001")} /></Field>
+                  <Field label={t("Type de produit")}><input style={input} value={form.productType} onChange={(e) => setForm({ ...form, productType: e.target.value })} placeholder={t("Ex. Kayak")} /></Field>
+                  <Field label={t("Numéro de série")}><input style={input} value={form.serialNumber} onChange={(e) => setForm({ ...form, serialNumber: e.target.value })} /></Field>
+                  <Field label={t("Statut")}><select style={input} value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value as AssetStatus })}><option value="AVAILABLE">{t("Disponible")}</option><option value="RESERVED">{t("Réservé")}</option><option value="RENTED">{t("En location")}</option><option value="MAINTENANCE">{t("Entretien")}</option><option value="INACTIVE">{t("Inactif")}</option></select></Field>
+                  <Field label={t("Devise")}><select style={input} value={form.currency} onChange={(e) => setForm({ ...form, currency: e.target.value })}><option value="CAD">CAD</option><option value="USD">USD</option><option value="EUR">EUR</option></select></Field>
                 </div>
 
-                <h3 style={{ marginTop: 26, marginBottom: 6 }}>Tarification</h3>
-                <div style={{ color: '#64748b', fontSize: 13, marginBottom: 16 }}>Le moteur de réservation choisira ensuite le tarif applicable selon la durée.</div>
+                <h3 style={{ marginTop: 26, marginBottom: 6 }}>{t("Tarification")}</h3>
+                <div style={{ color: '#64748b', fontSize: 13, marginBottom: 16 }}>{t("Le moteur de réservation choisira ensuite le tarif applicable selon la durée.")}</div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))', gap: 18 }}>
-                  <Field label="Tarif journalier"><input style={input} inputMode="decimal" value={form.dailyRate} onChange={(e) => setForm({ ...form, dailyRate: e.target.value })} placeholder="49,99" /></Field>
-                  <PremiumField enabled={weeklyEnabled} feature="WEEKLY_PRICING"><Field label="Tarif hebdomadaire"><input disabled={!weeklyEnabled} style={{ ...input, opacity: weeklyEnabled ? 1 : .55 }} inputMode="decimal" value={form.weeklyRate} onChange={(e) => setForm({ ...form, weeklyRate: e.target.value })} placeholder="299,99" /></Field></PremiumField>
-                  <PremiumField enabled={monthlyEnabled} feature="MONTHLY_PRICING"><Field label="Tarif mensuel"><input disabled={!monthlyEnabled} style={{ ...input, opacity: monthlyEnabled ? 1 : .55 }} inputMode="decimal" value={form.monthlyRate} onChange={(e) => setForm({ ...form, monthlyRate: e.target.value })} placeholder="899,99" /></Field></PremiumField>
-                  <PremiumField enabled={discountEnabled} feature="LONG_TERM_DISCOUNT"><Field label="Rabais après X jours"><input disabled={!discountEnabled} style={{ ...input, opacity: discountEnabled ? 1 : .55 }} inputMode="numeric" value={form.discountAfterDays} onChange={(e) => setForm({ ...form, discountAfterDays: e.target.value })} placeholder="Ex. 10" /></Field></PremiumField>
-                  <PremiumField enabled={discountEnabled} feature="LONG_TERM_DISCOUNT"><Field label="Rabais longue durée (%)"><input disabled={!discountEnabled} style={{ ...input, opacity: discountEnabled ? 1 : .55 }} inputMode="decimal" value={form.discountPercent} onChange={(e) => setForm({ ...form, discountPercent: e.target.value })} placeholder="Ex. 15" /></Field></PremiumField>
+                  <Field label={t("Tarif journalier")}><input style={input} inputMode="decimal" value={form.dailyRate} onChange={(e) => setForm({ ...form, dailyRate: e.target.value })} placeholder="49,99" /></Field>
+                  <PremiumField enabled={weeklyEnabled} feature="WEEKLY_PRICING"><Field label={t("Tarif hebdomadaire")}><input disabled={!weeklyEnabled} style={{ ...input, opacity: weeklyEnabled ? 1 : .55 }} inputMode="decimal" value={form.weeklyRate} onChange={(e) => setForm({ ...form, weeklyRate: e.target.value })} placeholder="299,99" /></Field></PremiumField>
+                  <PremiumField enabled={monthlyEnabled} feature="MONTHLY_PRICING"><Field label={t("Tarif mensuel")}><input disabled={!monthlyEnabled} style={{ ...input, opacity: monthlyEnabled ? 1 : .55 }} inputMode="decimal" value={form.monthlyRate} onChange={(e) => setForm({ ...form, monthlyRate: e.target.value })} placeholder="899,99" /></Field></PremiumField>
+                  <PremiumField enabled={discountEnabled} feature="LONG_TERM_DISCOUNT"><Field label={t("Rabais après X jours")}><input disabled={!discountEnabled} style={{ ...input, opacity: discountEnabled ? 1 : .55 }} inputMode="numeric" value={form.discountAfterDays} onChange={(e) => setForm({ ...form, discountAfterDays: e.target.value })} placeholder={t("Ex. 10")} /></Field></PremiumField>
+                  <PremiumField enabled={discountEnabled} feature="LONG_TERM_DISCOUNT"><Field label={t("Rabais longue durée (%)")}><input disabled={!discountEnabled} style={{ ...input, opacity: discountEnabled ? 1 : .55 }} inputMode="decimal" value={form.discountPercent} onChange={(e) => setForm({ ...form, discountPercent: e.target.value })} placeholder={t("Ex. 15")} /></Field></PremiumField>
                 </div>
 
-                <div style={{ marginTop: 20 }}><Field label="Notes"><textarea style={{ ...input, minHeight: 100, resize: 'vertical' }} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></Field></div>
+                <div style={{ marginTop: 20 }}><Field label={t("Notes")}><textarea style={{ ...input, minHeight: 100, resize: 'vertical' }} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></Field></div>
               </div>
 
               <div style={{ padding: '16px 24px', borderTop: '1px solid #e5e7eb', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
-                <button type="button" style={secondary} onClick={close} disabled={saving}>Annuler</button>
-                <button type="submit" style={primary} disabled={saving}>{saving ? 'Enregistrement…' : editing ? 'Enregistrer' : 'Ajouter'}</button>
+                <button type="button" style={secondary} onClick={close} disabled={saving}>{t("Annuler")}</button>
+                <button type="submit" style={primary} disabled={saving}>{saving ? t("Enregistrement…") : editing ? t("Enregistrer") : t("Ajouter")}</button>
               </div>
             </form>
           </div>
         </div>
       )}
+    </div>
     </WixDesignSystemProvider>
   );
 };
@@ -447,8 +453,7 @@ const PremiumField: FC<{ enabled: boolean; feature: Parameters<typeof requiredPl
     {children}
     {!enabled && (
       <div style={{ marginTop: 6, fontSize: 12, color: '#7c3aed' }}>
-        🔒 Plan {planLabels[requiredPlan(feature)]} requis
-      </div>
+        {" " + t("🔒 Plan") + " "}{planLabels[requiredPlan(feature)]} {" " + t("requis") + " "}</div>
     )}
   </div>
 );
