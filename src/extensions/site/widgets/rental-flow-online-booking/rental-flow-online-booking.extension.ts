@@ -11,8 +11,6 @@ export default extensions.customElement({
   height: {
     defaultHeight: 940,
   },
-  // Keep the generated Wix CLI behavior during development so the widget
-  // remains registered in the editor's App Widgets panel.
   installation: {
     autoAdd: true,
   },
@@ -24,6 +22,6 @@ export default extensions.customElement({
     },
   ],
   tagName: 'rental-flow-online-booking',
-  element: './extensions/site/widgets/rental-flow-online-booking/rental-flow-online-booking.tsx',
+  element: './extensions/site/widgets/rental-flow-online-booking/rental-flow-online-booking.runtime.tsx',
   settings: './extensions/site/widgets/rental-flow-online-booking/rental-flow-online-booking.panel.tsx',
 });
