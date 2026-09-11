@@ -5,7 +5,7 @@ import reservationsPage from './extensions/dashboard/pages/reservations/reservat
 import calendarPage from './extensions/dashboard/pages/calendar/calendar.extension.ts';
 import customersPage from './extensions/dashboard/pages/customers/customers.extension.ts';
 import settingsPage from './extensions/dashboard/pages/settings/settings.extension.ts';
-import bookingWidget from './extensions/site/widgets/rentalflow-booking/rentalflow-booking.extension.ts';
+import bookingWidget from './extensions/site/widgets/rental-flow-online-booking/rental-flow-online-booking.extension.ts';
 import dataCollections from './extensions/backend/data-collections/data-collections.extension.ts';
 
 export default app()
