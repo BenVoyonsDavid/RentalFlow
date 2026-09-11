@@ -1,4 +1,5 @@
 import type { APIRoute } from 'astro';
+import { appInstances } from '@wix/app-management';
 import { items } from '@wix/data';
 import { auth } from '@wix/essentials';
 import { calculateRentalPrice, getBlockedRange, rangesOverlap } from '../../lib/rental-pricing';
@@ -10,6 +11,7 @@ import {
   type DepositType,
   type PaymentMode,
 } from '../../lib/reservation-finance';
+import { hasFeature, planFromAppInstanceResponse, type RentalFlowPlan } from '../../lib/plans';
 
 const ASSETS = '@pilotedavid1/rental-flow/assets';
 const CUSTOMERS = '@pilotedavid1/rental-flow/customers';
@@ -19,6 +21,9 @@ const DOCUMENT_TEMPLATES = '@pilotedavid1/rental-flow/document-templates';
 const SETTINGS = '@pilotedavid1/rental-flow/app-settings';
 const PAYMENTS = '@pilotedavid1/rental-flow/payments';
 const ACTIVITY = '@pilotedavid1/rental-flow/activity-log';
+const BOOKING_LOCKS = '@pilotedavid1/rental-flow/booking-locks';
+
+const BOOKING_LOCK_TTL_MS = 2 * 60 * 1000;
 
 type Asset = {
   _id?: string;
@@ -41,6 +46,13 @@ type ReservationItem = {
   status?: string;
   blockedStartDateTime?: Date | string;
   blockedEndDateTime?: Date | string;
+};
+
+type BookingLock = {
+  _id?: string;
+  assetId?: string;
+  lockToken?: string;
+  expiresAt?: Date | string;
 };
 
 type AppSettings = {
@@ -113,10 +125,7 @@ const defaultSettings: AppSettings = {
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
     status,
-    headers: {
-      'content-type': 'application/json; charset=utf-8',
-      'cache-control': 'no-store',
-    },
+    headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },
   });
 }
 
@@ -135,6 +144,10 @@ function generatedNumber(prefix: string): string {
   return `${prefix}-${stamp}-${Math.floor(1000 + Math.random() * 9000)}`;
 }
 
+function lockToken(): string {
+  return globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
 async function elevatedFind(query: any): Promise<any> {
   const run = auth.elevate(query.find.bind(query));
   return run();
@@ -150,9 +163,25 @@ async function elevatedUpdate(collectionId: string, item: Record<string, unknown
   return update(collectionId, item);
 }
 
+async function elevatedRemove(collectionId: string, itemId: string): Promise<any> {
+  const remove = auth.elevate(items.remove);
+  return remove(collectionId, itemId);
+}
+
 async function requireAppInstance(): Promise<void> {
   const tokenInfo = await auth.getTokenInfo();
   if (!tokenInfo?.instanceId) throw new Error('UNAUTHORIZED');
+}
+
+async function loadCurrentPlan(): Promise<RentalFlowPlan> {
+  try {
+    const getInstance = auth.elevate(appInstances.getAppInstance);
+    const response = await getInstance();
+    return planFromAppInstanceResponse(response);
+  } catch (error) {
+    console.error('RentalFlow public booking could not resolve Wix plan.', error);
+    return 'FREE';
+  }
 }
 
 async function loadSettingsAndTemplates(): Promise<{ settings: AppSettings; templates: DocumentTemplate[] }> {
@@ -168,28 +197,36 @@ async function loadSettingsAndTemplates(): Promise<{ settings: AppSettings; temp
 }
 
 function requiredFieldsForDefaults(settings: AppSettings, templates: DocumentTemplate[]): string[] {
-  const ids = [
-    settings.defaultQuoteTemplateId,
-    settings.defaultContractTemplateId,
-    settings.defaultInvoiceTemplateId,
-  ].filter(Boolean);
-
+  const ids = [settings.defaultQuoteTemplateId, settings.defaultContractTemplateId, settings.defaultInvoiceTemplateId].filter(Boolean);
   const fields = ids.flatMap((id) => {
     const template = templates.find((candidate) => candidate._id === id && candidate.active !== false);
     return parseRequiredFields(template?.requiredFieldsCsv);
   });
-
   return [...new Set(fields)];
 }
 
 async function loadActiveAssets(): Promise<Asset[]> {
-  const result = await elevatedFind(items.query(ASSETS).limit(1000));
-  return (result.items as Asset[]).filter((asset) => asset.active !== false && asset.status !== 'INACTIVE');
+  const result = await elevatedFind(items.query(ASSETS).ne('active', false).ne('status', 'INACTIVE').limit(1000));
+  return result.items as Asset[];
 }
 
-async function loadBlockingItems(): Promise<ReservationItem[]> {
-  const result = await elevatedFind(items.query(RESERVATION_ITEMS).limit(1000));
+async function loadBlockingItems(start: Date, end: Date, before: number, after: number): Promise<ReservationItem[]> {
+  const requested = getBlockedRange(start, end, before, after);
+  const result = await elevatedFind(
+    items.query(RESERVATION_ITEMS)
+      .lt('blockedStartDateTime', requested.blockedEnd)
+      .gt('blockedEndDateTime', requested.blockedStart)
+      .limit(1000)
+  );
   return result.items as ReservationItem[];
+}
+
+function pricingOptions(plan: RentalFlowPlan) {
+  return {
+    allowWeekly: hasFeature(plan, 'WEEKLY_PRICING'),
+    allowMonthly: hasFeature(plan, 'MONTHLY_PRICING'),
+    allowLongTermDiscount: hasFeature(plan, 'LONG_TERM_DISCOUNT'),
+  };
 }
 
 function isAssetAvailable(
@@ -220,7 +257,52 @@ function validatePeriod(startValue?: string, endValue?: string): { start: Date; 
   return { start, end };
 }
 
-function publicAsset(asset: Asset, start?: Date, end?: Date, settings?: AppSettings, blockingItems: ReservationItem[] = []) {
+async function acquireBookingLocks(assetIds: string[]): Promise<BookingLock[]> {
+  const acquired: BookingLock[] = [];
+  const token = lockToken();
+  const expiresAt = new Date(Date.now() + BOOKING_LOCK_TTL_MS);
+
+  try {
+    for (const assetId of [...assetIds].sort()) {
+      const existingResult = await elevatedFind(items.query(BOOKING_LOCKS).eq('assetId', assetId).limit(1));
+      const existing = existingResult.items?.[0] as BookingLock | undefined;
+      if (existing?._id) {
+        const expiry = asDate(existing.expiresAt);
+        if (expiry.getTime() && expiry.getTime() <= Date.now()) {
+          await elevatedRemove(BOOKING_LOCKS, existing._id);
+        }
+      }
+
+      try {
+        const created = await elevatedInsert(BOOKING_LOCKS, { assetId, lockToken: token, expiresAt });
+        acquired.push(created as BookingLock);
+      } catch {
+        throw new Error('BOOKING_BUSY');
+      }
+    }
+    return acquired;
+  } catch (error) {
+    for (const lock of acquired) {
+      if (lock._id) await elevatedRemove(BOOKING_LOCKS, lock._id).catch(() => undefined);
+    }
+    throw error;
+  }
+}
+
+async function releaseBookingLocks(locks: BookingLock[]): Promise<void> {
+  for (const lock of locks) {
+    if (lock._id) await elevatedRemove(BOOKING_LOCKS, lock._id).catch(() => undefined);
+  }
+}
+
+function publicAsset(
+  asset: Asset,
+  plan: RentalFlowPlan,
+  start?: Date,
+  end?: Date,
+  settings?: AppSettings,
+  blockingItems: ReservationItem[] = []
+) {
   const before = settings?.defaultBufferBeforeHours || 0;
   const after = settings?.defaultBufferAfterHours || 0;
   let available: boolean | null = null;
@@ -231,11 +313,7 @@ function publicAsset(asset: Asset, start?: Date, end?: Date, settings?: AppSetti
   if (asset._id && start && end && settings) {
     available = isAssetAvailable(asset._id, start, end, before, after, blockingItems);
     try {
-      const price = calculateRentalPrice(asset, start, end, {
-        allowWeekly: true,
-        allowMonthly: true,
-        allowLongTermDiscount: true,
-      });
+      const price = calculateRentalPrice(asset, start, end, pricingOptions(plan));
       billableDays = price.billableDays;
       lineTotalCents = price.totalCents;
       pricingMode = price.pricingMode;
@@ -250,8 +328,8 @@ function publicAsset(asset: Asset, start?: Date, end?: Date, settings?: AppSetti
     productType: asset.productType || '',
     currency: asset.currency || settings?.currency || 'CAD',
     dailyRateCents: asset.dailyRateCents || 0,
-    weeklyRateCents: asset.weeklyRateCents || 0,
-    monthlyRateCents: asset.monthlyRateCents || 0,
+    weeklyRateCents: hasFeature(plan, 'WEEKLY_PRICING') ? asset.weeklyRateCents || 0 : 0,
+    monthlyRateCents: hasFeature(plan, 'MONTHLY_PRICING') ? asset.monthlyRateCents || 0 : 0,
     available,
     billableDays,
     lineTotalCents,
@@ -265,8 +343,11 @@ export const GET: APIRoute = async ({ request }) => {
     const url = new URL(request.url);
     const startValue = url.searchParams.get('start') || undefined;
     const endValue = url.searchParams.get('end') || undefined;
-    const { settings, templates } = await loadSettingsAndTemplates();
-    const assets = await loadActiveAssets();
+    const [{ settings, templates }, assets, plan] = await Promise.all([
+      loadSettingsAndTemplates(),
+      loadActiveAssets(),
+      loadCurrentPlan(),
+    ]);
 
     let start: Date | undefined;
     let end: Date | undefined;
@@ -275,14 +356,14 @@ export const GET: APIRoute = async ({ request }) => {
       const period = validatePeriod(startValue, endValue);
       start = period.start;
       end = period.end;
-      blockingItems = await loadBlockingItems();
+      blockingItems = await loadBlockingItems(start, end, settings.defaultBufferBeforeHours || 0, settings.defaultBufferAfterHours || 0);
     }
 
+    const paymentsEnabled = hasFeature(plan, 'PAYMENTS');
+    const depositEnabled = paymentsEnabled && hasFeature(plan, 'SECURITY_DEPOSIT') && settings.defaultDepositEnabled === true;
+
     return json({
-      company: {
-        name: settings.companyName || 'Location en ligne',
-        logoUrl: settings.logoUrl || '',
-      },
+      company: { name: settings.companyName || 'Location en ligne', logoUrl: settings.logoUrl || '' },
       settings: {
         currency: settings.currency || 'CAD',
         taxesEnabled: settings.taxesEnabled !== false,
@@ -291,18 +372,17 @@ export const GET: APIRoute = async ({ request }) => {
         tax2Name: settings.tax2Name || '',
         tax2Rate: settings.tax2Rate || 0,
         tax2Compound: settings.tax2Compound === true,
-        depositEnabled: settings.defaultDepositEnabled === true,
+        paymentsEnabled,
+        depositEnabled,
         depositType: settings.defaultDepositType || 'PERCENT',
         depositValue: settings.defaultDepositValue || 0,
         requiredFields: requiredFieldsForDefaults(settings, templates),
       },
-      assets: assets.map((asset) => publicAsset(asset, start, end, settings, blockingItems)),
+      assets: assets.map((asset) => publicAsset(asset, plan, start, end, settings, blockingItems)),
     });
   } catch (error) {
     if (error instanceof Error && error.message === 'UNAUTHORIZED') return json({ error: 'Unauthorized' }, 401);
-    if (error instanceof Error && ['INVALID_PERIOD', 'PERIOD_TOO_LONG', 'PAST_PERIOD'].includes(error.message)) {
-      return json({ error: error.message }, 400);
-    }
+    if (error instanceof Error && ['INVALID_PERIOD', 'PERIOD_TOO_LONG', 'PAST_PERIOD'].includes(error.message)) return json({ error: error.message }, 400);
     console.error('RentalFlow public booking GET failed', error);
     return json({ error: 'Impossible de charger la réservation en ligne.' }, 500);
   }
@@ -311,6 +391,7 @@ export const GET: APIRoute = async ({ request }) => {
 export const POST: APIRoute = async ({ request }) => {
   let createdReservation: any = null;
   const createdItems: any[] = [];
+  let acquiredLocks: BookingLock[] = [];
 
   try {
     await requireAppInstance();
@@ -333,10 +414,10 @@ export const POST: APIRoute = async ({ request }) => {
     if (!customer.name) return json({ error: 'Le nom du client est obligatoire.' }, 400);
     if (!customer.email || !customer.email.includes('@')) return json({ error: 'Un courriel valide est obligatoire.' }, 400);
 
-    const [{ settings, templates }, activeAssets, blockingItems] = await Promise.all([
+    const [{ settings, templates }, activeAssets, plan] = await Promise.all([
       loadSettingsAndTemplates(),
       loadActiveAssets(),
-      loadBlockingItems(),
+      loadCurrentPlan(),
     ]);
 
     const requiredFields = requiredFieldsForDefaults(settings, templates);
@@ -358,25 +439,23 @@ export const POST: APIRoute = async ({ request }) => {
     const selectedAssets = assetIds.map((id) => activeAssets.find((asset) => asset._id === id)).filter((asset): asset is Asset => !!asset);
     if (selectedAssets.length !== assetIds.length) return json({ error: 'Un équipement sélectionné n’est plus disponible.' }, 409);
 
+    acquiredLocks = await acquireBookingLocks(assetIds);
+
     const before = settings.defaultBufferBeforeHours || 0;
     const after = settings.defaultBufferAfterHours || 0;
+    const blockingItems = await loadBlockingItems(start, end, before, after);
     for (const asset of selectedAssets) {
       if (!asset._id || !isAssetAvailable(asset._id, start, end, before, after, blockingItems)) {
         return json({ error: `${asset.title || 'Un équipement'} n’est plus disponible pour cette période.` }, 409);
       }
     }
 
-    const priceLines = selectedAssets.map((asset) => ({
-      asset,
-      ...calculateRentalPrice(asset, start, end, {
-        allowWeekly: true,
-        allowMonthly: true,
-        allowLongTermDiscount: true,
-      }),
-    }));
+    const priceLines = selectedAssets.map((asset) => ({ asset, ...calculateRentalPrice(asset, start, end, pricingOptions(plan)) }));
     const subtotalCents = priceLines.reduce((sum, line) => sum + line.totalCents, 0);
     const taxResult = calculateTaxes(subtotalCents, settings);
-    const paymentMode: PaymentMode = body.paymentMode === 'DEPOSIT' && settings.defaultDepositEnabled ? 'DEPOSIT' : 'FULL';
+    const paymentsEnabled = hasFeature(plan, 'PAYMENTS');
+    const depositsEnabled = paymentsEnabled && hasFeature(plan, 'SECURITY_DEPOSIT') && settings.defaultDepositEnabled === true;
+    const paymentMode: PaymentMode = !paymentsEnabled ? 'NONE' : body.paymentMode === 'DEPOSIT' && depositsEnabled ? 'DEPOSIT' : 'FULL';
     const depositType = settings.defaultDepositType || 'PERCENT';
     const depositValue = settings.defaultDepositValue || 0;
     const depositResult = calculateDeposit(taxResult.totalCents, paymentMode, depositType, depositValue);
@@ -389,28 +468,18 @@ export const POST: APIRoute = async ({ request }) => {
 
     if (!customerId) {
       const createdCustomer = await elevatedInsert(CUSTOMERS, {
-        customerNumber: generatedNumber('C'),
-        firstName: customer.name,
-        lastName: '',
-        companyName: '',
-        email: customer.email,
-        phone: customer.phone,
-        addressLine1: customer.addressLine1,
-        addressLine2: customer.addressLine2,
-        city: customer.city,
-        region: customer.region,
-        postalCode: customer.postalCode,
-        country: customer.country,
-        discountPercent: 0,
-        active: true,
+        customerNumber: generatedNumber('C'), firstName: customer.name, lastName: '', companyName: '', email: customer.email,
+        phone: customer.phone, addressLine1: customer.addressLine1, addressLine2: customer.addressLine2, city: customer.city,
+        region: customer.region, postalCode: customer.postalCode, country: customer.country, discountPercent: 0, active: true,
       });
       customerId = createdCustomer._id || '';
       customerNumber = createdCustomer.customerNumber || '';
     }
 
-    const quoteTemplate = templates.find((template) => template._id === settings.defaultQuoteTemplateId && template.active !== false);
-    const contractTemplate = templates.find((template) => template._id === settings.defaultContractTemplateId && template.active !== false);
-    const invoiceTemplate = templates.find((template) => template._id === settings.defaultInvoiceTemplateId && template.active !== false);
+    const documentsEnabled = hasFeature(plan, 'DOCUMENTS');
+    const quoteTemplate = documentsEnabled ? templates.find((template) => template._id === settings.defaultQuoteTemplateId && template.active !== false) : undefined;
+    const contractTemplate = documentsEnabled ? templates.find((template) => template._id === settings.defaultContractTemplateId && template.active !== false) : undefined;
+    const invoiceTemplate = documentsEnabled ? templates.find((template) => template._id === settings.defaultInvoiceTemplateId && template.active !== false) : undefined;
     const reservationNumber = generatedNumber('RF');
 
     createdReservation = await elevatedInsert(RESERVATIONS, {
@@ -431,7 +500,7 @@ export const POST: APIRoute = async ({ request }) => {
       bufferBeforeHours: before,
       bufferAfterHours: after,
       status: 'CONFIRMED',
-      workflowStage: 'PAYMENT',
+      workflowStage: paymentsEnabled ? 'PAYMENT' : 'RESERVATION',
       quoteTemplateId: quoteTemplate?._id || '',
       quoteTemplateName: quoteTemplate?.name || '',
       contractTemplateId: contractTemplate?._id || '',
@@ -495,15 +564,8 @@ export const POST: APIRoute = async ({ request }) => {
     });
 
     const amount = depositResult.amountDueNowCents;
-    if (amount <= 0) {
-      return json({
-        reservationNumber,
-        totalCents: taxResult.totalCents,
-        amountDueNowCents: 0,
-        balanceDueCents: depositResult.balanceDueCents,
-        currency,
-        checkoutUrl: '',
-      }, 201);
+    if (!paymentsEnabled || amount <= 0) {
+      return json({ reservationNumber, totalCents: taxResult.totalCents, amountDueNowCents: 0, balanceDueCents: taxResult.totalCents, currency, checkoutUrl: '' }, 201);
     }
 
     const wixGetPaid = await import('@wix/get-paid') as any;
@@ -519,14 +581,7 @@ export const POST: APIRoute = async ({ request }) => {
       paymentsLimit: 1,
       displayData: {},
       ecomPaymentLink: {
-        lineItems: [{
-          type: 'CUSTOM',
-          customItem: {
-            name: `${label} ${reservationNumber}`,
-            quantity: 1,
-            price: (amount / 100).toFixed(2),
-          },
-        }],
+        lineItems: [{ type: 'CUSTOM', customItem: { name: `${label} ${reservationNumber}`, quantity: 1, price: (amount / 100).toFixed(2) } }],
       },
     });
 
@@ -576,14 +631,7 @@ export const POST: APIRoute = async ({ request }) => {
       eventDate: new Date(),
     });
 
-    return json({
-      reservationNumber,
-      totalCents: taxResult.totalCents,
-      amountDueNowCents: amount,
-      balanceDueCents: Math.max(0, taxResult.totalCents - amount),
-      currency,
-      checkoutUrl,
-    }, 201);
+    return json({ reservationNumber, totalCents: taxResult.totalCents, amountDueNowCents: amount, balanceDueCents: Math.max(0, taxResult.totalCents - amount), currency, checkoutUrl }, 201);
   } catch (error) {
     console.error('RentalFlow public booking POST failed', error);
 
@@ -599,12 +647,11 @@ export const POST: APIRoute = async ({ request }) => {
     }
 
     if (error instanceof Error && error.message === 'UNAUTHORIZED') return json({ error: 'Unauthorized' }, 401);
-    if (error instanceof Error && ['INVALID_PERIOD', 'PERIOD_TOO_LONG', 'PAST_PERIOD'].includes(error.message)) {
-      return json({ error: error.message }, 400);
-    }
-    if (error instanceof Error && error.message.startsWith('PAYLINK')) {
-      return json({ error: 'La réservation n’a pas été confirmée parce que le paiement Wix n’a pas pu être préparé.' }, 502);
-    }
+    if (error instanceof Error && error.message === 'BOOKING_BUSY') return json({ error: 'Cette disponibilité est en cours de réservation. Réessayez dans quelques secondes.' }, 409);
+    if (error instanceof Error && ['INVALID_PERIOD', 'PERIOD_TOO_LONG', 'PAST_PERIOD'].includes(error.message)) return json({ error: error.message }, 400);
+    if (error instanceof Error && error.message.startsWith('PAYLINK')) return json({ error: 'La réservation n’a pas été confirmée parce que le paiement Wix n’a pas pu être préparé.' }, 502);
     return json({ error: 'Impossible de compléter la réservation en ligne.' }, 500);
+  } finally {
+    await releaseBookingLocks(acquiredLocks);
   }
 };

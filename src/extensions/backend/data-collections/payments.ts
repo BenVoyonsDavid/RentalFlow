@@ -32,6 +32,22 @@ export default {
     itemRemove: 'CMS_EDITOR',
     itemUpdate: 'CMS_EDITOR',
   },
-  indexes: [],
+  indexes: [
+    {
+      fields: [{ path: 'paymentNumber', order: 'ASC' }],
+      unique: true,
+      caseInsensitive: true,
+    },
+    {
+      fields: [{ path: 'reservationId', order: 'ASC' }, { path: 'paymentDate', order: 'DESC' }],
+      unique: false,
+      caseInsensitive: false,
+    },
+    {
+      fields: [{ path: 'wixPaymentLinkId', order: 'ASC' }],
+      unique: false,
+      caseInsensitive: false,
+    },
+  ],
   initialData: [],
 } satisfies DataCollection;

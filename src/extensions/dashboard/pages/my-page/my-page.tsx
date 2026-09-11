@@ -1,6 +1,7 @@
 import type { CSSProperties, FC } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { items } from '@wix/data';
+import { httpClient } from '@wix/essentials';
 import { Page, WixDesignSystemProvider } from '@wix/design-system';
 import '@wix/design-system/styles.global.css';
 
@@ -42,6 +43,12 @@ const DashboardPage: FC = () => {
     let active = true;
     const load = async () => {
       try {
+        try {
+          await httpClient.fetchWithAuth(`${import.meta.env.BASE_API_URL}/api/reconcile-payments`, { method: 'POST' });
+        } catch (paymentSyncError) {
+          console.warn('RentalFlow payment reconciliation skipped.', paymentSyncError);
+        }
+
         const [assetResult, reservationResult] = await Promise.all([
           items.query(ASSETS).limit(1000).find(),
           items.query(RESERVATIONS).limit(1000).find(),

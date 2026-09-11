@@ -9,6 +9,7 @@ import inspectionsCollection from './inspections';
 import activityLogCollection from './activity-log';
 import appSettingsCollection from './app-settings';
 import documentTemplatesCollection from './document-templates';
+import bookingLocksCollection from './booking-locks';
 
 export default extensions.dataCollections({
   id: 'c1fe36e1-148a-4fed-91aa-ade5edec2a02',
@@ -24,5 +25,6 @@ export default extensions.dataCollections({
     activityLogCollection,
     appSettingsCollection,
     documentTemplatesCollection,
+    bookingLocksCollection,
   ],
 });

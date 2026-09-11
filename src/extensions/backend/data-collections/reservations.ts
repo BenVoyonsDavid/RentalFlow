@@ -24,14 +24,12 @@ export default {
     { type: 'NUMBER', displayName: 'Buffer après en heures', key: 'bufferAfterHours' },
     { type: 'TEXT', displayName: 'Statut', key: 'status' },
     { type: 'TEXT', displayName: 'Étape du flux', key: 'workflowStage' },
-
     { type: 'TEXT', displayName: 'Modèle devis ID', key: 'quoteTemplateId' },
     { type: 'TEXT', displayName: 'Modèle devis', key: 'quoteTemplateName' },
     { type: 'TEXT', displayName: 'Modèle contrat ID', key: 'contractTemplateId' },
     { type: 'TEXT', displayName: 'Modèle contrat', key: 'contractTemplateName' },
     { type: 'TEXT', displayName: 'Modèle facture ID', key: 'invoiceTemplateId' },
     { type: 'TEXT', displayName: 'Modèle facture', key: 'invoiceTemplateName' },
-
     { type: 'NUMBER', displayName: 'Sous-total en cents', key: 'subtotalCents' },
     { type: 'NUMBER', displayName: 'Rabais client en pourcentage', key: 'customerDiscountPercent' },
     { type: 'NUMBER', displayName: 'Rabais client en cents', key: 'discountCents' },
@@ -45,7 +43,6 @@ export default {
     { type: 'NUMBER', displayName: 'Taxes totales en cents', key: 'taxTotalCents' },
     { type: 'NUMBER', displayName: 'Total en cents', key: 'totalCents' },
     { type: 'TEXT', displayName: 'Devise', key: 'currency' },
-
     { type: 'BOOLEAN', displayName: 'Dépôt requis', key: 'depositRequired' },
     { type: 'TEXT', displayName: 'Type de dépôt', key: 'depositType' },
     { type: 'NUMBER', displayName: 'Valeur du dépôt', key: 'depositValue' },
@@ -53,7 +50,6 @@ export default {
     { type: 'NUMBER', displayName: 'Montant dû maintenant en cents', key: 'amountDueNowCents' },
     { type: 'NUMBER', displayName: 'Solde à payer en cents', key: 'balanceDueCents' },
     { type: 'TEXT', displayName: 'Mode de paiement', key: 'paymentMode' },
-
     { type: 'DATETIME', displayName: 'Date du départ', key: 'checkoutDateTime' },
     { type: 'DATETIME', displayName: 'Date du retour', key: 'returnDateTime' },
     { type: 'DATETIME', displayName: 'Date de clôture', key: 'closedDateTime' },
@@ -66,6 +62,22 @@ export default {
     itemRemove: 'CMS_EDITOR',
     itemUpdate: 'CMS_EDITOR',
   },
-  indexes: [],
+  indexes: [
+    {
+      fields: [{ path: 'reservationNumber', order: 'ASC' }],
+      unique: true,
+      caseInsensitive: true,
+    },
+    {
+      fields: [{ path: 'startDateTime', order: 'ASC' }, { path: 'status', order: 'ASC' }],
+      unique: false,
+      caseInsensitive: false,
+    },
+    {
+      fields: [{ path: 'customerId', order: 'ASC' }, { path: 'startDateTime', order: 'DESC' }],
+      unique: false,
+      caseInsensitive: false,
+    },
+  ],
   initialData: [],
 } satisfies DataCollection;

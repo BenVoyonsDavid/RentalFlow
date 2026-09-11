@@ -22,6 +22,7 @@ type BookingSettings = {
   tax2Name: string;
   tax2Rate: number;
   tax2Compound: boolean;
+  paymentsEnabled: boolean;
   depositEnabled: boolean;
   depositType: 'PERCENT' | 'FIXED';
   depositValue: number;
@@ -64,6 +65,7 @@ const initialSettings: BookingSettings = {
   tax2Name: 'TVQ',
   tax2Rate: 9.975,
   tax2Compound: false,
+  paymentsEnabled: false,
   depositEnabled: false,
   depositType: 'PERCENT',
   depositValue: 25,
@@ -208,6 +210,7 @@ class RentalFlowBookingElement extends HTMLElement {
   }
 
   private dueNowCents(): number {
+    if (!this.data.settings.paymentsEnabled) return 0;
     const total = this.taxPreview().total;
     if (this.paymentMode !== 'DEPOSIT' || !this.data.settings.depositEnabled) return total;
     const value = this.data.settings.depositValue || 0;
@@ -255,7 +258,7 @@ class RentalFlowBookingElement extends HTMLElement {
         startDateTime: new Date(this.startValue).toISOString(),
         endDateTime: new Date(this.endValue).toISOString(),
         assetIds: [...this.selected],
-        paymentMode: this.paymentMode,
+        paymentMode: this.data.settings.paymentsEnabled ? this.paymentMode : undefined,
         customer,
         notes: this.customerDraft.notes.trim(),
       };
@@ -297,6 +300,7 @@ class RentalFlowBookingElement extends HTMLElement {
     const taxes = this.taxPreview();
     const dueNow = this.dueNowCents();
     const balance = Math.max(0, taxes.total - dueNow);
+    const paymentsEnabled = this.data.settings.paymentsEnabled;
 
     const assetCards = assets.map((asset) => {
       const selected = this.selected.has(asset.id);
@@ -329,7 +333,7 @@ class RentalFlowBookingElement extends HTMLElement {
         header img{max-width:150px;max-height:66px;object-fit:contain}h1{font-size:26px;margin:0 0 4px}p{margin:0}.muted{color:var(--muted)}main{padding:24px}.section{margin-bottom:26px}.step{font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--rf);margin-bottom:7px}h2{font-size:20px;margin:0 0 14px}
         .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.field{display:flex;flex-direction:column;gap:6px}.field.full{grid-column:1/-1}label{font-size:13px;font-weight:700}input,textarea,select{width:100%;border:1px solid #c9d2df;border-radius:10px;padding:11px 12px;font:inherit;background:#fff}textarea{min-height:82px;resize:vertical}input:focus,textarea:focus,select:focus{outline:2px solid rgba(17,109,255,.16);border-color:var(--rf)}
         .button{border:0;border-radius:10px;padding:11px 17px;font:inherit;font-weight:800;cursor:pointer;background:var(--rf);color:#fff}.button.secondary{background:#fff;color:var(--rf);border:1px solid var(--rf)}.button:disabled{opacity:.55;cursor:not-allowed}.search-row{display:flex;gap:12px;align-items:end}.search-row .field{flex:1}
-        .notice{padding:12px 14px;border-radius:10px;margin:0 0 18px;font-size:14px}.notice.success{background:#ecfdf3;color:var(--success);border:1px solid #abefc6}.notice.error{background:#fef3f2;color:var(--danger);border:1px solid #fecdca}
+        .notice{padding:12px 14px;border-radius:10px;margin:0 0 18px;font-size:14px}.notice.success{background:#ecfdf3;color:var(--success);border:1px solid #abefc6}.notice.error{background:#fef3f2;color:var(--danger);border:1px solid #fecdca}.notice.info{background:#eff6ff;color:#1e40af;border:1px solid #bfdbfe}
         .assets{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:11px}.asset{width:100%;display:grid;grid-template-columns:28px 1fr auto;gap:10px;align-items:center;text-align:left;padding:14px;border:1px solid var(--border);border-radius:12px;background:#fff;color:inherit;cursor:pointer}.asset:hover:not(:disabled){border-color:#9bbdfd;background:#fbfdff}.asset.selected{border:2px solid var(--rf);background:var(--rf-soft)}.asset.unavailable{opacity:.5}.asset-main{display:flex;flex-direction:column;gap:3px}.asset-main small{color:var(--muted)}.asset-price{font-weight:800;white-space:nowrap}.check{width:22px;height:22px;border:2px solid #b9c5d6;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#fff}.asset.selected .check{background:var(--rf);border-color:var(--rf)}
         .summary{background:#f8fafc;border:1px solid var(--border);border-radius:14px;padding:17px}.sumrow{display:flex;justify-content:space-between;gap:20px;padding:5px 0}.sumrow.total{font-size:18px;font-weight:900;border-top:1px solid var(--border);margin-top:7px;padding-top:12px}.sumrow.due{color:var(--rf);font-weight:900}.payment-options{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}.choice{display:flex;gap:8px;align-items:center;border:1px solid var(--border);border-radius:10px;padding:10px 13px;cursor:pointer}.choice.active{border-color:var(--rf);background:var(--rf-soft)}.choice input{width:auto}
         .complete{padding:28px;text-align:center;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:14px}.complete h2{color:#166534}.complete .number{font-size:20px;font-weight:900;margin:10px 0}.loading{padding:38px;text-align:center;color:var(--muted)}
@@ -338,19 +342,20 @@ class RentalFlowBookingElement extends HTMLElement {
       <div class="wrap">
         <header>
           ${company.logoUrl ? `<img src="${this.escape(company.logoUrl)}" alt="">` : ''}
-          <div><h1>${this.escape(company.name || 'Réservation en ligne')}</h1><p class="muted">Choisissez vos dates, vos équipements et payez de façon sécurisée avec Wix.</p></div>
+          <div><h1>${this.escape(company.name || 'Réservation en ligne')}</h1><p class="muted">${paymentsEnabled ? 'Choisissez vos dates, vos équipements et payez de façon sécurisée avec Wix.' : 'Choisissez vos dates et vos équipements pour créer votre réservation.'}</p></div>
         </header>
         <main>
           ${this.error ? `<div class="notice error">${this.escape(this.error)}</div>` : ''}
           ${this.message ? `<div class="notice success">${this.escape(this.message)}</div>` : ''}
+          ${!paymentsEnabled && !this.loading && !this.result ? '<div class="notice info">Le paiement en ligne n’est pas activé pour ce locateur. Le solde sera payable selon ses modalités.</div>' : ''}
           ${this.loading ? '<div class="loading">Chargement de la disponibilité…</div>' : this.result ? `
             <div class="complete">
               <h2>Votre réservation est créée</h2>
               <div class="number">${this.escape(this.result.reservationNumber)}</div>
               <p>Total : <strong>${this.money(this.result.totalCents, this.result.currency)}</strong></p>
               ${this.result.amountDueNowCents > 0 ? `<p style="margin-top:7px">À payer maintenant : <strong>${this.money(this.result.amountDueNowCents, this.result.currency)}</strong></p>` : ''}
-              ${this.result.balanceDueCents > 0 ? `<p class="muted" style="margin-top:5px">Solde après ce paiement : ${this.money(this.result.balanceDueCents, this.result.currency)}</p>` : ''}
-              ${this.result.checkoutUrl ? `<a class="button" style="display:inline-block;text-decoration:none;margin-top:18px" href="${this.escape(this.result.checkoutUrl)}">Payer avec Wix</a>` : '<p style="margin-top:14px">Aucun paiement immédiat requis.</p>'}
+              ${this.result.balanceDueCents > 0 ? `<p class="muted" style="margin-top:5px">Solde restant : ${this.money(this.result.balanceDueCents, this.result.currency)}</p>` : ''}
+              ${this.result.checkoutUrl ? `<a class="button" style="display:inline-block;text-decoration:none;margin-top:18px" href="${this.escape(this.result.checkoutUrl)}">Payer avec Wix</a>` : '<p style="margin-top:14px">Aucun paiement en ligne immédiat requis.</p>'}
             </div>` : `
             <section class="section">
               <div class="step">1 · Dates</div><h2>Quand souhaitez-vous louer?</h2>
@@ -381,8 +386,8 @@ class RentalFlowBookingElement extends HTMLElement {
                 </div>
               </section>
               <section class="section">
-                <div class="step">4 · Paiement</div><h2>Résumé</h2>
-                ${this.data.settings.depositEnabled ? `<div class="payment-options">
+                <div class="step">4 · ${paymentsEnabled ? 'Paiement' : 'Confirmation'}</div><h2>Résumé</h2>
+                ${paymentsEnabled && this.data.settings.depositEnabled ? `<div class="payment-options">
                   <label class="choice ${this.paymentMode === 'DEPOSIT' ? 'active' : ''}"><input type="radio" name="paymentMode" value="DEPOSIT" ${this.paymentMode === 'DEPOSIT' ? 'checked' : ''}> Payer le dépôt (${this.data.settings.depositType === 'PERCENT' ? `${this.data.settings.depositValue}%` : this.money(Math.round(this.data.settings.depositValue * 100))})</label>
                   <label class="choice ${this.paymentMode === 'FULL' ? 'active' : ''}"><input type="radio" name="paymentMode" value="FULL" ${this.paymentMode === 'FULL' ? 'checked' : ''}> Payer en totalité</label>
                 </div>` : ''}
@@ -390,10 +395,10 @@ class RentalFlowBookingElement extends HTMLElement {
                   <div class="sumrow"><span>Sous-total</span><strong>${this.money(subtotal)}</strong></div>
                   ${this.data.settings.taxesEnabled ? `<div class="sumrow"><span>${this.escape(this.data.settings.tax1Name || 'Taxe 1')}</span><span>${this.money(taxes.tax1)}</span></div><div class="sumrow"><span>${this.escape(this.data.settings.tax2Name || 'Taxe 2')}</span><span>${this.money(taxes.tax2)}</span></div>` : ''}
                   <div class="sumrow total"><span>Total</span><span>${this.money(taxes.total)}</span></div>
-                  <div class="sumrow due"><span>À payer maintenant</span><span>${this.money(dueNow)}</span></div>
+                  ${paymentsEnabled ? `<div class="sumrow due"><span>À payer maintenant</span><span>${this.money(dueNow)}</span></div>` : ''}
                   ${balance > 0 ? `<div class="sumrow"><span>Solde restant</span><span>${this.money(balance)}</span></div>` : ''}
                 </div>
-                <button id="submit" class="button" style="width:100%;margin-top:14px;padding:14px" ${this.submitting ? 'disabled' : ''}>${this.submitting ? 'Création de la réservation…' : 'Réserver et continuer au paiement'}</button>
+                <button id="submit" class="button" style="width:100%;margin-top:14px;padding:14px" ${this.submitting ? 'disabled' : ''}>${this.submitting ? 'Création de la réservation…' : paymentsEnabled ? 'Réserver et continuer au paiement' : 'Créer la réservation'}</button>
               </section>` : ''}
           `}
         </main>
@@ -427,15 +432,17 @@ class RentalFlowBookingElement extends HTMLElement {
       if (!name || name === ('paymentMode' as keyof CustomerDraft)) return;
       if (name in this.customerDraft) {
         field.addEventListener('input', () => {
-          this.customerDraft[name] = field.value;
+          this.customerDraft = { ...this.customerDraft, [name]: field.value };
         });
       }
     });
 
-    this.root.querySelectorAll<HTMLInputElement>('input[name="paymentMode"]').forEach((input) => {
-      input.addEventListener('change', () => {
-        this.paymentMode = input.value === 'DEPOSIT' ? 'DEPOSIT' : 'FULL';
-        this.render();
+    this.root.querySelectorAll<HTMLInputElement>('input[name="paymentMode"]').forEach((radio) => {
+      radio.addEventListener('change', () => {
+        if (radio.checked && (radio.value === 'FULL' || radio.value === 'DEPOSIT')) {
+          this.paymentMode = radio.value;
+          this.render();
+        }
       });
     });
 
@@ -444,6 +451,10 @@ class RentalFlowBookingElement extends HTMLElement {
       void this.submitBooking();
     });
   }
+}
+
+if (!customElements.get('rental-flow-booking')) {
+  customElements.define('rental-flow-booking', RentalFlowBookingElement);
 }
 
 export default RentalFlowBookingElement;

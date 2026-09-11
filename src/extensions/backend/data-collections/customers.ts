@@ -29,6 +29,17 @@ export default {
     itemRemove: 'CMS_EDITOR',
     itemUpdate: 'CMS_EDITOR',
   },
-  indexes: [],
+  indexes: [
+    {
+      fields: [{ path: 'customerNumber', order: 'ASC' }],
+      unique: true,
+      caseInsensitive: true,
+    },
+    {
+      fields: [{ path: 'email', order: 'ASC' }],
+      unique: false,
+      caseInsensitive: true,
+    },
+  ],
   initialData: [],
 } satisfies DataCollection;
