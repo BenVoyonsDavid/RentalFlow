@@ -13,6 +13,9 @@ export default extensions.customElement({
   height: {
     defaultHeight: 940,
   },
+  installation: {
+    staticContainer: 'HOMEPAGE',
+  },
   presets: [
     {
       id: '50de07f4-e873-474e-b979-286d1956a5a7',
