@@ -1,9 +1,13 @@
 import type { FC } from 'react';
+import { useRentalFlowPlan } from '../lib/use-plan';
 import { LocalizedScope, type RentalFlowLanguagePreference, useRentalFlowI18n } from './index';
 
 export function withDashboardLocalization(PageComponent: FC, showLanguageSelector = false): FC {
   const LocalizedPage: FC = () => {
     const { language, preference, setPreference, t } = useRentalFlowI18n('dashboard');
+    // Resolve and cache the installed Wix pricing package for legacy pages that
+    // still use the synchronous compatibility accessor in plans.ts.
+    useRentalFlowPlan();
 
     return (
       <LocalizedScope language={language}>
