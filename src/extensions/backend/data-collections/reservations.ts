@@ -64,19 +64,16 @@ export default {
   },
   indexes: [
     {
-      name: 'reservation_number_unique',
       fields: [{ path: 'reservationNumber', order: 'ASC' }],
       unique: true,
       caseInsensitive: true,
     },
     {
-      name: 'reservation_start_status',
       fields: [{ path: 'startDateTime', order: 'ASC' }, { path: 'status', order: 'ASC' }],
       unique: false,
       caseInsensitive: false,
     },
     {
-      name: 'reservation_customer',
       fields: [{ path: 'customerId', order: 'ASC' }, { path: 'startDateTime', order: 'DESC' }],
       unique: false,
       caseInsensitive: false,
