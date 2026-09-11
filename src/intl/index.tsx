@@ -1,407 +1,13 @@
 import type { FC, ReactNode } from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { i18n as wixI18n } from '@wix/essentials';
+import { frToEn } from './translations';
 
 export type RentalFlowLanguage = 'fr' | 'en';
 export type RentalFlowLanguagePreference = 'auto' | RentalFlowLanguage;
 export type RentalFlowI18nScope = 'dashboard' | 'site';
 
 const STORAGE_KEY = 'rentalflow.language.preference';
-
-const frToEn: Record<string, string> = {
-  // Common
-  'Tableau de bord': 'Dashboard',
-  'Calendrier': 'Calendar',
-  'Clients': 'Customers',
-  'Client': 'Customer',
-  'Équipements': 'Equipment',
-  'Équipement': 'Equipment',
-  'Réservations': 'Reservations',
-  'Réservation': 'Reservation',
-  'Paramètres': 'Settings',
-  'Général': 'General',
-  'Abonnement': 'Subscription',
-  'Actions': 'Actions',
-  'Modifier': 'Edit',
-  'Supprimer': 'Delete',
-  'Désactiver': 'Deactivate',
-  'Réactiver': 'Reactivate',
-  'Annuler': 'Cancel',
-  'Fermer': 'Close',
-  'Enregistrer': 'Save',
-  'Ajouter': 'Add',
-  'Ouvrir': 'Open',
-  'Voir': 'View',
-  'Chargement…': 'Loading…',
-  'Enregistrement…': 'Saving…',
-  'Création…': 'Creating…',
-  'Notes': 'Notes',
-  'Entreprise': 'Company',
-  'Courriel': 'Email',
-  'Téléphone': 'Phone',
-  'Adresse': 'Address',
-  'Adresse 2': 'Address 2',
-  'Ville': 'City',
-  'Province / État': 'Province / State',
-  'Code postal': 'Postal code',
-  'Pays': 'Country',
-  'Prénom': 'First name',
-  'Nom': 'Last name',
-  'Début': 'Start',
-  'Fin': 'End',
-  'Total': 'Total',
-  'Statut': 'Status',
-  'Type': 'Type',
-  'Numéro': 'Number',
-  'Jour': 'Day',
-  'Semaine': 'Week',
-  'Mois': 'Month',
-  'Disponible': 'Available',
-  'Disponibles': 'Available',
-  'Indisponible': 'Unavailable',
-  'Réservé': 'Reserved',
-  'Réservés': 'Reserved',
-  'En location': 'Rented',
-  'Entretien': 'Maintenance',
-  'Inactif': 'Inactive',
-  'Inactifs': 'Inactive',
-  'Actif': 'Active',
-  'Aujourd’hui': 'Today',
-  'Paiement': 'Payment',
-  'Paiements': 'Payments',
-  'Documents': 'Documents',
-  'Inspection': 'Inspection',
-  'Historique': 'History',
-  'Détails': 'Details',
-  'Retour': 'Return',
-  'Départ': 'Departure',
-  'État': 'Condition',
-  'Description': 'Description',
-  'Signataire': 'Signer',
-  'Rabais': 'Discount',
-  'Fonction': 'Feature',
-  'Gratuit': 'Free',
-  'Aucun modèle': 'No template',
-  'Aucun par défaut': 'No default',
-  'Sélectionner…': 'Select…',
-
-  // Dashboard
-  'Vue d’ensemble de votre activité de location.': 'Overview of your rental activity.',
-  'Équipements actifs': 'Active equipment',
-  'Réservations actives': 'Active reservations',
-  'Revenus réservés': 'Booked revenue',
-  'Départs': 'Departures',
-  'Retours': 'Returns',
-  'Retards': 'Late returns',
-  'À préparer (24 h)': 'To prepare (24 h)',
-  'État de l’inventaire': 'Inventory status',
-  'Réservé manuel': 'Manually reserved',
-  'En location manuel': 'Manually rented',
-  'Prochaines réservations': 'Upcoming reservations',
-  'Aucune réservation à venir.': 'No upcoming reservations.',
-  'Espaces RentalFlow': 'RentalFlow areas',
-  'Inventaire, statuts et tarification': 'Inventory, statuses and pricing',
-  'Calendrier / Réservations': 'Calendar / Reservations',
-  'Disponibilités et flux complet': 'Availability and complete workflow',
-  'Fiches clients et historique': 'Customer profiles and history',
-  'Abonnements et options': 'Subscriptions and options',
-  'Impossible de charger les données RentalFlow.': 'Unable to load RentalFlow data.',
-
-  // Calendar
-  'Vue mensuelle réelle des locations, départs, retours et périodes réservées.': 'Monthly view of rentals, departures, returns and reserved periods.',
-  'Chargement du calendrier…': 'Loading calendar…',
-  'Réservée / confirmée': 'Reserved / confirmed',
-  'Retournée / clôturée': 'Returned / closed',
-  'Annulée': 'Cancelled',
-  'Étape': 'Stage',
-  'Buffer avant': 'Buffer before',
-  'Buffer après': 'Buffer after',
-  'Aucun équipement': 'No equipment',
-  'Impossible de charger le calendrier.': 'Unable to load calendar.',
-
-  // Customers
-  'Consultez, modifiez et gérez les fiches clients et leur historique de location.': 'View, edit and manage customer profiles and rental history.',
-  'Clients actifs': 'Active customers',
-  'Rechercher nom, entreprise, courriel, téléphone…': 'Search name, company, email, phone…',
-  'Afficher les inactifs': 'Show inactive',
-  'Aucun client à afficher.': 'No customers to display.',
-  'No client': 'Customer no.',
-  'Coordonnées': 'Contact information',
-  'Revenus': 'Revenue',
-  'Nouveau client': 'New customer',
-  '+ Nouveau client': '+ New customer',
-  'Modifier le client': 'Edit customer',
-  'Le numéro client sera généré automatiquement.': 'The customer number will be generated automatically.',
-  'Rabais permanent (%)': 'Permanent discount (%)',
-  'Créer le client': 'Create customer',
-  'Rabais permanent': 'Permanent discount',
-  'Historique de réservations': 'Reservation history',
-  'Aucune réservation.': 'No reservations.',
-  'Client sans nom': 'Unnamed customer',
-  'Impossible de charger les clients.': 'Unable to load customers.',
-  'Entrez un nom de personne ou un nom d’entreprise.': 'Enter a person name or company name.',
-  'Un client avec ce courriel existe déjà.': 'A customer with this email already exists.',
-  'Le rabais client doit être entre 0 et 100 %.': 'The customer discount must be between 0 and 100%.',
-  'Impossible d’enregistrer le client.': 'Unable to save the customer.',
-  'Impossible de modifier le statut du client.': 'Unable to change the customer status.',
-  'Impossible de supprimer le client.': 'Unable to delete the customer.',
-
-  // Equipment
-  'Inventaire physique, statuts et tarification de chaque unité.': 'Physical inventory, status and pricing for each unit.',
-  'Plan :': 'Plan:',
-  'En développement, toutes les fonctions sont déverrouillées pour les tests.': 'During development, all features are unlocked for testing.',
-  '+ Ajouter un équipement': '+ Add equipment',
-  'Ajouter un équipement': 'Add equipment',
-  'Modifier l’équipement': 'Edit equipment',
-  'Filtrer :': 'Filter:',
-  'Tous': 'All',
-  'Aucun équipement dans cette vue.': 'No equipment in this view.',
-  'Rabais longue durée': 'Long-term discount',
-  'Sans nom': 'Unnamed',
-  'Type non défini': 'Undefined type',
-  'Identification, statut et tarification de l’unité physique.': 'Identification, status and pricing for the physical unit.',
-  'Informations': 'Information',
-  'Nom de l’équipement *': 'Equipment name *',
-  'Numéro d’actif *': 'Asset number *',
-  'Type de produit': 'Product type',
-  'Numéro de série': 'Serial number',
-  'Devise': 'Currency',
-  'Tarification': 'Pricing',
-  'Le moteur de réservation choisira ensuite le tarif applicable selon la durée.': 'The booking engine will select the applicable rate based on duration.',
-  'Tarif journalier': 'Daily rate',
-  'Tarif hebdomadaire': 'Weekly rate',
-  'Tarif mensuel': 'Monthly rate',
-  'Rabais après X jours': 'Discount after X days',
-  'Rabais longue durée (%)': 'Long-term discount (%)',
-  'Ex. Kayak Pelican': 'e.g. Pelican Kayak',
-  'Ex. Kayak': 'e.g. Kayak',
-  'Le tarif doit être un montant valide.': 'The rate must be a valid amount.',
-  'Une valeur de tarification est invalide.': 'A pricing value is invalid.',
-  'Impossible de charger les équipements.': 'Unable to load equipment.',
-  'Identifiant Wix manquant pour cet équipement.': 'Missing Wix ID for this equipment.',
-  'Le nom de l’équipement est obligatoire.': 'The equipment name is required.',
-  'Le numéro d’actif est obligatoire.': 'The asset number is required.',
-  'Le rabais ne peut pas dépasser 100 %.': 'The discount cannot exceed 100%.',
-  'Erreur pendant l’enregistrement.': 'An error occurred while saving.',
-  'Impossible de désactiver cet équipement.': 'Unable to deactivate this equipment.',
-
-  // Reservations
-  'Réservez, facturez, encaissez et suivez chaque location de bout en bout.': 'Book, invoice, collect payments and track every rental from start to finish.',
-  'Liste': 'List',
-  'Disponibilité': 'Availability',
-  '+ Nouvelle réservation': '+ New reservation',
-  'Nouvelle réservation': 'New reservation',
-  'Recherche de disponibilité': 'Availability search',
-  'Buffer avant (h)': 'Buffer before (h)',
-  'Buffer après (h)': 'Buffer after (h)',
-  'Les champs obligatoires sont déterminés par les modèles de documents sélectionnés.': 'Required fields are determined by the selected document templates.',
-  'Client existant': 'Existing customer',
-  'Nouveau client': 'New customer',
-  'Nom affiché': 'Display name',
-  'Modèles de documents': 'Document templates',
-  'Modèle de devis': 'Quote template',
-  'Modèle de contrat': 'Contract template',
-  'Modèle de facture': 'Invoice template',
-  'Champs exigés par les modèles :': 'Fields required by templates:',
-  'Période': 'Period',
-  'Choisissez une période valide pour voir la disponibilité.': 'Choose a valid period to see availability.',
-  'Conflit de réservation / buffer': 'Reservation / buffer conflict',
-  'Paiement à la réservation': 'Payment at booking',
-  'Aucun paiement maintenant': 'No payment now',
-  'Paiement complet': 'Full payment',
-  'Dépôt de réservation': 'Booking deposit',
-  'Type de dépôt': 'Deposit type',
-  'Pourcentage': 'Percentage',
-  'Montant fixe': 'Fixed amount',
-  'Dépôt (%)': 'Deposit (%)',
-  'Dépôt fixe': 'Fixed deposit',
-  'Résumé financier': 'Financial summary',
-  'Sous-total': 'Subtotal',
-  'Rabais client': 'Customer discount',
-  'Avant taxes': 'Before taxes',
-  'Taxe 1': 'Tax 1',
-  'Taxe 2': 'Tax 2',
-  'À payer maintenant': 'Due now',
-  'Solde après ce paiement': 'Balance after this payment',
-  'Créer la réservation': 'Create reservation',
-  'Prêt au départ': 'Ready for departure',
-  'Retourné': 'Returned',
-  'Clôturé': 'Closed',
-  'À payer initialement': 'Initially due',
-  'Solde actuel': 'Current balance',
-  'Confirmer le départ': 'Confirm departure',
-  'Confirmer le retour': 'Confirm return',
-  'Clôturer': 'Close rental',
-  'période bloquée': 'blocked period',
-  'Payé': 'Paid',
-  'Solde': 'Balance',
-  'Créer lien de paiement Wix': 'Create Wix payment link',
-  'Réservation payée en totalité.': 'Reservation paid in full.',
-  'Aucun paiement.': 'No payments.',
-  'Ouvrir le checkout Wix': 'Open Wix checkout',
-  'Actualiser le statut Wix': 'Refresh Wix status',
-  '+ Devis': '+ Quote',
-  '+ Contrat': '+ Contract',
-  '+ Facture': '+ Invoice',
-  'Devis': 'Quote',
-  'Contrat': 'Contract',
-  'Facture': 'Invoice',
-  'Aucun document généré.': 'No documents generated.',
-  'Modèle :': 'Template:',
-  'Aperçu / PDF': 'Preview / PDF',
-  'Accepter le devis': 'Accept quote',
-  'Signer le contrat': 'Sign contract',
-  'Émettre la facture': 'Issue invoice',
-  '+ Inspection': '+ Inspection',
-  'Aucune inspection.': 'No inspections.',
-  'Dommage': 'Damage',
-  'Enregistrer les notes': 'Save notes',
-  'Aucun événement enregistré.': 'No recorded events.',
-  'Bon': 'Good',
-  'Acceptable': 'Fair',
-  'Endommagé': 'Damaged',
-  'Dommage constaté': 'Damage found',
-  'Montant dommage': 'Damage amount',
-  'Photos (URL, séparées par virgules)': 'Photos (URLs, comma-separated)',
-  'Aucun montant à percevoir.': 'No amount to collect.',
-  'Le module Wix Payment Links n’est pas disponible.': 'The Wix Payment Links module is unavailable.',
-  'Impossible d’enregistrer l’inspection.': 'Unable to save the inspection.',
-  'Une inspection de départ complétée est requise avant de confirmer le départ.': 'A completed departure inspection is required before confirming departure.',
-  'Une inspection de retour complétée est requise avant de confirmer le retour.': 'A completed return inspection is required before confirming return.',
-  'Impossible de créer la réservation.': 'Unable to create the reservation.',
-  'Impossible de modifier la réservation.': 'Unable to update the reservation.',
-  'Impossible d’annuler la réservation.': 'Unable to cancel the reservation.',
-  'Impossible de créer le document.': 'Unable to create the document.',
-  'Impossible de mettre à jour le document.': 'Unable to update the document.',
-  'Le navigateur a bloqué la fenêtre du document. Autorisez les fenêtres contextuelles pour imprimer.': 'The browser blocked the document window. Allow pop-ups to print.',
-  'Imprimer / Enregistrer en PDF': 'Print / Save as PDF',
-  'Aucun modèle n’est sélectionné sur cette réservation.': 'No template is selected for this reservation.',
-  'La période de location est invalide.': 'The rental period is invalid.',
-  'Sélectionnez au moins un équipement.': 'Select at least one piece of equipment.',
-  'Sélectionnez un client existant.': 'Select an existing customer.',
-  'Le nom du nouveau client est obligatoire.': 'The new customer name is required.',
-  'Impossible de créer le client.': 'Unable to create the customer.',
-  'Wix n’a pas retourné l’identifiant de la réservation.': 'Wix did not return the reservation ID.',
-  'Sélectionnez un équipement de la réservation.': 'Select equipment from the reservation.',
-
-  // Settings
-  'Configurez RentalFlow, les taxes, les paiements et vos documents.': 'Configure RentalFlow, taxes, payments and your documents.',
-  'Taxes & paiements': 'Taxes & payments',
-  'Modèles de documents': 'Document templates',
-  'Entreprise et opérations': 'Company and operations',
-  'Nom de l’entreprise': 'Company name',
-  'Logo (URL)': 'Logo (URL)',
-  'Devise par défaut': 'Default currency',
-  'Buffer avant par défaut (heures)': 'Default buffer before (hours)',
-  'Buffer après par défaut (heures)': 'Default buffer after (hours)',
-  'Aperçu du logo': 'Logo preview',
-  'Taxes': 'Taxes',
-  'Appliquer les taxes aux nouvelles réservations': 'Apply taxes to new reservations',
-  'Taux taxe 1 (%)': 'Tax 1 rate (%)',
-  'Taux taxe 2 (%)': 'Tax 2 rate (%)',
-  'Calculer la taxe 2 sur le montant incluant la taxe 1': 'Calculate tax 2 on the amount including tax 1',
-  'RentalFlow enregistre un snapshot des taxes sur chaque réservation et document. Modifier les taux plus tard ne changera donc pas les anciennes transactions.': 'RentalFlow saves a tax snapshot on each reservation and document. Changing rates later will not change past transactions.',
-  'Paiement et dépôt': 'Payment and deposit',
-  'Les paiements en ligne seront effectués par le checkout / lien de paiement Wix. RentalFlow ne stocke jamais les numéros de carte.': 'Online payments are processed through Wix checkout / payment links. RentalFlow never stores card numbers.',
-  'Demander un dépôt par défaut': 'Request a deposit by default',
-  'Montant par défaut': 'Default amount',
-  'Pourcentage par défaut': 'Default percentage',
-  'Fournisseur de paiement': 'Payment provider',
-  'Wix Payments / moyens de paiement Wix': 'Wix Payments / Wix payment methods',
-  'Chaque réservation pourra remplacer ce réglage et choisir : paiement complet immédiatement, dépôt seulement, ou aucun paiement immédiat.': 'Each reservation can override this setting and choose full payment, deposit only, or no immediate payment.',
-  'Créez plusieurs modèles et choisissez celui à utiliser dans chaque réservation.': 'Create multiple templates and choose which one to use for each reservation.',
-  'Modèles par défaut': 'Default templates',
-  'Devis par défaut': 'Default quote',
-  'Contrat par défaut': 'Default contract',
-  'Facture par défaut': 'Default invoice',
-  'Aucun modèle. Utilisez + Devis, + Contrat ou + Facture.': 'No templates. Use + Quote, + Contract or + Invoice.',
-  'Plan actuel :': 'Current plan:',
-  'Pour la bêta privée, toutes les fonctions sont ouvertes afin de tester le flux complet. Avant l’App Market public, RentalFlow lira le vrai forfait Wix installé.': 'During the private beta, all features are enabled to test the complete workflow. Before the public App Market launch, RentalFlow will read the installed Wix plan.',
-  'Réservations, buffers, calendrier mensuel': 'Reservations, buffers, monthly calendar',
-  'Tarifs hebdomadaires + documents': 'Weekly pricing + documents',
-  'Paiements Wix et dépôt': 'Wix payments and deposit',
-  'Tarifs mensuels + rabais + inspections': 'Monthly pricing + discounts + inspections',
-  'Modèles avancés / historique complet': 'Advanced templates / complete history',
-  'Inventaire illimité / automatisations avancées': 'Unlimited inventory / advanced automations',
-  'Modifier le modèle': 'Edit template',
-  'Nouveau modèle': 'New template',
-  'Le contenu sera figé dans chaque document généré afin de préserver son historique.': 'Content is frozen in each generated document to preserve its history.',
-  'Nom du modèle *': 'Template name *',
-  'Titre du document *': 'Document title *',
-  'Texte d’introduction': 'Introduction text',
-  'Conditions / texte personnalisé': 'Terms / custom text',
-  'Pied de page': 'Footer',
-  'Champs obligatoires lors de la réservation': 'Required fields when booking',
-  'Enregistrer le modèle': 'Save template',
-  'Enregistrer les paramètres': 'Save settings',
-  'Nom du client': 'Customer name',
-  'Courriel du client': 'Customer email',
-  'Téléphone du client': 'Customer phone',
-  'Adresse complète du client': 'Full customer address',
-  'Dates de location': 'Rental dates',
-  'Au moins un équipement': 'At least one piece of equipment',
-  'Impossible de charger les paramètres.': 'Unable to load settings.',
-  'Paramètres enregistrés. Les nouvelles réservations utiliseront ces valeurs par défaut.': 'Settings saved. New reservations will use these default values.',
-  'Impossible d’enregistrer les paramètres.': 'Unable to save settings.',
-  'Le nom du modèle est obligatoire.': 'The template name is required.',
-  'Le titre du document est obligatoire.': 'The document title is required.',
-  'Sélectionnez au moins un champ obligatoire.': 'Select at least one required field.',
-  'Modèle de document enregistré.': 'Document template saved.',
-  'Impossible d’enregistrer le modèle.': 'Unable to save the template.',
-  'Modèle supprimé. Enregistrez les paramètres si ce modèle était utilisé par défaut.': 'Template deleted. Save settings if this template was used as a default.',
-  'Impossible de supprimer le modèle.': 'Unable to delete the template.',
-  'Ex. Contrat standard': 'e.g. Standard contract',
-  'Conditions de location, politique de dommages, modalités de paiement…': 'Rental terms, damage policy, payment terms…',
-
-  // Public booking widget
-  'Location en ligne': 'Online booking',
-  'Réservation en ligne': 'Online booking',
-  'Choisissez vos dates, vos équipements et payez de façon sécurisée avec Wix.': 'Choose your dates and equipment, then pay securely with Wix.',
-  'Chargement de la disponibilité…': 'Loading availability…',
-  'Votre réservation est créée': 'Your reservation has been created',
-  'Payer avec Wix': 'Pay with Wix',
-  'Aucun paiement immédiat requis.': 'No immediate payment required.',
-  '1 · Dates': '1 · Dates',
-  'Quand souhaitez-vous louer?': 'When would you like to rent?',
-  'Recherche…': 'Searching…',
-  'Voir les disponibilités': 'Check availability',
-  '2 · Équipements': '2 · Equipment',
-  'Équipements disponibles': 'Available equipment',
-  'Nos équipements': 'Our equipment',
-  'Aucun équipement actif pour le moment.': 'No active equipment at the moment.',
-  'Tarif sur demande': 'Rate on request',
-  '3 · Vos informations': '3 · Your information',
-  'Nom complet *': 'Full name *',
-  'Information utile concernant votre réservation': 'Useful information about your reservation',
-  '4 · Paiement': '4 · Payment',
-  'Résumé': 'Summary',
-  'Payer le dépôt': 'Pay deposit',
-  'Payer en totalité': 'Pay in full',
-  'Solde restant': 'Remaining balance',
-  'Création de la réservation…': 'Creating reservation…',
-  'Réserver et continuer au paiement': 'Book and continue to payment',
-  'Choisissez une date de début et une date de fin.': 'Choose a start date and an end date.',
-  'La période sélectionnée est invalide.': 'The selected period is invalid.',
-  'Aucun équipement disponible pour cette période.': 'No equipment is available for this period.',
-  'La période choisie est déjà terminée.': 'The selected period has already ended.',
-  'La réservation ne peut pas dépasser 366 jours.': 'A reservation cannot exceed 366 days.',
-  'Une erreur est survenue.': 'An error occurred.',
-  'Choisissez une période et au moins un équipement.': 'Choose a period and at least one piece of equipment.',
-  'Le nom et le courriel sont obligatoires.': 'Name and email are required.',
-
-  // Widget settings panel
-  '(réponse vide)': '(empty response)',
-  '(vide)': '(empty)',
-  'ERREUR': 'ERROR',
-  'Le nom de l’entreprise, le logo, les taxes, le dépôt et les modèles utilisés par ce widget se configurent dans Paramètres → RentalFlow.': 'The company name, logo, taxes, deposit and templates used by this widget are configured in Settings → RentalFlow.',
-  'Diagnostic de connexion': 'Connection diagnostic',
-  'Test en cours…': 'Test in progress…',
-  'Origine du module': 'Module origin',
-  'URL de l’endpoint': 'Endpoint URL',
-  '1. fetch() sans authentification': '1. fetch() without authentication',
-  'Relancer le test': 'Run test again',
-};
-
 const enToFr = Object.fromEntries(Object.entries(frToEn).map(([fr, en]) => [en, fr])) as Record<string, string>;
 
 function normalizeLanguage(value?: string | null): RentalFlowLanguage {
@@ -437,12 +43,18 @@ export function readLanguagePreference(): RentalFlowLanguagePreference {
   }
 }
 
-export function resolveLanguage(scope: RentalFlowI18nScope = 'dashboard', preference = readLanguagePreference()): RentalFlowLanguage {
+export function resolveLanguage(
+  scope: RentalFlowI18nScope = 'dashboard',
+  preference = readLanguagePreference(),
+): RentalFlowLanguage {
   if (scope === 'site') return getWixLanguage();
   return preference === 'auto' ? getWixLanguage() : preference;
 }
 
-export function resolveLocale(scope: RentalFlowI18nScope = 'dashboard', preference = readLanguagePreference()): string {
+export function resolveLocale(
+  scope: RentalFlowI18nScope = 'dashboard',
+  preference = readLanguagePreference(),
+): string {
   const language = resolveLanguage(scope, preference);
   if (scope === 'dashboard' && preference !== 'auto') return language === 'fr' ? 'fr-CA' : 'en-CA';
   return getWixLocale(language);
@@ -517,7 +129,7 @@ function localizeElementAttributes(element: Element, language: RentalFlowLanguag
 }
 
 function localizeNode(node: Node, language: RentalFlowLanguage) {
-  if (node.nodeType === Node.TEXT_NODE) {
+  if (node.nodeType === 3) {
     const parent = node.parentElement;
     if (parent && ['SCRIPT', 'STYLE'].includes(parent.tagName)) return;
     const current = node.nodeValue || '';
@@ -525,14 +137,16 @@ function localizeNode(node: Node, language: RentalFlowLanguage) {
     if (next !== current) node.nodeValue = next;
     return;
   }
-  if (node.nodeType === Node.ELEMENT_NODE) localizeElementAttributes(node as Element, language);
+  if (node.nodeType === 1) localizeElementAttributes(node as Element, language);
 }
 
 export function localizeDom(root: Node, language: RentalFlowLanguage): void {
-  if (typeof document === 'undefined' || typeof Node === 'undefined') return;
+  if (typeof document === 'undefined') return;
   localizeNode(root, language);
   const ownerDocument = root.ownerDocument || document;
-  const walker = ownerDocument.createTreeWalker(root, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT);
+  const nodeFilter = ownerDocument.defaultView?.NodeFilter || globalThis.NodeFilter;
+  if (!nodeFilter) return;
+  const walker = ownerDocument.createTreeWalker(root, nodeFilter.SHOW_ELEMENT | nodeFilter.SHOW_TEXT);
   let current = walker.nextNode();
   while (current) {
     localizeNode(current, language);
@@ -541,7 +155,9 @@ export function localizeDom(root: Node, language: RentalFlowLanguage): void {
 }
 
 export function useRentalFlowI18n(scope: RentalFlowI18nScope = 'dashboard') {
-  const [preference, setPreferenceState] = useState<RentalFlowLanguagePreference>(() => scope === 'site' ? 'auto' : readLanguagePreference());
+  const [preference, setPreferenceState] = useState<RentalFlowLanguagePreference>(() =>
+    scope === 'site' ? 'auto' : readLanguagePreference(),
+  );
   const language = useMemo(() => resolveLanguage(scope, preference), [scope, preference]);
   const locale = useMemo(() => resolveLocale(scope, preference), [scope, preference]);
 
@@ -578,6 +194,8 @@ export const LocalizedScope: FC<{ language: RentalFlowLanguage; children: ReactN
     const root = ref.current;
     if (!root) return;
     localizeDom(root, language);
+    if (typeof MutationObserver === 'undefined') return;
+
     const observer = new MutationObserver((mutations) => {
       for (const mutation of mutations) {
         if (mutation.type === 'characterData') localizeNode(mutation.target, language);
