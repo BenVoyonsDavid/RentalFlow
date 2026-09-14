@@ -18,7 +18,7 @@ export default extensions.customElement({
     {
       id: 'c76f9552-dc23-49bb-b3c5-113e6a943e0e',
       name: 'Réservation RentalFlow',
-      thumbnailUrl: '{{BASE_URL}}/public/rentalflow-booking.svg',
+      thumbnailUrl: '{{BASE_URL}}/public/rental-flow-online-booking-thumbnail.png',
     },
   ],
   tagName: 'rental-flow-online-booking',
