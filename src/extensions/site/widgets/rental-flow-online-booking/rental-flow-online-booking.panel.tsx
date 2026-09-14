@@ -17,7 +17,6 @@ type DiagnosticState = {
   loading: boolean;
   moduleOrigin?: string;
   endpointUrl?: string;
-  plain?: CallResult;
   authenticated?: CallResult;
 };
 
@@ -37,15 +36,6 @@ const Panel: FC = () => {
     const endpointUrl = `${moduleOrigin}/api/public-booking-debug`;
     setDiagnostic({ loading: true, moduleOrigin, endpointUrl });
 
-    let plain: CallResult;
-    try {
-      plain = await readResponse(await fetch(endpointUrl));
-    } catch (error) {
-      plain = {
-        error: error instanceof Error ? error.message : String(error),
-      };
-    }
-
     let authenticated: CallResult;
     try {
       authenticated = await readResponse(await httpClient.fetchWithAuth(endpointUrl));
@@ -59,7 +49,6 @@ const Panel: FC = () => {
       loading: false,
       moduleOrigin,
       endpointUrl,
-      plain,
       authenticated,
     });
   }, []);
@@ -81,6 +70,9 @@ const Panel: FC = () => {
           <SidePanel.Field>
             <div style={{ fontFamily: 'monospace', fontSize: 12, lineHeight: 1.45 }}>
               <strong>Diagnostic de connexion</strong>
+              <div style={{ marginTop: 8 }}>
+                RentalFlow utilise la requête Wix authentifiée requise par le widget. Les modèles de documents sont facultatifs.
+              </div>
               {diagnostic.loading ? <div style={{ marginTop: 8 }}>Test en cours…</div> : null}
 
               {!diagnostic.loading ? (
@@ -91,15 +83,8 @@ const Panel: FC = () => {
                   <div style={{ marginTop: 10 }}><strong>URL de diagnostic</strong></div>
                   <pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{diagnostic.endpointUrl || '(vide)'}</pre>
 
-                  <div style={{ marginTop: 10 }}><strong>1. fetch() sans authentification</strong></div>
-                  <pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', maxHeight: 180, overflow: 'auto' }}>
-                    {diagnostic.plain?.error
-                      ? `ERREUR: ${diagnostic.plain.error}`
-                      : `HTTP ${diagnostic.plain?.status ?? '—'}\n${diagnostic.plain?.body || ''}`}
-                  </pre>
-
-                  <div style={{ marginTop: 10 }}><strong>2. fetchWithAuth()</strong></div>
-                  <pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', maxHeight: 320, overflow: 'auto' }}>
+                  <div style={{ marginTop: 10 }}><strong>fetchWithAuth()</strong></div>
+                  <pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', maxHeight: 360, overflow: 'auto' }}>
                     {diagnostic.authenticated?.error
                       ? `ERREUR: ${diagnostic.authenticated.error}`
                       : `HTTP ${diagnostic.authenticated?.status ?? '—'}\n${diagnostic.authenticated?.body || ''}`}
