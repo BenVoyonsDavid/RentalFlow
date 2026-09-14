@@ -34,7 +34,7 @@ const Panel: FC = () => {
 
   const runDiagnostic = useCallback(async () => {
     const moduleOrigin = new URL(import.meta.url).origin;
-    const endpointUrl = `${moduleOrigin}/api/public-booking`;
+    const endpointUrl = `${moduleOrigin}/api/public-booking-debug`;
     setDiagnostic({ loading: true, moduleOrigin, endpointUrl });
 
     let plain: CallResult;
@@ -88,7 +88,7 @@ const Panel: FC = () => {
                   <div style={{ marginTop: 10 }}><strong>Origine du module</strong></div>
                   <pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{diagnostic.moduleOrigin || '(vide)'}</pre>
 
-                  <div style={{ marginTop: 10 }}><strong>URL de l’endpoint</strong></div>
+                  <div style={{ marginTop: 10 }}><strong>URL de diagnostic</strong></div>
                   <pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{diagnostic.endpointUrl || '(vide)'}</pre>
 
                   <div style={{ marginTop: 10 }}><strong>1. fetch() sans authentification</strong></div>
@@ -99,7 +99,7 @@ const Panel: FC = () => {
                   </pre>
 
                   <div style={{ marginTop: 10 }}><strong>2. fetchWithAuth()</strong></div>
-                  <pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', maxHeight: 220, overflow: 'auto' }}>
+                  <pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', maxHeight: 320, overflow: 'auto' }}>
                     {diagnostic.authenticated?.error
                       ? `ERREUR: ${diagnostic.authenticated.error}`
                       : `HTTP ${diagnostic.authenticated?.status ?? '—'}\n${diagnostic.authenticated?.body || ''}`}
