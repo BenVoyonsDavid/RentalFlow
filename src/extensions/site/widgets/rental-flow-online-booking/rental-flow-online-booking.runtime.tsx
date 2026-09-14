@@ -1,5 +1,6 @@
 import RentalFlowBookingElement from './rental-flow-online-booking';
 import { localizeDom, resolveLanguage, resolveLocale } from '../../../../intl';
+import { sendRentalFlowBiEvent } from '../../../../lib/bi-events-client';
 
 // The legacy booking module still registers its constructor as
 // <rental-flow-booking>. Wix CLI also registers the exported constructor using
@@ -31,6 +32,33 @@ const Element = RentalFlowOnlineBookingElement as unknown as {
 (Element.prototype as any).money = function money(cents = 0, currency = 'CAD'): string {
   return new Intl.NumberFormat(resolveLocale('site', 'auto'), { style: 'currency', currency }).format(cents / 100);
 };
+
+// Track the core RentalFlow success action only after the booking component has
+// actually received a successful reservation result from the backend.
+const originalSubmitBooking = (Element.prototype as any).submitBooking;
+if (typeof originalSubmitBooking === 'function') {
+  (Element.prototype as any).submitBooking = async function trackedSubmitBooking(...args: unknown[]) {
+    const previousReservationNumber = this.result?.reservationNumber || '';
+    const result = await originalSubmitBooking.apply(this, args);
+    const reservationNumber = this.result?.reservationNumber || '';
+
+    if (reservationNumber && reservationNumber !== previousReservationNumber) {
+      await Promise.all([
+        sendRentalFlowBiEvent({
+          eventName: 'PRIMARY_ACTION_PERFORMED',
+          eventData: { source: 'online_booking_widget' },
+        }, appOrigin),
+        sendRentalFlowBiEvent({
+          eventName: 'CUSTOM',
+          customEventName: 'rentalflow_online_booking_created',
+          eventData: { source: 'online_booking_widget' },
+        }, appOrigin),
+      ]);
+    }
+
+    return result;
+  };
+}
 
 // The existing booking component predates RentalFlow's i18n layer and contains
 // French source strings. Localize its Shadow DOM immediately after each render
