@@ -1,13 +1,19 @@
 import RentalFlowBookingElement from './rental-flow-online-booking';
 import { localizeDom, resolveLanguage, resolveLocale } from '../../../../intl';
 
+// The legacy booking module still registers its constructor as
+// <rental-flow-booking>. Wix CLI also registers the exported constructor using
+// the extension tagName (<rental-flow-online-booking>). A Custom Element
+// constructor can't be registered twice, so export a distinct subclass for Wix.
+class RentalFlowOnlineBookingElement extends RentalFlowBookingElement {}
+
 // Wix's current CLI tutorial recommends deriving the app backend origin from
 // the module URL so the same endpoint URL works in local development and after
 // deployment. BASE_API_URL is compiled to undefined in this custom-element
 // bundle, so don't depend on it here.
 const appOrigin = new URL(import.meta.url).origin;
 
-const Element = RentalFlowBookingElement as unknown as {
+const Element = RentalFlowOnlineBookingElement as unknown as {
   new (): HTMLElement;
   prototype: Record<string, unknown>;
 };
