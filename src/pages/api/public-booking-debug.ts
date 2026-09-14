@@ -4,6 +4,7 @@ import { auth } from '@wix/essentials';
 
 const SETTINGS = '@pilotedavid1/rental-flow/app-settings';
 const ASSETS = '@pilotedavid1/rental-flow/assets';
+const DOCUMENT_TEMPLATES = '@pilotedavid1/rental-flow/document-templates';
 
 function errorDetails(error: unknown) {
   if (error instanceof Error) {
@@ -25,9 +26,9 @@ function json(data: unknown, status = 200): Response {
   });
 }
 
-async function elevatedFind(query: any): Promise<any> {
-  const run = auth.elevate(query.find.bind(query));
-  return run();
+function elevatedQuery(collectionId: string): any {
+  const query = auth.elevate(items.query);
+  return query(collectionId);
 }
 
 export const GET: APIRoute = async ({ request }) => {
@@ -53,7 +54,7 @@ export const GET: APIRoute = async ({ request }) => {
   }
 
   try {
-    const settings = await elevatedFind(items.query(SETTINGS).limit(1));
+    const settings = await elevatedQuery(SETTINGS).eq('settingsKey', 'default').limit(1).find();
     result.settingsRead = {
       ok: true,
       count: settings.items?.length || 0,
@@ -66,13 +67,26 @@ export const GET: APIRoute = async ({ request }) => {
   }
 
   try {
-    const assets = await elevatedFind(items.query(ASSETS).limit(5));
+    const assets = await elevatedQuery(ASSETS).limit(5).find();
     result.assetsRead = {
       ok: true,
       count: assets.items?.length || 0,
     };
   } catch (error) {
     result.assetsRead = {
+      ok: false,
+      error: errorDetails(error),
+    };
+  }
+
+  try {
+    const templates = await elevatedQuery(DOCUMENT_TEMPLATES).limit(5).find();
+    result.templatesRead = {
+      ok: true,
+      count: templates.items?.length || 0,
+    };
+  } catch (error) {
+    result.templatesRead = {
       ok: false,
       error: errorDetails(error),
     };
