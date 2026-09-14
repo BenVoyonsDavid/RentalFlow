@@ -32,10 +32,23 @@ function elevatedQuery(collectionId: string): any {
 }
 
 export const GET: APIRoute = async ({ request }) => {
+  const hasAuthorizationHeader = Boolean(request.headers.get('authorization'));
+  const baseUrl = new URL(request.url).origin;
+
+  if (!hasAuthorizationHeader) {
+    return json({
+      reachedEndpoint: true,
+      hasAuthorizationHeader: false,
+      baseUrl,
+      error: 'AUTHENTICATION_REQUIRED',
+      message: 'Cet endpoint doit être appelé avec httpClient.fetchWithAuth().',
+    }, 401);
+  }
+
   const result: Record<string, unknown> = {
     reachedEndpoint: true,
-    hasAuthorizationHeader: Boolean(request.headers.get('authorization')),
-    baseUrl: new URL(request.url).origin,
+    hasAuthorizationHeader: true,
+    baseUrl,
   };
 
   try {
@@ -81,13 +94,17 @@ export const GET: APIRoute = async ({ request }) => {
 
   try {
     const templates = await elevatedQuery(DOCUMENT_TEMPLATES).limit(5).find();
+    const templateCount = templates.items?.length || 0;
     result.templatesRead = {
       ok: true,
-      count: templates.items?.length || 0,
+      count: templateCount,
+      optional: true,
+      configured: templateCount > 0,
     };
   } catch (error) {
     result.templatesRead = {
       ok: false,
+      optional: true,
       error: errorDetails(error),
     };
   }
