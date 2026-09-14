@@ -1,4 +1,4 @@
-﻿import type { APIRoute } from 'astro';
+import type { APIRoute } from 'astro';
 import { appInstances } from '@wix/app-management';
 import { items } from '@wix/data';
 import { auth } from '@wix/essentials';
@@ -148,9 +148,13 @@ function lockToken(): string {
   return globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
+function elevatedQuery(collectionId: string): any {
+  const query = auth.elevate(items.query);
+  return query(collectionId);
+}
+
 async function elevatedFind(query: any): Promise<any> {
-  const run = auth.elevate(query.find.bind(query));
-  return run();
+  return query.find();
 }
 
 async function elevatedInsert(collectionId: string, item: Record<string, unknown>): Promise<any> {
@@ -188,8 +192,8 @@ async function loadCurrentPlan(): Promise<RentalFlowPlan> {
 
 async function loadSettingsAndTemplates(): Promise<{ settings: AppSettings; templates: DocumentTemplate[] }> {
   const [settingsResult, templatesResult] = await Promise.all([
-    elevatedFind(items.query(SETTINGS).eq('settingsKey', 'default').limit(1)),
-    elevatedFind(items.query(DOCUMENT_TEMPLATES).limit(100)),
+    elevatedFind(elevatedQuery(SETTINGS).eq('settingsKey', 'default').limit(1)),
+    elevatedFind(elevatedQuery(DOCUMENT_TEMPLATES).limit(100)),
   ]);
   const saved = settingsResult.items?.[0] as AppSettings | undefined;
   return {
@@ -208,14 +212,14 @@ function requiredFieldsForDefaults(settings: AppSettings, templates: DocumentTem
 }
 
 async function loadActiveAssets(): Promise<Asset[]> {
-  const result = await elevatedFind(items.query(ASSETS).ne('active', false).ne('status', 'INACTIVE').limit(1000));
+  const result = await elevatedFind(elevatedQuery(ASSETS).ne('active', false).ne('status', 'INACTIVE').limit(1000));
   return result.items as Asset[];
 }
 
 async function loadBlockingItems(start: Date, end: Date, before: number, after: number): Promise<ReservationItem[]> {
   const requested = getBlockedRange(start, end, before, after);
   const result = await elevatedFind(
-    items.query(RESERVATION_ITEMS)
+    elevatedQuery(RESERVATION_ITEMS)
       .lt('blockedStartDateTime', requested.blockedEnd)
       .gt('blockedEndDateTime', requested.blockedStart)
       .limit(1000)
@@ -266,7 +270,7 @@ async function acquireBookingLocks(assetIds: string[]): Promise<BookingLock[]> {
 
   try {
     for (const assetId of [...assetIds].sort()) {
-      const existingResult = await elevatedFind(items.query(BOOKING_LOCKS).eq('assetId', assetId).limit(1));
+      const existingResult = await elevatedFind(elevatedQuery(BOOKING_LOCKS).eq('assetId', assetId).limit(1));
       const existing = existingResult.items?.[0] as BookingLock | undefined;
       if (existing?._id) {
         const expiry = asDate(existing.expiresAt);
@@ -326,7 +330,7 @@ function publicAsset(
 
   return {
     id: asset._id || '',
-    title: asset.title || 'Ã‰quipement',
+    title: asset.title || 'Équipement',
     productType: asset.productType || '',
     currency: asset.currency || settings?.currency || 'CAD',
     dailyRateCents: asset.dailyRateCents || 0,
@@ -386,7 +390,7 @@ export const GET: APIRoute = async ({ request }) => {
     if (error instanceof Error && error.message === 'UNAUTHORIZED') return json({ error: 'Unauthorized' }, 401);
     if (error instanceof Error && ['INVALID_PERIOD', 'PERIOD_TOO_LONG', 'PAST_PERIOD'].includes(error.message)) return json({ error: error.message }, 400);
     console.error('RentalFlow public booking GET failed', error);
-    return json({ error: 'Impossible de charger la rÃ©servation en ligne.' }, 500);
+    return json({ error: 'Impossible de charger la réservation en ligne.' }, 500);
   }
 };
 
@@ -400,7 +404,7 @@ export const POST: APIRoute = async ({ request }) => {
     const body = await request.json() as BookingRequest;
     const { start, end } = validatePeriod(body.startDateTime, body.endDateTime);
     const assetIds = [...new Set((body.assetIds || []).map((id) => clean(id, 80)).filter(Boolean))];
-    if (!assetIds.length || assetIds.length > 25) return json({ error: 'SÃ©lection dâ€™Ã©quipement invalide.' }, 400);
+    if (!assetIds.length || assetIds.length > 25) return json({ error: 'Sélection d’équipement invalide.' }, 400);
 
     const customer = {
       name: clean(body.customer?.name, 150),
@@ -439,7 +443,7 @@ export const POST: APIRoute = async ({ request }) => {
     if (missing.length) return json({ error: `Informations requises : ${missing.join(', ')}.` }, 400);
 
     const selectedAssets = assetIds.map((id) => activeAssets.find((asset) => asset._id === id)).filter((asset): asset is Asset => !!asset);
-    if (selectedAssets.length !== assetIds.length) return json({ error: 'Un Ã©quipement sÃ©lectionnÃ© nâ€™est plus disponible.' }, 409);
+    if (selectedAssets.length !== assetIds.length) return json({ error: 'Un équipement sélectionné n’est plus disponible.' }, 409);
 
     acquiredLocks = await acquireBookingLocks(assetIds);
 
@@ -448,7 +452,7 @@ export const POST: APIRoute = async ({ request }) => {
     const blockingItems = await loadBlockingItems(start, end, before, after);
     for (const asset of selectedAssets) {
       if (!asset._id || !isAssetAvailable(asset._id, start, end, before, after, blockingItems)) {
-        return json({ error: `${asset.title || 'Un Ã©quipement'} nâ€™est plus disponible pour cette pÃ©riode.` }, 409);
+        return json({ error: `${asset.title || 'Un équipement'} n’est plus disponible pour cette période.` }, 409);
       }
     }
 
@@ -463,7 +467,7 @@ export const POST: APIRoute = async ({ request }) => {
     const depositResult = calculateDeposit(taxResult.totalCents, paymentMode, depositType, depositValue);
     const currency = priceLines[0]?.asset.currency || settings.currency || 'CAD';
 
-    const existingCustomerResult = await elevatedFind(items.query(CUSTOMERS).eq('email', customer.email).limit(1));
+    const existingCustomerResult = await elevatedFind(elevatedQuery(CUSTOMERS).eq('email', customer.email).limit(1));
     const existingCustomer = existingCustomerResult.items?.[0] as any | undefined;
     let customerId = existingCustomer?._id || '';
     let customerNumber = existingCustomer?.customerNumber || '';
@@ -560,7 +564,7 @@ export const POST: APIRoute = async ({ request }) => {
       reservationId: createdReservation._id,
       reservationNumber,
       actionType: 'ONLINE_RESERVATION_CREATED',
-      description: `RÃ©servation en ligne ${reservationNumber} crÃ©Ã©e par ${customer.name}.`,
+      description: `Réservation en ligne ${reservationNumber} créée par ${customer.name}.`,
       actor: 'Client en ligne',
       eventDate: new Date(),
     });
@@ -574,9 +578,9 @@ export const POST: APIRoute = async ({ request }) => {
     const api = wixGetPaid.paymentLinks;
     if (!api?.createPaymentLink) throw new Error('PAYLINK_UNAVAILABLE');
     const createPaymentLink = auth.elevate(api.createPaymentLink);
-    const label = paymentMode === 'DEPOSIT' ? 'DÃ©pÃ´t de rÃ©servation' : 'Paiement de location';
+    const label = paymentMode === 'DEPOSIT' ? 'Dépôt de réservation' : 'Paiement de location';
     const paymentLinkResponse = await createPaymentLink({
-      title: `${reservationNumber} â€” ${label}`,
+      title: `${reservationNumber} — ${label}`,
       description: `Paiement RentalFlow pour ${customer.name}`,
       currency,
       type: 'ECOM',
@@ -621,14 +625,14 @@ export const POST: APIRoute = async ({ request }) => {
       wixCheckoutId: checkoutId,
       wixOnlinePayment: true,
       remainingBalanceCents: Math.max(0, taxResult.totalCents - amount),
-      notes: 'Lien de paiement Wix crÃ©Ã© depuis la rÃ©servation en ligne RentalFlow.',
+      notes: 'Lien de paiement Wix créé depuis la réservation en ligne RentalFlow.',
     });
 
     await elevatedInsert(ACTIVITY, {
       reservationId: createdReservation._id,
       reservationNumber,
       actionType: 'ONLINE_PAYMENT_LINK_CREATED',
-      description: `${label} crÃ©Ã© pour ${(amount / 100).toFixed(2)} ${currency}.`,
+      description: `${label} créé pour ${(amount / 100).toFixed(2)} ${currency}.`,
       actor: 'RentalFlow Online Booking',
       eventDate: new Date(),
     });
@@ -649,12 +653,11 @@ export const POST: APIRoute = async ({ request }) => {
     }
 
     if (error instanceof Error && error.message === 'UNAUTHORIZED') return json({ error: 'Unauthorized' }, 401);
-    if (error instanceof Error && error.message === 'BOOKING_BUSY') return json({ error: 'Cette disponibilitÃ© est en cours de rÃ©servation. RÃ©essayez dans quelques secondes.' }, 409);
+    if (error instanceof Error && error.message === 'BOOKING_BUSY') return json({ error: 'Cette disponibilité est en cours de réservation. Réessayez dans quelques secondes.' }, 409);
     if (error instanceof Error && ['INVALID_PERIOD', 'PERIOD_TOO_LONG', 'PAST_PERIOD'].includes(error.message)) return json({ error: error.message }, 400);
-    if (error instanceof Error && error.message.startsWith('PAYLINK')) return json({ error: 'La rÃ©servation nâ€™a pas Ã©tÃ© confirmÃ©e parce que le paiement Wix nâ€™a pas pu Ãªtre prÃ©parÃ©.' }, 502);
-    return json({ error: 'Impossible de complÃ©ter la rÃ©servation en ligne.' }, 500);
+    if (error instanceof Error && error.message.startsWith('PAYLINK')) return json({ error: 'La réservation n’a pas été confirmée parce que le paiement Wix n’a pas pu être préparé.' }, 502);
+    return json({ error: 'Impossible de compléter la réservation en ligne.' }, 500);
   } finally {
     await releaseBookingLocks(acquiredLocks);
   }
 };
-
