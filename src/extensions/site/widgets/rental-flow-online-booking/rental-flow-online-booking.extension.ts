@@ -12,13 +12,13 @@ export default extensions.customElement({
     defaultHeight: 940,
   },
   installation: {
-    autoAdd: true,
+    staticContainer: 'HOMEPAGE',
   },
   presets: [
     {
       id: 'c76f9552-dc23-49bb-b3c5-113e6a943e0e',
       name: 'Réservation RentalFlow',
-      thumbnailUrl: '{{BASE_URL}}/rental-flow-online-booking-thumbnail.png',
+      thumbnailUrl: '{{BASE_URL}}/public/rental-flow-online-booking-thumbnail.png',
     },
   ],
   tagName: 'rental-flow-online-booking',
