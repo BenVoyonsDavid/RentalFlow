@@ -96,6 +96,12 @@ function base64ToBytes(value: string): Uint8Array {
   return bytes;
 }
 
+function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  const copy = new Uint8Array(bytes.byteLength);
+  copy.set(bytes);
+  return copy.buffer;
+}
+
 function base64UrlEncode(bytes: Uint8Array): string {
   return bytesToBase64(bytes).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
 }
@@ -135,9 +141,13 @@ export async function encryptSquareSecret(value: string): Promise<string> {
   const plaintext = clean(value);
   if (!plaintext) return '';
   const keyMaterial = await deriveKeyMaterial('tokens');
-  const key = await crypto.subtle.importKey('raw', keyMaterial, { name: 'AES-GCM' }, false, ['encrypt']);
+  const key = await crypto.subtle.importKey('raw', toArrayBuffer(keyMaterial), { name: 'AES-GCM' }, false, ['encrypt']);
   const iv = crypto.getRandomValues(new Uint8Array(12));
-  const encrypted = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, encoder.encode(plaintext));
+  const encrypted = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv: toArrayBuffer(iv) },
+    key,
+    encoder.encode(plaintext),
+  );
   return `v1.${base64UrlEncode(iv)}.${base64UrlEncode(new Uint8Array(encrypted))}`;
 }
 
@@ -149,12 +159,12 @@ export async function decryptSquareSecret(value: string): Promise<string> {
     throw new SquareOAuthServerError('Encrypted Square credential has an unsupported format.', 500, 'square_credential_format');
   }
   const keyMaterial = await deriveKeyMaterial('tokens');
-  const key = await crypto.subtle.importKey('raw', keyMaterial, { name: 'AES-GCM' }, false, ['decrypt']);
+  const key = await crypto.subtle.importKey('raw', toArrayBuffer(keyMaterial), { name: 'AES-GCM' }, false, ['decrypt']);
   try {
     const decrypted = await crypto.subtle.decrypt(
-      { name: 'AES-GCM', iv: base64UrlDecode(ivPart) },
+      { name: 'AES-GCM', iv: toArrayBuffer(base64UrlDecode(ivPart)) },
       key,
-      base64UrlDecode(cipherPart),
+      toArrayBuffer(base64UrlDecode(cipherPart)),
     );
     return decoder.decode(decrypted);
   } catch {
@@ -177,7 +187,7 @@ export async function createSquareOAuthState(
   };
   const payloadPart = base64UrlEncode(encoder.encode(JSON.stringify(payload)));
   const keyMaterial = await deriveKeyMaterial('state');
-  const key = await crypto.subtle.importKey('raw', keyMaterial, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const key = await crypto.subtle.importKey('raw', toArrayBuffer(keyMaterial), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
   const signature = await crypto.subtle.sign('HMAC', key, encoder.encode(payloadPart));
   return `${payloadPart}.${base64UrlEncode(new Uint8Array(signature))}`;
 }
@@ -188,11 +198,11 @@ export async function verifySquareOAuthState(value: string): Promise<SquareOAuth
     throw new SquareOAuthServerError('Invalid OAuth state.', 400, 'square_state_invalid');
   }
   const keyMaterial = await deriveKeyMaterial('state');
-  const key = await crypto.subtle.importKey('raw', keyMaterial, { name: 'HMAC', hash: 'SHA-256' }, false, ['verify']);
+  const key = await crypto.subtle.importKey('raw', toArrayBuffer(keyMaterial), { name: 'HMAC', hash: 'SHA-256' }, false, ['verify']);
   const valid = await crypto.subtle.verify(
     'HMAC',
     key,
-    base64UrlDecode(signaturePart),
+    toArrayBuffer(base64UrlDecode(signaturePart)),
     encoder.encode(payloadPart),
   );
   if (!valid) throw new SquareOAuthServerError('Invalid OAuth state signature.', 400, 'square_state_invalid');
