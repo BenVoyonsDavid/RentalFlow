@@ -128,8 +128,9 @@ const PaymentSettingsPanel: FC = () => {
     setError('');
     setSuccess('');
     try {
+      const providerChanged = normalizePaymentProvider(record.payflowProvider) !== provider;
       const environmentChanged = normalizePaymentEnvironment(record.payflowEnvironment) !== environment;
-      const clearProviderAccount = environmentChanged && Boolean(record.payflowAccountId);
+      const clearProviderAccount = Boolean(record.payflowAccountId) && (providerChanged || environmentChanged);
       const payload: AppSettingsRecord = {
         ...record,
         settingsKey: 'default',
@@ -170,6 +171,12 @@ const PaymentSettingsPanel: FC = () => {
     return new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(date);
   };
 
+  const providerName = provider === 'PAYFLOW_SQUARE'
+    ? 'Square'
+    : provider === 'PAYFLOW_STRIPE'
+      ? 'Stripe'
+      : 'Wix';
+
   return (
     <div style={card}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, alignItems: 'flex-start', flexWrap: 'wrap' }}>
@@ -177,8 +184,8 @@ const PaymentSettingsPanel: FC = () => {
           <h2 style={{ margin: 0 }}>{t('Paiements', 'Payments')}</h2>
           <p style={{ color: '#64748b', marginBottom: 0, maxWidth: 760 }}>
             {t(
-              'Choisissez la future configuration de paiement RentalFlow. Le flux réel demeure Wix jusqu’à ce qu’un compte PayFlow Stripe soit entièrement configuré.',
-              'Choose RentalFlow’s future payment configuration. The live payment flow remains on Wix until a PayFlow Stripe account is fully configured.',
+              'Choisissez la configuration PayFlow de RentalFlow. Square est le fournisseur PayFlow prioritaire; le flux réel demeure Wix jusqu’à ce qu’un compte fournisseur soit connecté et validé.',
+              'Choose RentalFlow’s PayFlow configuration. Square is the primary PayFlow provider; the live payment flow remains on Wix until a provider account is connected and validated.',
             )}
           </p>
         </div>
@@ -196,11 +203,12 @@ const PaymentSettingsPanel: FC = () => {
             <span style={{ display: 'block', fontWeight: 600, fontSize: 13, marginBottom: 6 }}>{t('Fournisseur de paiement', 'Payment provider')}</span>
             <select style={input} value={provider} onChange={(e) => setProvider(e.target.value as PaymentProvider)}>
               <option value="WIX">Wix Payments / Payment Links</option>
-              <option value="PAYFLOW_STRIPE">PayFlow Lite · Stripe Connect</option>
+              <option value="PAYFLOW_SQUARE">PayFlow · Square</option>
+              <option value="PAYFLOW_STRIPE" disabled>{t('PayFlow · Stripe — futur', 'PayFlow · Stripe — future')}</option>
             </select>
           </label>
 
-          {provider === 'PAYFLOW_STRIPE' && <label>
+          {provider !== 'WIX' && <label>
             <span style={{ display: 'block', fontWeight: 600, fontSize: 13, marginBottom: 6 }}>{t('Environnement', 'Environment')}</span>
             <select style={input} value={environment} onChange={(e) => setEnvironment(e.target.value as PaymentEnvironment)}>
               <option value="TEST">{t('Test — aucune vraie transaction', 'Test — no real transactions')}</option>
@@ -209,9 +217,9 @@ const PaymentSettingsPanel: FC = () => {
           </label>}
         </div>
 
-        {provider === 'PAYFLOW_STRIPE' && <div style={{ marginTop: 20, background: '#f8fafc', borderRadius: 10, padding: 16 }}>
+        {provider !== 'WIX' && <div style={{ marginTop: 20, background: '#f8fafc', borderRadius: 10, padding: 16 }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: 14 }}>
-            <Info label={t('Compte Stripe', 'Stripe account')} value={maskedPaymentAccountId(record.payflowAccountId)} />
+            <Info label={t(`Compte ${providerName}`, `${providerName} account`)} value={maskedPaymentAccountId(record.payflowAccountId)} />
             <Info label={t('Statut', 'Status')} value={statusLabel(derivedStatus)} />
             <Info label={t('Paiements', 'Payments')} value={record.payflowChargesEnabled ? t('Activés', 'Enabled') : t('Non activés', 'Not enabled')} />
             <Info label={t('Versements', 'Payouts')} value={record.payflowPayoutsEnabled ? t('Activés', 'Enabled') : t('Non activés', 'Not enabled')} />
@@ -220,13 +228,13 @@ const PaymentSettingsPanel: FC = () => {
           </div>
 
           {(currentlyDue.length > 0 || pastDue.length > 0 || pendingVerification.length > 0) && <div style={{ marginTop: 14, fontSize: 13, color: '#475569' }}>
-            {t('Exigences Stripe', 'Stripe requirements')}: {currentlyDue.length} {t('actuelle(s)', 'currently due')}, {pastDue.length} {t('en retard', 'past due')}, {pendingVerification.length} {t('en vérification', 'pending verification')}.
+            {t('Exigences du fournisseur', 'Provider requirements')}: {currentlyDue.length} {t('actuelle(s)', 'currently due')}, {pastDue.length} {t('en retard', 'past due')}, {pendingVerification.length} {t('en vérification', 'pending verification')}.
           </div>}
 
-          {!record.payflowAccountId && <div style={{ marginTop: 14, color: '#475569', fontSize: 13 }}>
+          {provider === 'PAYFLOW_SQUARE' && !record.payflowAccountId && <div style={{ marginTop: 14, color: '#475569', fontSize: 13 }}>
             {t(
-              'La connexion Stripe Connect sera activée à la prochaine sous-étape. Aucune clé secrète, donnée bancaire ou donnée de carte ne sera stockée dans RentalFlow.',
-              'Stripe Connect onboarding will be enabled in the next sub-step. No secret key, bank data, or card data will be stored in RentalFlow.',
+              'La prochaine étape ajoutera le bouton « Connecter Square ». Le marchand autorisera RentalFlow avec Square OAuth; aucun mot de passe Square, numéro de carte ou donnée bancaire ne sera enregistré par RentalFlow.',
+              'The next step adds the “Connect Square” button. The merchant will authorize RentalFlow with Square OAuth; RentalFlow will not store Square passwords, card numbers, or bank data.',
             )}
           </div>}
         </div>}
