@@ -4,6 +4,7 @@ import { items } from '@wix/data';
 import { Page, WixDesignSystemProvider } from '@wix/design-system';
 import '@wix/design-system/styles.global.css';
 import { getCurrentPlan, planLabels } from '../../../../lib/plans';
+import PaymentSettingsPanel from './payment-settings-panel';
 
 const SETTINGS = '@pilotedavid1/rental-flow/app-settings';
 const TEMPLATES = '@pilotedavid1/rental-flow/document-templates';
@@ -330,16 +331,18 @@ const SettingsV2Page: FC = () => {
                   <p style={{ color: '#64748b', fontSize: 13 }}>RentalFlow enregistre un snapshot des taxes sur chaque réservation et document. Modifier les taux plus tard ne changera donc pas les anciennes transactions.</p>
                 </div>
 
+                <PaymentSettingsPanel />
+
                 <div style={card}>
                   <h2 style={{ marginTop: 0 }}>Paiement et dépôt</h2>
                   <div style={{ padding: 14, borderRadius: 10, background: '#eff6ff', color: '#1e40af', marginBottom: 16 }}>
-                    Les paiements en ligne seront effectués par le checkout / lien de paiement Wix. RentalFlow ne stocke jamais les numéros de carte.
+                    Le flux de paiement réel demeure Wix pendant la fondation PayFlow Lite. Le fournisseur PayFlow Stripe ne deviendra actif qu’après la connexion et la validation complète du compte Stripe Connect.
                   </div>
                   <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}><input type="checkbox" checked={settings.defaultDepositEnabled === true} onChange={(e) => setSettings({ ...settings, defaultDepositEnabled: e.target.checked })} /> Demander un dépôt par défaut</label>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))', gap: 16 }}>
                     <Field label="Type de dépôt"><select disabled={!settings.defaultDepositEnabled} style={input} value={settings.defaultDepositType || 'PERCENT'} onChange={(e) => setSettings({ ...settings, defaultDepositType: e.target.value as DepositType })}><option value="PERCENT">Pourcentage</option><option value="FIXED">Montant fixe</option></select></Field>
                     <Field label={settings.defaultDepositType === 'FIXED' ? 'Montant par défaut' : 'Pourcentage par défaut'}><input disabled={!settings.defaultDepositEnabled} type="number" min="0" step="0.01" style={input} value={settings.defaultDepositValue ?? 0} onChange={(e) => setSettings({ ...settings, defaultDepositValue: numberValue(e.target.value) })} /></Field>
-                    <Field label="Fournisseur de paiement"><input style={input} value="Wix Payments / moyens de paiement Wix" disabled /></Field>
+                    <Field label="Flux de paiement actuel"><input style={input} value="Wix Payments / moyens de paiement Wix" disabled /></Field>
                   </div>
                   <p style={{ color: '#64748b', fontSize: 13 }}>Chaque réservation pourra remplacer ce réglage et choisir : paiement complet immédiatement, dépôt seulement, ou aucun paiement immédiat.</p>
                 </div>
