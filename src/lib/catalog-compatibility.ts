@@ -3,11 +3,14 @@ export type CatalogCompatibilityMode = 'ALL' | 'CATEGORIES' | 'TAGS' | 'ASSETS';
 export type CatalogCompatibleAsset = {
   _id?: string;
   productType?: string;
+  categoryId?: string;
+  categoryName?: string;
   catalogTagsJson?: string;
 };
 
 export type CatalogCompatibilityRule = {
   compatibilityMode?: CatalogCompatibilityMode;
+  applicableCategoryIdsJson?: string;
   applicableCategoriesJson?: string;
   applicableTagsJson?: string;
   applicableAssetIdsJson?: string;
@@ -45,7 +48,12 @@ export function catalogItemAppliesToAsset(rule: CatalogCompatibilityRule, asset:
   }
 
   if (mode === 'CATEGORIES') {
-    const category = normalizeCatalogKey(asset.productType || '');
+    const acceptedCategoryIds = decodeCatalogList(rule.applicableCategoryIdsJson);
+    if (asset.categoryId && acceptedCategoryIds.includes(asset.categoryId)) return true;
+
+    // Backward compatibility for merchants that created compatibility rules
+    // before first-class RentalFlow categories existed.
+    const category = normalizeCatalogKey(asset.categoryName || asset.productType || '');
     return Boolean(category && decodeCatalogList(rule.applicableCategoriesJson).map(normalizeCatalogKey).includes(category));
   }
 
