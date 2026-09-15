@@ -16,6 +16,15 @@ export default {
     { type: 'TEXT', displayName: 'Devise', key: 'currency' },
     { type: 'DATETIME', displayName: 'Date du paiement', key: 'paymentDate' },
     { type: 'TEXT', displayName: 'Référence', key: 'reference' },
+
+    { type: 'TEXT', displayName: 'Fournisseur', key: 'provider' },
+    { type: 'TEXT', displayName: 'Compte fournisseur ID', key: 'providerAccountId' },
+    { type: 'TEXT', displayName: 'Paiement fournisseur ID', key: 'providerPaymentId' },
+    { type: 'TEXT', displayName: 'Charge fournisseur ID', key: 'providerChargeId' },
+    { type: 'TEXT', displayName: 'Client fournisseur ID', key: 'providerCustomerId' },
+    { type: 'TEXT', displayName: 'Remboursement fournisseur ID', key: 'providerRefundId' },
+    { type: 'TEXT', displayName: 'Statut fournisseur', key: 'providerStatus' },
+
     { type: 'TEXT', displayName: 'Wix Payment Link ID', key: 'wixPaymentLinkId' },
     { type: 'TEXT', displayName: 'Wix Payment URL', key: 'wixPaymentUrl' },
     { type: 'TEXT', displayName: 'Wix Checkout ID', key: 'wixCheckoutId' },
