@@ -7,6 +7,8 @@ export type SquarePaymentAccountRecord = {
   provider?: string;
   environment?: string;
   accountId?: string;
+  // Compatibility alias for the legacy app-settings payment snapshot. Square itself uses accountId.
+  payflowAccountId?: string;
   accountStatus?: string;
   detailsSubmitted?: boolean;
   chargesEnabled?: boolean;
