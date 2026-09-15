@@ -36,8 +36,24 @@ type SquareConnectActionResponse = SquareConnectConfiguration & {
   authorizeUrl?: string;
 };
 
-function apiOrigin(baseUrl = import.meta.env.BASE_API_URL): string {
-  return String(baseUrl || '').replace(/\/$/, '');
+// Wix-hosted dashboard previews can compile BASE_API_URL to the local dev origin.
+// Derive the backend origin from the loaded module URL instead, matching the
+// public booking widget. In wix dev this remains localhost; in preview/release
+// it resolves to the Wix-managed *.wix-host.com app backend origin.
+const moduleOrigin = (() => {
+  try {
+    const origin = new URL(import.meta.url).origin;
+    return origin === 'null' ? '' : origin.replace(/\/$/, '');
+  } catch {
+    return '';
+  }
+})();
+
+function apiOrigin(baseUrl?: string): string {
+  const explicit = String(baseUrl || '').trim().replace(/\/$/, '');
+  if (explicit) return explicit;
+  if (moduleOrigin) return moduleOrigin;
+  return String(import.meta.env.BASE_API_URL || '').replace(/\/$/, '');
 }
 
 async function parseResponse<T>(response: Response): Promise<T> {
@@ -47,7 +63,7 @@ async function parseResponse<T>(response: Response): Promise<T> {
 }
 
 export async function getSquareConnectConfiguration(
-  baseUrl = import.meta.env.BASE_API_URL,
+  baseUrl?: string,
 ): Promise<SquareConnectConfiguration> {
   const origin = apiOrigin(baseUrl);
   if (!origin) throw new Error('RentalFlow backend URL is unavailable.');
@@ -61,7 +77,7 @@ export async function getSquareConnectConfiguration(
 export async function runSquareConnectAction(
   action: 'start' | 'refresh',
   environment: PaymentEnvironment,
-  baseUrl = import.meta.env.BASE_API_URL,
+  baseUrl?: string,
 ): Promise<SquareConnectActionResponse> {
   const origin = apiOrigin(baseUrl);
   if (!origin) throw new Error('RentalFlow backend URL is unavailable.');
