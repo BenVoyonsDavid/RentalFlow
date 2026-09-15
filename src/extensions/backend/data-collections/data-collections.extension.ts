@@ -5,6 +5,7 @@ import reservationItemsCollection from './reservation-items';
 import customersCollection from './customers';
 import documentsCollection from './documents';
 import paymentsCollection from './payments';
+import paymentAccountsCollection from './payment-accounts';
 import inspectionsCollection from './inspections';
 import activityLogCollection from './activity-log';
 import appSettingsCollection from './app-settings';
@@ -23,6 +24,7 @@ export default extensions.dataCollections({
     customersCollection,
     documentsCollection,
     paymentsCollection,
+    paymentAccountsCollection,
     inspectionsCollection,
     activityLogCollection,
     appSettingsCollection,
