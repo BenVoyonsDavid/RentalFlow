@@ -13,7 +13,7 @@ import {
   type PaymentProvider,
 } from '../../../../lib/payment-provider';
 
-const PAYMENT_ACCOUNTS = '@pilotedavid1/rental-flow/payment-accounts';
+const APP_SETTINGS = '@pilotedavid1/rental-flow/app-settings';
 
 const card: CSSProperties = {
   background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12,
@@ -28,42 +28,40 @@ const primary: CSSProperties = {
   cursor: 'pointer', background: '#116dff', color: '#fff',
 };
 
-type PaymentAccountRecord = {
+type AppSettingsRecord = Record<string, unknown> & {
   _id?: string;
   settingsKey?: string;
-  provider?: string;
-  environment?: string;
-  accountId?: string;
-  accountStatus?: string;
-  detailsSubmitted?: boolean;
-  chargesEnabled?: boolean;
-  payoutsEnabled?: boolean;
-  requirementsCurrentlyDueJson?: string;
-  requirementsPastDueJson?: string;
-  requirementsPendingVerificationJson?: string;
-  country?: string;
-  defaultCurrency?: string;
-  lastSyncedAt?: Date | string;
-  active?: boolean;
+  payflowProvider?: string;
+  payflowEnvironment?: string;
+  payflowAccountId?: string;
+  payflowAccountStatus?: string;
+  payflowDetailsSubmitted?: boolean;
+  payflowChargesEnabled?: boolean;
+  payflowPayoutsEnabled?: boolean;
+  payflowRequirementsCurrentlyDueJson?: string;
+  payflowRequirementsPastDueJson?: string;
+  payflowRequirementsPendingVerificationJson?: string;
+  payflowCountry?: string;
+  payflowDefaultCurrency?: string;
+  payflowLastSyncedAt?: Date | string | null;
 };
 
-const emptyRecord: PaymentAccountRecord = {
+const emptyRecord: AppSettingsRecord = {
   settingsKey: 'default',
-  provider: 'WIX',
-  environment: 'TEST',
-  accountStatus: 'NOT_CONNECTED',
-  detailsSubmitted: false,
-  chargesEnabled: false,
-  payoutsEnabled: false,
-  requirementsCurrentlyDueJson: '[]',
-  requirementsPastDueJson: '[]',
-  requirementsPendingVerificationJson: '[]',
-  active: true,
+  payflowProvider: 'WIX',
+  payflowEnvironment: 'TEST',
+  payflowAccountStatus: 'NOT_CONNECTED',
+  payflowDetailsSubmitted: false,
+  payflowChargesEnabled: false,
+  payflowPayoutsEnabled: false,
+  payflowRequirementsCurrentlyDueJson: '[]',
+  payflowRequirementsPastDueJson: '[]',
+  payflowRequirementsPendingVerificationJson: '[]',
 };
 
 const PaymentSettingsPanel: FC = () => {
   const { t, locale } = useRentalFlowI18n('dashboard');
-  const [record, setRecord] = useState<PaymentAccountRecord>(emptyRecord);
+  const [record, setRecord] = useState<AppSettingsRecord>(emptyRecord);
   const [provider, setProvider] = useState<PaymentProvider>('WIX');
   const [environment, setEnvironment] = useState<PaymentEnvironment>('TEST');
   const [loading, setLoading] = useState(true);
@@ -75,12 +73,12 @@ const PaymentSettingsPanel: FC = () => {
     let active = true;
     const load = async () => {
       try {
-        const result = await items.query(PAYMENT_ACCOUNTS).eq('settingsKey', 'default').limit(1).find();
-        const existing = (result.items?.[0] as PaymentAccountRecord | undefined) || emptyRecord;
+        const result = await items.query(APP_SETTINGS).eq('settingsKey', 'default').limit(1).find();
+        const existing = (result.items?.[0] as AppSettingsRecord | undefined) || emptyRecord;
         if (!active) return;
         setRecord(existing);
-        setProvider(normalizePaymentProvider(existing.provider));
-        setEnvironment(normalizePaymentEnvironment(existing.environment));
+        setProvider(normalizePaymentProvider(existing.payflowProvider));
+        setEnvironment(normalizePaymentEnvironment(existing.payflowEnvironment));
       } catch (e) {
         if (active) setError(e instanceof Error ? e.message : t('Impossible de charger les paramètres de paiement.', 'Unable to load payment settings.'));
       } finally {
@@ -91,10 +89,25 @@ const PaymentSettingsPanel: FC = () => {
     return () => { active = false; };
   }, [t]);
 
-  const derivedStatus = useMemo<PaymentAccountStatus>(() => paymentAccountStatus({ ...record, provider, environment }), [record, provider, environment]);
-  const currentlyDue = decodeStringList(record.requirementsCurrentlyDueJson);
-  const pastDue = decodeStringList(record.requirementsPastDueJson);
-  const pendingVerification = decodeStringList(record.requirementsPendingVerificationJson);
+  const derivedStatus = useMemo<PaymentAccountStatus>(() => paymentAccountStatus({
+    provider,
+    environment,
+    accountId: record.payflowAccountId,
+    accountStatus: record.payflowAccountStatus,
+    detailsSubmitted: record.payflowDetailsSubmitted,
+    chargesEnabled: record.payflowChargesEnabled,
+    payoutsEnabled: record.payflowPayoutsEnabled,
+    requirementsCurrentlyDueJson: record.payflowRequirementsCurrentlyDueJson,
+    requirementsPastDueJson: record.payflowRequirementsPastDueJson,
+    requirementsPendingVerificationJson: record.payflowRequirementsPendingVerificationJson,
+    country: record.payflowCountry,
+    defaultCurrency: record.payflowDefaultCurrency,
+    lastSyncedAt: record.payflowLastSyncedAt || undefined,
+  }), [record, provider, environment]);
+
+  const currentlyDue = decodeStringList(record.payflowRequirementsCurrentlyDueJson);
+  const pastDue = decodeStringList(record.payflowRequirementsPastDueJson);
+  const pendingVerification = decodeStringList(record.payflowRequirementsPendingVerificationJson);
 
   const statusLabel = (status: PaymentAccountStatus) => {
     if (status === 'READY') return t('Prêt', 'Ready');
@@ -115,33 +128,33 @@ const PaymentSettingsPanel: FC = () => {
     setError('');
     setSuccess('');
     try {
-      const environmentChanged = normalizePaymentEnvironment(record.environment) !== environment;
-      const clearProviderAccount = environmentChanged && Boolean(record.accountId);
-      const payload: PaymentAccountRecord = {
+      const environmentChanged = normalizePaymentEnvironment(record.payflowEnvironment) !== environment;
+      const clearProviderAccount = environmentChanged && Boolean(record.payflowAccountId);
+      const payload: AppSettingsRecord = {
+        ...record,
         settingsKey: 'default',
-        provider,
-        environment,
-        accountId: clearProviderAccount ? '' : record.accountId || '',
-        accountStatus: clearProviderAccount ? 'NOT_CONNECTED' : record.accountStatus || 'NOT_CONNECTED',
-        detailsSubmitted: clearProviderAccount ? false : record.detailsSubmitted === true,
-        chargesEnabled: clearProviderAccount ? false : record.chargesEnabled === true,
-        payoutsEnabled: clearProviderAccount ? false : record.payoutsEnabled === true,
-        requirementsCurrentlyDueJson: clearProviderAccount ? '[]' : record.requirementsCurrentlyDueJson || '[]',
-        requirementsPastDueJson: clearProviderAccount ? '[]' : record.requirementsPastDueJson || '[]',
-        requirementsPendingVerificationJson: clearProviderAccount ? '[]' : record.requirementsPendingVerificationJson || '[]',
-        country: clearProviderAccount ? '' : record.country || '',
-        defaultCurrency: clearProviderAccount ? '' : record.defaultCurrency || '',
-        lastSyncedAt: clearProviderAccount ? undefined : record.lastSyncedAt,
-        active: true,
+        payflowProvider: provider,
+        payflowEnvironment: environment,
+        payflowAccountId: clearProviderAccount ? '' : record.payflowAccountId || '',
+        payflowAccountStatus: clearProviderAccount ? 'NOT_CONNECTED' : record.payflowAccountStatus || 'NOT_CONNECTED',
+        payflowDetailsSubmitted: clearProviderAccount ? false : record.payflowDetailsSubmitted === true,
+        payflowChargesEnabled: clearProviderAccount ? false : record.payflowChargesEnabled === true,
+        payflowPayoutsEnabled: clearProviderAccount ? false : record.payflowPayoutsEnabled === true,
+        payflowRequirementsCurrentlyDueJson: clearProviderAccount ? '[]' : record.payflowRequirementsCurrentlyDueJson || '[]',
+        payflowRequirementsPastDueJson: clearProviderAccount ? '[]' : record.payflowRequirementsPastDueJson || '[]',
+        payflowRequirementsPendingVerificationJson: clearProviderAccount ? '[]' : record.payflowRequirementsPendingVerificationJson || '[]',
+        payflowCountry: clearProviderAccount ? '' : record.payflowCountry || '',
+        payflowDefaultCurrency: clearProviderAccount ? '' : record.payflowDefaultCurrency || '',
+        payflowLastSyncedAt: clearProviderAccount ? null : record.payflowLastSyncedAt || null,
       };
 
-      let saved: PaymentAccountRecord;
-      if (record._id) saved = await items.update(PAYMENT_ACCOUNTS, { _id: record._id, ...payload }) as PaymentAccountRecord;
-      else saved = await items.insert(PAYMENT_ACCOUNTS, payload) as PaymentAccountRecord;
+      let saved: AppSettingsRecord;
+      if (record._id) saved = await items.update(APP_SETTINGS, payload) as AppSettingsRecord;
+      else saved = await items.insert(APP_SETTINGS, payload) as AppSettingsRecord;
 
       setRecord(saved);
-      setProvider(normalizePaymentProvider(saved.provider));
-      setEnvironment(normalizePaymentEnvironment(saved.environment));
+      setProvider(normalizePaymentProvider(saved.payflowProvider));
+      setEnvironment(normalizePaymentEnvironment(saved.payflowEnvironment));
       setSuccess(t('Paramètres de paiement enregistrés.', 'Payment settings saved.'));
     } catch (e) {
       setError(e instanceof Error ? e.message : t('Impossible d’enregistrer les paramètres de paiement.', 'Unable to save payment settings.'));
@@ -150,7 +163,7 @@ const PaymentSettingsPanel: FC = () => {
     }
   };
 
-  const formatDate = (value?: Date | string) => {
+  const formatDate = (value?: Date | string | null) => {
     if (!value) return '—';
     const date = value instanceof Date ? value : new Date(value);
     if (!date.getTime()) return '—';
@@ -164,8 +177,8 @@ const PaymentSettingsPanel: FC = () => {
           <h2 style={{ margin: 0 }}>{t('Paiements', 'Payments')}</h2>
           <p style={{ color: '#64748b', marginBottom: 0, maxWidth: 760 }}>
             {t(
-              'Choisissez comment RentalFlow encaissera les paiements. Wix demeure le fournisseur par défaut jusqu’à ce qu’un compte PayFlow Stripe soit entièrement configuré.',
-              'Choose how RentalFlow collects payments. Wix remains the default provider until a PayFlow Stripe account is fully configured.',
+              'Choisissez la future configuration de paiement RentalFlow. Le flux réel demeure Wix jusqu’à ce qu’un compte PayFlow Stripe soit entièrement configuré.',
+              'Choose RentalFlow’s future payment configuration. The live payment flow remains on Wix until a PayFlow Stripe account is fully configured.',
             )}
           </p>
         </div>
@@ -198,19 +211,19 @@ const PaymentSettingsPanel: FC = () => {
 
         {provider === 'PAYFLOW_STRIPE' && <div style={{ marginTop: 20, background: '#f8fafc', borderRadius: 10, padding: 16 }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: 14 }}>
-            <Info label={t('Compte Stripe', 'Stripe account')} value={maskedPaymentAccountId(record.accountId)} />
+            <Info label={t('Compte Stripe', 'Stripe account')} value={maskedPaymentAccountId(record.payflowAccountId)} />
             <Info label={t('Statut', 'Status')} value={statusLabel(derivedStatus)} />
-            <Info label={t('Paiements', 'Payments')} value={record.chargesEnabled ? t('Activés', 'Enabled') : t('Non activés', 'Not enabled')} />
-            <Info label={t('Versements', 'Payouts')} value={record.payoutsEnabled ? t('Activés', 'Enabled') : t('Non activés', 'Not enabled')} />
-            <Info label={t('Pays', 'Country')} value={record.country || '—'} />
-            <Info label={t('Dernière synchro', 'Last sync')} value={formatDate(record.lastSyncedAt)} />
+            <Info label={t('Paiements', 'Payments')} value={record.payflowChargesEnabled ? t('Activés', 'Enabled') : t('Non activés', 'Not enabled')} />
+            <Info label={t('Versements', 'Payouts')} value={record.payflowPayoutsEnabled ? t('Activés', 'Enabled') : t('Non activés', 'Not enabled')} />
+            <Info label={t('Pays', 'Country')} value={record.payflowCountry || '—'} />
+            <Info label={t('Dernière synchro', 'Last sync')} value={formatDate(record.payflowLastSyncedAt)} />
           </div>
 
           {(currentlyDue.length > 0 || pastDue.length > 0 || pendingVerification.length > 0) && <div style={{ marginTop: 14, fontSize: 13, color: '#475569' }}>
             {t('Exigences Stripe', 'Stripe requirements')}: {currentlyDue.length} {t('actuelle(s)', 'currently due')}, {pastDue.length} {t('en retard', 'past due')}, {pendingVerification.length} {t('en vérification', 'pending verification')}.
           </div>}
 
-          {!record.accountId && <div style={{ marginTop: 14, color: '#475569', fontSize: 13 }}>
+          {!record.payflowAccountId && <div style={{ marginTop: 14, color: '#475569', fontSize: 13 }}>
             {t(
               'La connexion Stripe Connect sera activée à la prochaine sous-étape. Aucune clé secrète, donnée bancaire ou donnée de carte ne sera stockée dans RentalFlow.',
               'Stripe Connect onboarding will be enabled in the next sub-step. No secret key, bank data, or card data will be stored in RentalFlow.',
