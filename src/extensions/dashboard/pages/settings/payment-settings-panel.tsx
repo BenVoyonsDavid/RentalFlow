@@ -82,6 +82,7 @@ const PaymentSettingsPanel: FC = () => {
   const [environmentConfigured, setEnvironmentConfigured] = useState({ TEST: false, LIVE: false });
   const [callbackUrl, setCallbackUrl] = useState('');
   const [callbackIsHttps, setCallbackIsHttps] = useState(false);
+  const [authorizeUrl, setAuthorizeUrl] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [connecting, setConnecting] = useState(false);
@@ -91,11 +92,11 @@ const PaymentSettingsPanel: FC = () => {
 
   const expectedCallbackOrigin = useMemo(() => {
     try {
-      return new URL(String(import.meta.env.BASE_API_URL || '')).origin;
+      return callbackUrl ? new URL(callbackUrl).origin : '';
     } catch {
       return '';
     }
-  }, []);
+  }, [callbackUrl]);
 
   const applyAccount = (account?: SquarePaymentAccountRecord | null) => {
     if (account) setPaymentAccount({ ...emptyAccount, ...account });
@@ -163,6 +164,60 @@ const PaymentSettingsPanel: FC = () => {
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
   }, [environment, expectedCallbackOrigin, t]);
+
+  // Wix Dashboard pages run inside a hosted frame. Opening a blank popup and then
+  // navigating it after asynchronous work can be blocked silently by the browser.
+  // Prepare the short-lived Square OAuth URL ahead of the click so the visible
+  // Connect link performs a normal user-initiated navigation.
+  useEffect(() => {
+    let active = true;
+    setAuthorizeUrl('');
+
+    if (
+      provider !== 'PAYFLOW_SQUARE'
+      || !callbackIsHttps
+      || !environmentConfigured[environment]
+    ) {
+      return () => { active = false; };
+    }
+
+    const prepare = async () => {
+      setConnecting(true);
+      try {
+        const result = await runSquareConnectAction('start', environment);
+        if (!active) return;
+        if (!result.authorizeUrl) {
+          throw new Error(t('Square n’a pas retourné de lien d’autorisation.', 'Square did not return an authorization link.'));
+        }
+        setAuthorizeUrl(result.authorizeUrl);
+      } catch (e) {
+        if (active) {
+          setError(e instanceof Error ? e.message : t('Impossible de préparer la connexion Square.', 'Unable to prepare the Square connection.'));
+        }
+      } finally {
+        if (active) setConnecting(false);
+      }
+    };
+
+    void prepare();
+    return () => { active = false; };
+  }, [provider, environment, callbackIsHttps, environmentConfigured.TEST, environmentConfigured.LIVE, t]);
+
+  // If the browser does not preserve window.opener, refresh the non-sensitive
+  // account snapshot when the merchant returns to the Wix Dashboard tab.
+  useEffect(() => {
+    const onFocus = async () => {
+      if (provider !== 'PAYFLOW_SQUARE') return;
+      try {
+        const config = await getSquareConnectConfiguration();
+        applyAccount(config.account);
+      } catch {
+        // The explicit refresh action remains available if Wix is still restoring context.
+      }
+    };
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, [provider]);
 
   const derivedStatus = useMemo<PaymentAccountStatus>(() => paymentAccountStatus({
     provider,
@@ -238,34 +293,6 @@ const PaymentSettingsPanel: FC = () => {
       return false;
     } finally {
       setSaving(false);
-    }
-  };
-
-  const connectSquare = async () => {
-    setError('');
-    setSuccess('');
-    const popup = window.open('about:blank', 'rentalflow-square-oauth', 'width=680,height=780,menubar=no,toolbar=no,location=yes,resizable=yes,scrollbars=yes');
-    if (!popup) {
-      setError(t('Le navigateur a bloqué la fenêtre Square. Autorisez les fenêtres contextuelles et réessayez.', 'The browser blocked the Square window. Allow pop-ups and try again.'));
-      return;
-    }
-    popup.document.title = 'RentalFlow · Square';
-    popup.document.body.innerHTML = `<div style="font-family:Arial,sans-serif;padding:32px">${t('Préparation de Square…', 'Preparing Square…')}</div>`;
-    setConnecting(true);
-    try {
-      const saved = await save();
-      if (!saved) {
-        popup.close();
-        return;
-      }
-      const result = await runSquareConnectAction('start', environment);
-      if (!result.authorizeUrl) throw new Error(t('Square n’a pas retourné de lien d’autorisation.', 'Square did not return an authorization link.'));
-      popup.location.href = result.authorizeUrl;
-    } catch (e) {
-      popup.close();
-      setError(e instanceof Error ? e.message : t('Impossible de démarrer la connexion Square.', 'Unable to start Square connection.'));
-    } finally {
-      setConnecting(false);
     }
   };
 
@@ -358,17 +385,23 @@ const PaymentSettingsPanel: FC = () => {
           </div>}
 
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 16 }}>
-            <button
-              style={{ ...primary, opacity: connecting || !squareConfigured || !callbackIsHttps ? .55 : 1 }}
-              disabled={connecting || !squareConfigured || !callbackIsHttps}
-              onClick={() => void connectSquare()}
+            {authorizeUrl ? <a
+              href={authorizeUrl}
+              target="rentalflow-square-oauth"
+              rel="opener"
+              style={{ ...primary, display: 'inline-block', textDecoration: 'none' }}
+              onClick={() => {
+                setError('');
+                setSuccess(t('Ouverture de Square…', 'Opening Square…'));
+              }}
             >
-              {connecting
-                ? t('Ouverture de Square…', 'Opening Square…')
-                : paymentAccount.accountId
-                  ? t('Reconnecter Square', 'Reconnect Square')
-                  : t('Connecter Square', 'Connect Square')}
-            </button>
+              {paymentAccount.accountId ? t('Reconnecter Square', 'Reconnect Square') : t('Connecter Square', 'Connect Square')}
+            </a> : <button
+              style={{ ...primary, opacity: .55 }}
+              disabled
+            >
+              {connecting ? t('Préparation de Square…', 'Preparing Square…') : t('Connecter Square', 'Connect Square')}
+            </button>}
             {paymentAccount.accountId && <button
               style={{ ...secondary, opacity: refreshing ? .55 : 1 }}
               disabled={refreshing}
