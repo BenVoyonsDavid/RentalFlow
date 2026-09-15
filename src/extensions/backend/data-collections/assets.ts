@@ -9,6 +9,7 @@ export default {
     { type: 'TEXT', displayName: 'Nom', key: 'title' },
     { type: 'TEXT', displayName: 'Numéro d’actif', key: 'assetNumber' },
     { type: 'TEXT', displayName: 'Type de produit', key: 'productType' },
+    { type: 'TEXT', displayName: 'Tags catalogue (JSON)', key: 'catalogTagsJson' },
     { type: 'TEXT', displayName: 'Statut', key: 'status' },
     { type: 'NUMBER', displayName: 'Tarif journalier en cents', key: 'dailyRateCents' },
     { type: 'NUMBER', displayName: 'Tarif hebdomadaire en cents', key: 'weeklyRateCents' },
