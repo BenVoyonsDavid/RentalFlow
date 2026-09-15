@@ -42,12 +42,13 @@ function json(data: unknown, status = 200): Response {
   });
 }
 
-async function requireDashboardUser() {
+async function requireDashboardUser(): Promise<{ instanceId: string }> {
   const tokenInfo = await auth.getTokenInfo();
-  if (!tokenInfo.active || tokenInfo.subjectType !== 'USER' || !tokenInfo.instanceId) {
+  const instanceId = tokenInfo.instanceId;
+  if (!tokenInfo.active || tokenInfo.subjectType !== 'USER' || !instanceId) {
     throw new StripeConnectServerError('Unauthorized dashboard request.', 403, 'unauthorized');
   }
-  return tokenInfo;
+  return { instanceId };
 }
 
 async function loadSettings(): Promise<AppSettingsRecord> {
