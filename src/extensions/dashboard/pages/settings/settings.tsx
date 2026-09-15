@@ -2,6 +2,7 @@ import type { CSSProperties, FC } from 'react';
 import { Page, WixDesignSystemProvider } from '@wix/design-system';
 import '@wix/design-system/styles.global.css';
 import { getCurrentPlan, planLabels } from '../../../../lib/plans';
+import PaymentSettingsPanel from './payment-settings-panel';
 
 const card: CSSProperties = {
   background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12,
@@ -21,6 +22,8 @@ const SettingsPage: FC = () => {
               <div style={{ fontSize: 18 }}>Plan actuel : <strong>{planLabels[plan]}</strong></div>
               <p style={{ color: '#64748b', marginBottom: 0 }}>Pendant le développement, RentalFlow simule le plan Pro pour permettre le test de toutes les fonctions. Avant la publication App Market, cette valeur sera branchée au forfait réellement installé dans Wix.</p>
             </div>
+
+            <PaymentSettingsPanel />
 
             <div style={card}>
               <h2 style={{ marginTop: 0 }}>Fonctionnalités par plan — proposition v1</h2>
@@ -57,7 +60,7 @@ const SettingsPage: FC = () => {
                 <Setting label="Buffer" value="Configurable par réservation" />
                 <Setting label="Fuseau horaire" value="Fuseau horaire du site Wix" />
                 <Setting label="Statut initial" value="Disponible / Réservation confirmée" />
-                <Setting label="Paiement réel Wix" value="Connexion prévue après validation du MVP" />
+                <Setting label="Paiement" value="Wix ou PayFlow Lite · Stripe Connect" />
               </div>
             </div>
 
