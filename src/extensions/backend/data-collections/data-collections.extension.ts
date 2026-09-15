@@ -11,6 +11,7 @@ import appSettingsCollection from './app-settings';
 import documentTemplatesCollection from './document-templates';
 import bookingLocksCollection from './booking-locks';
 import catalogItemsCollection from './catalog-items';
+import categoriesCollection from './categories';
 
 export default extensions.dataCollections({
   id: 'c1fe36e1-148a-4fed-91aa-ade5edec2a02',
@@ -28,5 +29,6 @@ export default extensions.dataCollections({
     documentTemplatesCollection,
     bookingLocksCollection,
     catalogItemsCollection,
+    categoriesCollection,
   ],
 });

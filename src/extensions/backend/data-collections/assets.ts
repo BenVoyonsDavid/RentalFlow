@@ -9,6 +9,8 @@ export default {
     { type: 'TEXT', displayName: 'Nom', key: 'title' },
     { type: 'TEXT', displayName: 'Numéro d’actif', key: 'assetNumber' },
     { type: 'TEXT', displayName: 'Type de produit', key: 'productType' },
+    { type: 'TEXT', displayName: 'Catégorie ID', key: 'categoryId' },
+    { type: 'TEXT', displayName: 'Nom de catégorie', key: 'categoryName' },
     { type: 'TEXT', displayName: 'Tags catalogue (JSON)', key: 'catalogTagsJson' },
     { type: 'TEXT', displayName: 'Statut', key: 'status' },
     { type: 'NUMBER', displayName: 'Tarif journalier en cents', key: 'dailyRateCents' },
@@ -36,6 +38,10 @@ export default {
     },
     {
       fields: [{ path: 'status', order: 'ASC' }, { path: 'active', order: 'ASC' }],
+      unique: false,
+    },
+    {
+      fields: [{ path: 'categoryId', order: 'ASC' }],
       unique: false,
     },
   ],
