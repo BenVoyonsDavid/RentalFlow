@@ -14,6 +14,7 @@ export default defineConfig({
       SQUARE_APPLICATION_SECRET_TEST: envField.string({ context: 'server', access: 'secret', optional: true }),
       SQUARE_APPLICATION_ID_LIVE: envField.string({ context: 'server', access: 'secret', optional: true }),
       SQUARE_APPLICATION_SECRET_LIVE: envField.string({ context: 'server', access: 'secret', optional: true }),
+      // Master server-only secret used to derive separate AES-GCM and HMAC keys for OAuth tokens/state.
       SQUARE_SECURITY_SECRET: envField.string({ context: 'server', access: 'secret', optional: true }),
     },
   },
