@@ -4,6 +4,7 @@ import equipmentPage from './extensions/dashboard/pages/equipment/equipment.exte
 import reservationsPage from './extensions/dashboard/pages/reservations/reservations.extension.ts';
 import reservationExtrasPage from './extensions/dashboard/pages/reservation-extras/reservation-extras.extension.ts';
 import catalogPage from './extensions/dashboard/pages/catalog/catalog.extension.ts';
+import categoriesPage from './extensions/dashboard/pages/categories/categories.extension.ts';
 import calendarPage from './extensions/dashboard/pages/calendar/calendar.extension.ts';
 import customersPage from './extensions/dashboard/pages/customers/customers.extension.ts';
 import settingsPage from './extensions/dashboard/pages/settings/settings.extension.ts';
@@ -15,6 +16,7 @@ export default app()
   .use(reservationsPage)
   .use(reservationExtrasPage)
   .use(catalogPage)
+  .use(categoriesPage)
   .use(calendarPage)
   .use(equipmentPage)
   .use(customersPage)
