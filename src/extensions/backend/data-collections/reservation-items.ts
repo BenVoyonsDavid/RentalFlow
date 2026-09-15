@@ -48,13 +48,6 @@ export default {
       unique: false,
     },
     {
-      fields: [
-        { path: 'blockedStartDateTime', order: 'ASC' },
-        { path: 'blockedEndDateTime', order: 'ASC' },
-      ],
-      unique: false,
-    },
-    {
       fields: [{ path: 'reservationId', order: 'ASC' }],
       unique: false,
     },
