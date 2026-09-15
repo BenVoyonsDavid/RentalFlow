@@ -1,4 +1,4 @@
-export type PaymentProvider = 'WIX' | 'PAYFLOW_STRIPE';
+export type PaymentProvider = 'WIX' | 'PAYFLOW_SQUARE' | 'PAYFLOW_STRIPE';
 export type PaymentEnvironment = 'TEST' | 'LIVE';
 export type PaymentAccountStatus = 'NOT_CONNECTED' | 'ONBOARDING' | 'RESTRICTED' | 'READY';
 
@@ -19,7 +19,9 @@ export type PaymentAccountSnapshot = {
 };
 
 export function normalizePaymentProvider(value?: string | null): PaymentProvider {
-  return value === 'PAYFLOW_STRIPE' ? 'PAYFLOW_STRIPE' : 'WIX';
+  if (value === 'PAYFLOW_SQUARE') return 'PAYFLOW_SQUARE';
+  if (value === 'PAYFLOW_STRIPE') return 'PAYFLOW_STRIPE';
+  return 'WIX';
 }
 
 export function normalizePaymentEnvironment(value?: string | null): PaymentEnvironment {
@@ -39,11 +41,15 @@ export function decodeStringList(value?: string | null): string[] {
 }
 
 export function paymentAccountStatus(snapshot?: PaymentAccountSnapshot | null): PaymentAccountStatus {
-  if (!snapshot || normalizePaymentProvider(snapshot.provider) !== 'PAYFLOW_STRIPE' || !snapshot.accountId) {
+  if (!snapshot || normalizePaymentProvider(snapshot.provider) === 'WIX' || !snapshot.accountId) {
     return 'NOT_CONNECTED';
   }
 
-  if (snapshot.chargesEnabled === true && snapshot.payoutsEnabled === true && snapshot.detailsSubmitted === true) {
+  if (snapshot.accountStatus === 'READY') return 'READY';
+  if (snapshot.accountStatus === 'RESTRICTED') return 'RESTRICTED';
+  if (snapshot.accountStatus === 'ONBOARDING') return 'ONBOARDING';
+
+  if (snapshot.chargesEnabled === true && snapshot.detailsSubmitted === true) {
     return 'READY';
   }
 
