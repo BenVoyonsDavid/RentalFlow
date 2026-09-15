@@ -5,15 +5,26 @@ import { auth } from '@wix/essentials';
 import { calculateRentalPrice, getBlockedRange, rangesOverlap } from '../../lib/rental-pricing';
 import {
   calculateDeposit,
-  calculateTaxes,
   parseRequiredFields,
   validateRequiredFields,
   type DepositType,
   type PaymentMode,
 } from '../../lib/reservation-finance';
 import { hasFeature, planFromAppInstanceResponse, type RentalFlowPlan } from '../../lib/plans';
+import {
+  catalogBillableDays,
+  catalogItemToReservationLine,
+  computeReservationFinancials,
+  type CatalogReservationItem,
+  type ReservationCatalogLine,
+} from '../../lib/reservation-catalog';
+import {
+  catalogItemAppliesToAnyAsset,
+  type CatalogCompatibilityRule,
+} from '../../lib/catalog-compatibility';
 
 const ASSETS = '@pilotedavid1/rental-flow/assets';
+const CATALOG = '@pilotedavid1/rental-flow/catalog-items';
 const CUSTOMERS = '@pilotedavid1/rental-flow/customers';
 const RESERVATIONS = '@pilotedavid1/rental-flow/reservations';
 const RESERVATION_ITEMS = '@pilotedavid1/rental-flow/reservation-items';
@@ -24,12 +35,16 @@ const ACTIVITY = '@pilotedavid1/rental-flow/activity-log';
 const BOOKING_LOCKS = '@pilotedavid1/rental-flow/booking-locks';
 
 const BOOKING_LOCK_TTL_MS = 2 * 60 * 1000;
+const MAX_PUBLIC_ASSETS = 25;
+const MAX_PUBLIC_CATALOG_ITEMS = 50;
+const MAX_CATALOG_QUANTITY = 999;
 
 type Asset = {
   _id?: string;
   title?: string;
   assetNumber?: string;
   productType?: string;
+  catalogTagsJson?: string;
   status?: string;
   dailyRateCents?: number;
   weeklyRateCents?: number;
@@ -38,6 +53,10 @@ type Asset = {
   discountPercent?: number;
   currency?: string;
   active?: boolean;
+};
+
+type CatalogItem = CatalogReservationItem & CatalogCompatibilityRule & {
+  image?: unknown;
 };
 
 type ReservationItem = {
@@ -97,10 +116,16 @@ type PublicCustomer = {
   country?: string;
 };
 
+type PublicCatalogSelection = {
+  id?: string;
+  quantity?: number;
+};
+
 type BookingRequest = {
   startDateTime?: string;
   endDateTime?: string;
   assetIds?: string[];
+  catalogItems?: PublicCatalogSelection[];
   paymentMode?: 'FULL' | 'DEPOSIT';
   customer?: PublicCustomer;
   notes?: string;
@@ -214,6 +239,11 @@ function requiredFieldsForDefaults(settings: AppSettings, templates: DocumentTem
 async function loadActiveAssets(): Promise<Asset[]> {
   const result = await elevatedFind(elevatedQuery(ASSETS).ne('active', false).ne('status', 'INACTIVE').limit(1000));
   return result.items as Asset[];
+}
+
+async function loadActiveCatalog(): Promise<CatalogItem[]> {
+  const result = await elevatedFind(elevatedQuery(CATALOG).ne('active', false).limit(1000));
+  return (result.items || []).filter((item: CatalogItem) => item.active !== false) as CatalogItem[];
 }
 
 async function loadBlockingItems(start: Date, end: Date, before: number, after: number): Promise<ReservationItem[]> {
@@ -332,6 +362,7 @@ function publicAsset(
     id: asset._id || '',
     title: asset.title || 'Équipement',
     productType: asset.productType || '',
+    catalogTagsJson: asset.catalogTagsJson || '[]',
     currency: asset.currency || settings?.currency || 'CAD',
     dailyRateCents: asset.dailyRateCents || 0,
     weeklyRateCents: hasFeature(plan, 'WEEKLY_PRICING') ? asset.weeklyRateCents || 0 : 0,
@@ -343,15 +374,84 @@ function publicAsset(
   };
 }
 
+function publicCatalogItem(item: CatalogItem, fallbackCurrency: string) {
+  return {
+    id: item._id || '',
+    name: item.name || 'Extra',
+    description: item.description || '',
+    sku: item.sku || '',
+    itemType: item.itemType || 'ADDON',
+    priceCents: Math.max(0, Math.round(item.priceCents || 0)),
+    currency: item.currency || fallbackCurrency,
+    pricingMode: item.pricingMode || 'FIXED',
+    taxable: item.taxable !== false,
+    required: item.required === true,
+    recommended: item.recommended === true,
+    trackInventory: item.trackInventory === true,
+    stockQuantity: item.trackInventory ? Math.max(0, Math.floor(item.stockQuantity || 0)) : null,
+    compatibilityMode: item.compatibilityMode || 'ALL',
+    applicableCategoriesJson: item.applicableCategoriesJson || '[]',
+    applicableTagsJson: item.applicableTagsJson || '[]',
+    applicableAssetIdsJson: item.applicableAssetIdsJson || '[]',
+    excludedAssetIdsJson: item.excludedAssetIdsJson || '[]',
+  };
+}
+
+function parseCatalogSelections(raw: PublicCatalogSelection[] | undefined): Map<string, number> {
+  if (!Array.isArray(raw) || raw.length > MAX_PUBLIC_CATALOG_ITEMS) {
+    if (Array.isArray(raw) && raw.length > MAX_PUBLIC_CATALOG_ITEMS) throw new Error('INVALID_CATALOG_SELECTION');
+    return new Map();
+  }
+
+  const result = new Map<string, number>();
+  for (const entry of raw) {
+    const id = clean(entry?.id, 80);
+    if (!id) continue;
+    const quantity = Math.min(MAX_CATALOG_QUANTITY, Math.max(1, Math.floor(Number(entry?.quantity) || 1)));
+    result.set(id, Math.max(result.get(id) || 0, quantity));
+  }
+  return result;
+}
+
+function resolveCatalogLines(
+  activeCatalog: CatalogItem[],
+  selectedAssets: Asset[],
+  requested: Map<string, number>,
+  start: Date,
+  end: Date,
+  fallbackCurrency: string,
+): ReservationCatalogLine[] {
+  const compatible = activeCatalog.filter((item) => item._id && catalogItemAppliesToAnyAsset(item, selectedAssets));
+  const compatibleIds = new Set(compatible.map((item) => item._id).filter(Boolean) as string[]);
+
+  for (const requestedId of requested.keys()) {
+    if (!compatibleIds.has(requestedId)) throw new Error('INVALID_CATALOG_SELECTION');
+  }
+
+  const billableDays = catalogBillableDays(start, end);
+  return compatible
+    .filter((item) => item.required === true || (!!item._id && requested.has(item._id)))
+    .map((item) => {
+      const id = item._id || '';
+      const quantity = requested.get(id) || 1;
+      if (item.trackInventory === true) {
+        const stock = Math.max(0, Math.floor(item.stockQuantity || 0));
+        if (quantity > stock) throw new Error('CATALOG_OUT_OF_STOCK');
+      }
+      return catalogItemToReservationLine(item, quantity, billableDays, fallbackCurrency);
+    });
+}
+
 export const GET: APIRoute = async ({ request }) => {
   try {
     await requireAppInstance();
     const url = new URL(request.url);
     const startValue = url.searchParams.get('start') || undefined;
     const endValue = url.searchParams.get('end') || undefined;
-    const [{ settings, templates }, assets, plan] = await Promise.all([
+    const [{ settings, templates }, assets, catalog, plan] = await Promise.all([
       loadSettingsAndTemplates(),
       loadActiveAssets(),
+      loadActiveCatalog(),
       loadCurrentPlan(),
     ]);
 
@@ -367,11 +467,12 @@ export const GET: APIRoute = async ({ request }) => {
 
     const paymentsEnabled = hasFeature(plan, 'PAYMENTS');
     const depositEnabled = paymentsEnabled && hasFeature(plan, 'SECURITY_DEPOSIT') && settings.defaultDepositEnabled === true;
+    const currency = settings.currency || 'CAD';
 
     return json({
       company: { name: settings.companyName || 'Location en ligne', logoUrl: settings.logoUrl || '' },
       settings: {
-        currency: settings.currency || 'CAD',
+        currency,
         taxesEnabled: settings.taxesEnabled !== false,
         tax1Name: settings.tax1Name || '',
         tax1Rate: settings.tax1Rate || 0,
@@ -385,6 +486,7 @@ export const GET: APIRoute = async ({ request }) => {
         requiredFields: requiredFieldsForDefaults(settings, templates),
       },
       assets: assets.map((asset) => publicAsset(asset, plan, start, end, settings, blockingItems)),
+      catalogItems: catalog.map((item) => publicCatalogItem(item, currency)),
     });
   } catch (error) {
     if (error instanceof Error && error.message === 'UNAUTHORIZED') return json({ error: 'Unauthorized' }, 401);
@@ -404,7 +506,14 @@ export const POST: APIRoute = async ({ request }) => {
     const body = await request.json() as BookingRequest;
     const { start, end } = validatePeriod(body.startDateTime, body.endDateTime);
     const assetIds = [...new Set((body.assetIds || []).map((id) => clean(id, 80)).filter(Boolean))];
-    if (!assetIds.length || assetIds.length > 25) return json({ error: 'Sélection d’équipement invalide.' }, 400);
+    if (!assetIds.length || assetIds.length > MAX_PUBLIC_ASSETS) return json({ error: 'Sélection d’équipement invalide.' }, 400);
+
+    let requestedCatalog: Map<string, number>;
+    try {
+      requestedCatalog = parseCatalogSelections(body.catalogItems);
+    } catch {
+      return json({ error: 'Sélection d’extras invalide.' }, 400);
+    }
 
     const customer = {
       name: clean(body.customer?.name, 150),
@@ -420,9 +529,10 @@ export const POST: APIRoute = async ({ request }) => {
     if (!customer.name) return json({ error: 'Le nom du client est obligatoire.' }, 400);
     if (!customer.email || !customer.email.includes('@')) return json({ error: 'Un courriel valide est obligatoire.' }, 400);
 
-    const [{ settings, templates }, activeAssets, plan] = await Promise.all([
+    const [{ settings, templates }, activeAssets, activeCatalog, plan] = await Promise.all([
       loadSettingsAndTemplates(),
       loadActiveAssets(),
+      loadActiveCatalog(),
       loadCurrentPlan(),
     ]);
 
@@ -457,15 +567,37 @@ export const POST: APIRoute = async ({ request }) => {
     }
 
     const priceLines = selectedAssets.map((asset) => ({ asset, ...calculateRentalPrice(asset, start, end, pricingOptions(plan)) }));
-    const subtotalCents = priceLines.reduce((sum, line) => sum + line.totalCents, 0);
-    const taxResult = calculateTaxes(subtotalCents, settings);
+    const currency = priceLines[0]?.asset.currency || settings.currency || 'CAD';
+
+    let catalogLines: ReservationCatalogLine[];
+    try {
+      catalogLines = resolveCatalogLines(activeCatalog, selectedAssets, requestedCatalog, start, end, currency);
+    } catch (error) {
+      if (error instanceof Error && error.message === 'CATALOG_OUT_OF_STOCK') {
+        return json({ error: 'Un extra sélectionné n’est plus disponible dans la quantité demandée.' }, 409);
+      }
+      return json({ error: 'Un extra sélectionné n’est pas compatible avec cette réservation.' }, 400);
+    }
+
+    const rentalFinanceLines: ReservationCatalogLine[] = priceLines.map((line) => ({
+      lineType: 'RENTAL',
+      assetId: line.asset._id,
+      itemName: line.asset.title || '',
+      quantity: 1,
+      taxable: true,
+      billableDays: line.billableDays,
+      pricingMode: line.pricingMode,
+      lineTotalCents: line.totalCents,
+      currency: line.asset.currency || currency,
+    }));
+    const finance = computeReservationFinancials([...rentalFinanceLines, ...catalogLines], 0, settings);
+
     const paymentsEnabled = hasFeature(plan, 'PAYMENTS');
     const depositsEnabled = paymentsEnabled && hasFeature(plan, 'SECURITY_DEPOSIT') && settings.defaultDepositEnabled === true;
     const paymentMode: PaymentMode = !paymentsEnabled ? 'NONE' : body.paymentMode === 'DEPOSIT' && depositsEnabled ? 'DEPOSIT' : 'FULL';
     const depositType = settings.defaultDepositType || 'PERCENT';
     const depositValue = settings.defaultDepositValue || 0;
-    const depositResult = calculateDeposit(taxResult.totalCents, paymentMode, depositType, depositValue);
-    const currency = priceLines[0]?.asset.currency || settings.currency || 'CAD';
+    const depositResult = calculateDeposit(finance.totalCents, paymentMode, depositType, depositValue);
 
     const existingCustomerResult = await elevatedFind(elevatedQuery(CUSTOMERS).eq('email', customer.email).limit(1));
     const existingCustomer = existingCustomerResult.items?.[0] as any | undefined;
@@ -474,9 +606,20 @@ export const POST: APIRoute = async ({ request }) => {
 
     if (!customerId) {
       const createdCustomer = await elevatedInsert(CUSTOMERS, {
-        customerNumber: generatedNumber('C'), firstName: customer.name, lastName: '', companyName: '', email: customer.email,
-        phone: customer.phone, addressLine1: customer.addressLine1, addressLine2: customer.addressLine2, city: customer.city,
-        region: customer.region, postalCode: customer.postalCode, country: customer.country, discountPercent: 0, active: true,
+        customerNumber: generatedNumber('C'),
+        firstName: customer.name,
+        lastName: '',
+        companyName: '',
+        email: customer.email,
+        phone: customer.phone,
+        addressLine1: customer.addressLine1,
+        addressLine2: customer.addressLine2,
+        city: customer.city,
+        region: customer.region,
+        postalCode: customer.postalCode,
+        country: customer.country,
+        discountPercent: 0,
+        active: true,
       });
       customerId = createdCustomer._id || '';
       customerNumber = createdCustomer.customerNumber || '';
@@ -513,18 +656,18 @@ export const POST: APIRoute = async ({ request }) => {
       contractTemplateName: contractTemplate?.name || '',
       invoiceTemplateId: invoiceTemplate?._id || '',
       invoiceTemplateName: invoiceTemplate?.name || '',
-      subtotalCents,
+      subtotalCents: finance.subtotalCents,
       customerDiscountPercent: 0,
-      discountCents: 0,
-      preTaxTotalCents: taxResult.preTaxTotalCents,
+      discountCents: finance.discountCents,
+      preTaxTotalCents: finance.preTaxTotalCents,
       tax1Name: settings.taxesEnabled === false ? '' : settings.tax1Name || '',
       tax1Rate: settings.taxesEnabled === false ? 0 : settings.tax1Rate || 0,
-      tax1Cents: taxResult.tax1Cents,
+      tax1Cents: finance.tax1Cents,
       tax2Name: settings.taxesEnabled === false ? '' : settings.tax2Name || '',
       tax2Rate: settings.taxesEnabled === false ? 0 : settings.tax2Rate || 0,
-      tax2Cents: taxResult.tax2Cents,
-      taxTotalCents: taxResult.taxTotalCents,
-      totalCents: taxResult.totalCents,
+      tax2Cents: finance.tax2Cents,
+      taxTotalCents: finance.taxTotalCents,
+      totalCents: finance.totalCents,
       currency,
       depositRequired: paymentMode === 'DEPOSIT',
       depositType,
@@ -542,9 +685,13 @@ export const POST: APIRoute = async ({ request }) => {
       const createdItem = await elevatedInsert(RESERVATION_ITEMS, {
         reservationId: createdReservation._id,
         reservationNumber,
+        lineType: 'RENTAL',
         assetId: line.asset._id,
         assetNumber: line.asset.assetNumber || '',
         assetTitle: line.asset.title || '',
+        itemName: line.asset.title || '',
+        quantity: 1,
+        taxable: true,
         startDateTime: start,
         endDateTime: end,
         blockedStartDateTime: blocked.blockedStart,
@@ -560,18 +707,39 @@ export const POST: APIRoute = async ({ request }) => {
       createdItems.push(createdItem);
     }
 
+    for (const line of catalogLines) {
+      const createdItem = await elevatedInsert(RESERVATION_ITEMS, {
+        reservationId: createdReservation._id,
+        reservationNumber,
+        ...line,
+        startDateTime: start,
+        endDateTime: end,
+        status: 'CONFIRMED',
+      });
+      createdItems.push(createdItem);
+    }
+
     await elevatedInsert(ACTIVITY, {
       reservationId: createdReservation._id,
       reservationNumber,
       actionType: 'ONLINE_RESERVATION_CREATED',
-      description: `Réservation en ligne ${reservationNumber} créée par ${customer.name}.`,
+      description: catalogLines.length
+        ? `Réservation en ligne ${reservationNumber} créée par ${customer.name} avec ${catalogLines.length} extra(s).`
+        : `Réservation en ligne ${reservationNumber} créée par ${customer.name}.`,
       actor: 'Client en ligne',
       eventDate: new Date(),
     });
 
     const amount = depositResult.amountDueNowCents;
     if (!paymentsEnabled || amount <= 0) {
-      return json({ reservationNumber, totalCents: taxResult.totalCents, amountDueNowCents: 0, balanceDueCents: taxResult.totalCents, currency, checkoutUrl: '' }, 201);
+      return json({
+        reservationNumber,
+        totalCents: finance.totalCents,
+        amountDueNowCents: 0,
+        balanceDueCents: finance.totalCents,
+        currency,
+        checkoutUrl: '',
+      }, 201);
     }
 
     const wixGetPaid = await import('@wix/get-paid') as any;
@@ -587,7 +755,14 @@ export const POST: APIRoute = async ({ request }) => {
       paymentsLimit: 1,
       displayData: {},
       ecomPaymentLink: {
-        lineItems: [{ type: 'CUSTOM', customItem: { name: `${label} ${reservationNumber}`, quantity: 1, price: (amount / 100).toFixed(2) } }],
+        lineItems: [{
+          type: 'CUSTOM',
+          customItem: {
+            name: `${label} ${reservationNumber}`,
+            quantity: 1,
+            price: (amount / 100).toFixed(2),
+          },
+        }],
       },
     });
 
@@ -624,7 +799,7 @@ export const POST: APIRoute = async ({ request }) => {
       wixPaymentUrl: checkoutUrl,
       wixCheckoutId: checkoutId,
       wixOnlinePayment: true,
-      remainingBalanceCents: Math.max(0, taxResult.totalCents - amount),
+      remainingBalanceCents: Math.max(0, finance.totalCents - amount),
       notes: 'Lien de paiement Wix créé depuis la réservation en ligne RentalFlow.',
     });
 
@@ -637,7 +812,14 @@ export const POST: APIRoute = async ({ request }) => {
       eventDate: new Date(),
     });
 
-    return json({ reservationNumber, totalCents: taxResult.totalCents, amountDueNowCents: amount, balanceDueCents: Math.max(0, taxResult.totalCents - amount), currency, checkoutUrl }, 201);
+    return json({
+      reservationNumber,
+      totalCents: finance.totalCents,
+      amountDueNowCents: amount,
+      balanceDueCents: Math.max(0, finance.totalCents - amount),
+      currency,
+      checkoutUrl,
+    }, 201);
   } catch (error) {
     console.error('RentalFlow public booking POST failed', error);
 
