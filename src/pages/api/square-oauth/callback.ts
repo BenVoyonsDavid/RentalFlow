@@ -114,7 +114,7 @@ export const GET: APIRoute = async ({ request }) => {
     const code = url.searchParams.get('code') || '';
     if (!code) throw new SquareOAuthServerError('Square authorization code is missing.', 400, 'square_code_missing');
 
-    const token = await obtainSquareOAuthTokens(state.environment, code);
+    const token = await obtainSquareOAuthTokens(state.environment, code, state.redirectUri);
     const snapshot = await getSquareAccountSnapshot(state.environment, token.access_token, token.merchant_id);
     const credentialKey = `PAYFLOW_SQUARE:${state.environment}`;
 
