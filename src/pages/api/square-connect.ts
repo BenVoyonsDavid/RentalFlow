@@ -7,9 +7,11 @@ import {
   decryptSquareSecret,
   encryptSquareSecret,
   getSquareAccountSnapshot,
+  obtainSquareOAuthTokens,
   refreshSquareOAuthTokens,
   squareCredentials,
   squareTokenExpiresAt,
+  verifySquareOAuthState,
   SquareOAuthServerError,
   SQUARE_OAUTH_SCOPES,
 } from '../../lib/square-oauth-server';
@@ -22,11 +24,13 @@ const elevatedInsert = auth.elevate(items.insert);
 const elevatedUpdate = auth.elevate(items.update);
 
 type DataRecord = Record<string, unknown> & { _id?: string };
-type SquareAction = 'start' | 'refresh';
+type SquareAction = 'start' | 'refresh' | 'complete';
 
 type SquareRequestBody = {
   action?: SquareAction;
   environment?: string;
+  code?: string;
+  state?: string;
 };
 
 function json(data: unknown, status = 200): Response {
@@ -65,8 +69,8 @@ async function loadCredential(environment: PaymentEnvironment): Promise<DataReco
   return (result.items?.[0] as DataRecord | undefined) || null;
 }
 
-async function saveCredential(existing: DataRecord, payload: DataRecord): Promise<DataRecord> {
-  if (existing._id) return elevatedUpdate(PAYMENT_CREDENTIALS, { ...existing, ...payload, _id: existing._id }) as Promise<DataRecord>;
+async function saveCredential(existing: DataRecord | null, payload: DataRecord): Promise<DataRecord> {
+  if (existing?._id) return elevatedUpdate(PAYMENT_CREDENTIALS, { ...existing, ...payload, _id: existing._id }) as Promise<DataRecord>;
   return elevatedInsert(PAYMENT_CREDENTIALS, payload) as Promise<DataRecord>;
 }
 
@@ -97,6 +101,49 @@ function callbackUrlFor(request: Request): string {
   return `${url.origin}/api/square-oauth/callback`;
 }
 
+async function persistAuthorization(
+  environment: PaymentEnvironment,
+  instanceId: string,
+  code: string,
+): Promise<DataRecord> {
+  const token = await obtainSquareOAuthTokens(environment, code);
+  const snapshot = await getSquareAccountSnapshot(environment, token.access_token, token.merchant_id);
+  const credentialKey = `PAYFLOW_SQUARE:${environment}`;
+  const existingCredential = await loadCredential(environment);
+
+  await saveCredential(existingCredential, {
+    credentialKey,
+    provider: 'PAYFLOW_SQUARE',
+    environment,
+    installationId: instanceId,
+    merchantId: token.merchant_id,
+    accessTokenEncrypted: await encryptSquareSecret(token.access_token),
+    refreshTokenEncrypted: await encryptSquareSecret(token.refresh_token),
+    tokenExpiresAt: squareTokenExpiresAt(token.expires_at),
+    scopesJson: JSON.stringify(SQUARE_OAUTH_SCOPES),
+    lastRefreshedAt: new Date(),
+    active: true,
+  });
+
+  return upsertPaymentAccount({
+    settingsKey: 'default',
+    provider: 'PAYFLOW_SQUARE',
+    environment,
+    accountId: snapshot.accountId,
+    accountStatus: snapshot.accountStatus,
+    detailsSubmitted: snapshot.detailsSubmitted,
+    chargesEnabled: snapshot.chargesEnabled,
+    payoutsEnabled: snapshot.payoutsEnabled,
+    requirementsCurrentlyDueJson: snapshot.requirementsCurrentlyDueJson,
+    requirementsPastDueJson: snapshot.requirementsPastDueJson,
+    requirementsPendingVerificationJson: snapshot.requirementsPendingVerificationJson,
+    country: snapshot.country,
+    defaultCurrency: snapshot.defaultCurrency,
+    lastSyncedAt: snapshot.lastSyncedAt,
+    active: true,
+  });
+}
+
 async function refreshConnection(environment: PaymentEnvironment): Promise<DataRecord> {
   const credential = await loadCredential(environment);
   if (!credential) {
@@ -118,7 +165,7 @@ async function refreshConnection(environment: PaymentEnvironment): Promise<DataR
     const refreshed = await refreshSquareOAuthTokens(environment, refreshToken);
     accessToken = refreshed.access_token;
     refreshToken = refreshed.refresh_token;
-    const updatedCredential: DataRecord = {
+    await saveCredential(credential, {
       ...credential,
       merchantId: refreshed.merchant_id,
       accessTokenEncrypted: await encryptSquareSecret(accessToken),
@@ -127,8 +174,7 @@ async function refreshConnection(environment: PaymentEnvironment): Promise<DataR
       scopesJson: credential.scopesJson || JSON.stringify(SQUARE_OAUTH_SCOPES),
       lastRefreshedAt: new Date(),
       active: true,
-    };
-    await saveCredential(credential, updatedCredential);
+    });
   }
 
   const merchantId = String(credential.merchantId || '');
@@ -189,7 +235,7 @@ export const POST: APIRoute = async ({ request }) => {
     }
 
     const environment = normalizePaymentEnvironment(body.environment);
-    if (body.action !== 'start' && body.action !== 'refresh') {
+    if (body.action !== 'start' && body.action !== 'refresh' && body.action !== 'complete') {
       throw new SquareOAuthServerError('Unsupported Square Connect action.', 400, 'invalid_action');
     }
     if (!squareCredentials(environment).configured) {
@@ -209,6 +255,29 @@ export const POST: APIRoute = async ({ request }) => {
         'square_https_callback_required',
       );
     }
+
+    if (body.action === 'complete') {
+      const code = String(body.code || '').trim();
+      const stateValue = String(body.state || '').trim();
+      if (!code || !stateValue) {
+        throw new SquareOAuthServerError('Square callback data is incomplete.', 400, 'square_callback_incomplete');
+      }
+
+      const state = await verifySquareOAuthState(stateValue);
+      if (state.instanceId !== instanceId) {
+        throw new SquareOAuthServerError('Square authorization belongs to a different RentalFlow installation.', 403, 'square_instance_mismatch');
+      }
+      if (state.environment !== environment) {
+        throw new SquareOAuthServerError('Square authorization environment does not match RentalFlow.', 409, 'square_environment_mismatch');
+      }
+      if (state.redirectUri !== callbackUrl) {
+        throw new SquareOAuthServerError('Square callback URL no longer matches this RentalFlow preview.', 409, 'square_redirect_mismatch');
+      }
+
+      const account = await persistAuthorization(environment, instanceId, code);
+      return json({ ok: true, account: publicAccount(account) });
+    }
+
     const authorizeUrl = await buildSquareAuthorizationUrl(environment, instanceId, callbackUrl);
     return json({ ok: true, authorizeUrl, callbackUrl });
   } catch (error) {
