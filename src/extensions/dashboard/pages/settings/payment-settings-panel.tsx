@@ -152,18 +152,47 @@ const PaymentSettingsPanel: FC = () => {
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
       if (expectedCallbackOrigin && event.origin !== expectedCallbackOrigin) return;
-      const data = event.data as { type?: string; ok?: boolean } | null;
+      const data = event.data as {
+        type?: string;
+        ok?: boolean;
+        code?: string;
+        state?: string;
+        environment?: string;
+        squareError?: string;
+      } | null;
       if (!data || data.type !== 'rentalflow-square-oauth') return;
-      if (data.ok) {
-        setSuccess(t('Square est connecté. Vérification du compte…', 'Square is connected. Checking the account…'));
-        void refreshSquare(false);
-      } else {
+
+      if (!data.ok) {
         setError(t('La connexion Square n’a pas été terminée.', 'Square connection was not completed.'));
+        return;
       }
+
+      if (!data.code || !data.state) {
+        setError(t('Le retour de Square est incomplet. Relancez la connexion.', 'The Square callback is incomplete. Start the connection again.'));
+        return;
+      }
+
+      const callbackEnvironment = normalizePaymentEnvironment(data.environment);
+      setConnecting(true);
+      setError('');
+      setSuccess(t('Autorisation reçue. Finalisation de la connexion Square…', 'Authorization received. Finishing the Square connection…'));
+
+      void runSquareConnectAction('complete', callbackEnvironment, {
+        code: data.code,
+        state: data.state,
+      }).then((result) => {
+        applyAccount(result.account);
+        setEnvironment(callbackEnvironment);
+        setSuccess(t('Square est connecté à RentalFlow.', 'Square is connected to RentalFlow.'));
+      }).catch((e) => {
+        setError(e instanceof Error ? e.message : t('Impossible de terminer la connexion Square.', 'Unable to finish the Square connection.'));
+      }).finally(() => {
+        setConnecting(false);
+      });
     };
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
-  }, [environment, expectedCallbackOrigin, t]);
+  }, [expectedCallbackOrigin, t]);
 
   // Wix Dashboard pages run inside a hosted frame. Opening a blank popup and then
   // navigating it after asynchronous work can be blocked silently by the browser.
