@@ -237,7 +237,6 @@ export async function buildSquareAuthorizationUrl(
   url.searchParams.set('client_id', credentials.applicationId);
   url.searchParams.set('scope', SQUARE_OAUTH_SCOPES.join(' '));
   url.searchParams.set('state', state);
-  url.searchParams.set('redirect_uri', redirectUri);
   if (environment === 'LIVE') url.searchParams.set('session', 'false');
   return url.toString();
 }
@@ -264,7 +263,6 @@ async function readSquareResponse<T>(response: Response): Promise<T> {
 export async function obtainSquareOAuthTokens(
   environment: PaymentEnvironment,
   code: string,
-  redirectUri: string,
 ): Promise<Required<Pick<SquareOAuthTokenResponse, 'access_token' | 'refresh_token' | 'merchant_id'>> & SquareOAuthTokenResponse> {
   const credentials = squareCredentials(environment);
   if (!credentials.configured) {
@@ -280,7 +278,6 @@ export async function obtainSquareOAuthTokens(
       client_id: credentials.applicationId,
       client_secret: credentials.applicationSecret,
       code,
-      redirect_uri: redirectUri,
       grant_type: 'authorization_code',
     }),
   });
