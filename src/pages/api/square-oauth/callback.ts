@@ -36,8 +36,6 @@ h1{margin:0 0 12px;font-size:24px}p{line-height:1.55;color:#475569;margin:0}.det
 <body><main><div class="badge">${ok ? 'RentalFlow · Square connecté' : 'RentalFlow · Connexion Square'}</div><h1>${safeTitle}</h1><p>${safeMessage}</p>${safeDetail ? `<div class="detail">${safeDetail}</div>` : ''}</main>
 <script>try{if(window.opener&&!window.opener.closed){window.opener.postMessage(${payload},'*');if(${ok ? 'true' : 'false'})setTimeout(function(){window.close()},1200)}}catch(e){}</script>
 </body></html>`, {
-    // OAuth callbacks are browser landing pages. Return a readable page even
-    // when authorization failed; the actual outcome is carried in the page.
     status: 200,
     headers: {
       'content-type': 'text/html; charset=utf-8',
@@ -80,9 +78,6 @@ export const GET: APIRoute = async ({ request }) => {
     const url = new URL(request.url);
     const stateValue = url.searchParams.get('state') || '';
 
-    // The Developer Console's manual "Authorize test account" helper doesn't
-    // start from RentalFlow, so it doesn't carry our signed state. Never accept
-    // that callback as a connected RentalFlow merchant authorization.
     if (!stateValue) {
       return htmlPage(
         false,
@@ -114,7 +109,7 @@ export const GET: APIRoute = async ({ request }) => {
     const code = url.searchParams.get('code') || '';
     if (!code) throw new SquareOAuthServerError('Square authorization code is missing.', 400, 'square_code_missing');
 
-    const token = await obtainSquareOAuthTokens(state.environment, code, state.redirectUri);
+    const token = await obtainSquareOAuthTokens(state.environment, code);
     const snapshot = await getSquareAccountSnapshot(state.environment, token.access_token, token.merchant_id);
     const credentialKey = `PAYFLOW_SQUARE:${state.environment}`;
 
