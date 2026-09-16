@@ -1,8 +1,4 @@
 import type { APIRoute } from 'astro';
-import {
-  verifySquareOAuthState,
-  SquareOAuthServerError,
-} from '../../../lib/square-oauth-server';
 
 function escapeHtml(value: string): string {
   return value.replace(/[<>&"']/g, (char) => ({
@@ -65,74 +61,43 @@ h1{margin:0 0 12px;font-size:24px}p{line-height:1.55;color:#475569;margin:0}.det
 }
 
 export const GET: APIRoute = async ({ request }) => {
-  try {
-    const url = new URL(request.url);
-    const stateValue = url.searchParams.get('state') || '';
+  const url = new URL(request.url);
+  const squareError = url.searchParams.get('error') || '';
+  const code = url.searchParams.get('code') || '';
+  const state = url.searchParams.get('state') || '';
 
-    if (!stateValue) {
-      return htmlPage(
-        false,
-        'Test Square reçu',
-        'Square a bien répondu, mais cette autorisation n’a pas été démarrée depuis RentalFlow.',
-        {},
-        'square_state_missing',
-      );
-    }
-
-    const state = await verifySquareOAuthState(stateValue);
-    const actualRedirectUri = `${url.origin}${url.pathname}`;
-    if (state.redirectUri !== actualRedirectUri) {
-      throw new SquareOAuthServerError(
-        'OAuth callback URL does not match the signed RentalFlow request.',
-        400,
-        'square_redirect_mismatch',
-      );
-    }
-
-    const squareError = url.searchParams.get('error');
-    if (squareError) {
-      const denied = squareError === 'access_denied';
-      return htmlPage(
-        false,
-        denied ? 'Autorisation annulée' : 'Connexion Square impossible',
-        denied
-          ? 'Aucune modification n’a été apportée. Vous pouvez fermer cette fenêtre et réessayer depuis RentalFlow.'
-          : 'Square n’a pas pu autoriser RentalFlow. Fermez cette fenêtre et réessayez depuis les paramètres de paiement.',
-        { squareError },
-        denied ? 'access_denied' : squareError,
-      );
-    }
-
-    const code = url.searchParams.get('code') || '';
-    if (!code) {
-      throw new SquareOAuthServerError(
-        'Square authorization code is missing.',
-        400,
-        'square_code_missing',
-      );
-    }
-
-    return htmlPage(
-      true,
-      'Autorisation Square reçue',
-      'RentalFlow termine maintenant la connexion de façon sécurisée dans votre tableau de bord Wix.',
-      {
-        code,
-        state: stateValue,
-        environment: state.environment,
-      },
-    );
-  } catch (error) {
-    console.error('RentalFlow Square OAuth callback failed', error);
-    const detail = error instanceof SquareOAuthServerError
-      ? error.code || 'square_oauth_error'
-      : 'square_callback_error';
+  if (squareError) {
+    const denied = squareError === 'access_denied';
     return htmlPage(
       false,
-      'Connexion Square impossible',
-      'RentalFlow n’a pas pu valider le retour de Square. Fermez cette fenêtre et relancez la connexion depuis les paramètres de paiement.',
-      {},
-      detail,
+      denied ? 'Autorisation annulée' : 'Connexion Square impossible',
+      denied
+        ? 'Aucune modification n’a été apportée. Vous pouvez fermer cette fenêtre et réessayer depuis RentalFlow.'
+        : 'Square n’a pas pu autoriser RentalFlow. Fermez cette fenêtre et réessayez depuis les paramètres de paiement.',
+      { squareError },
+      denied ? 'access_denied' : squareError,
     );
   }
+
+  if (!code || !state) {
+    return htmlPage(
+      false,
+      'Retour Square incomplet',
+      'Square n’a pas retourné toutes les informations nécessaires. Relancez la connexion depuis RentalFlow.',
+      {},
+      !code ? 'square_code_missing' : 'square_state_missing',
+    );
+  }
+
+  // Deliberately do not validate or exchange anything here. This endpoint is
+  // public and anonymous. It only relays Square's one-time code and opaque state
+  // back to the Wix Dashboard. The authenticated /api/square-connect endpoint
+  // verifies the signed state, installation id, environment and callback URL,
+  // then exchanges the code server-side and persists encrypted credentials.
+  return htmlPage(
+    true,
+    'Autorisation Square reçue',
+    'RentalFlow termine maintenant la connexion de façon sécurisée dans votre tableau de bord Wix.',
+    { code, state },
+  );
 };
