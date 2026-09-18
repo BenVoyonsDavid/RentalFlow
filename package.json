@@ -1,7 +1,7 @@
 {
   "name": "rental-flow",
   "type": "module",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "scripts": {
     "astro": "astro",
     "wix": "wix",
@@ -37,7 +37,7 @@
     "@types/react": "^18.3.1",
     "@types/react-dom": "^18.3.1",
     "@wix/astro-wix-hosting-adapter": "^2.0.0",
-    "@wix/cli": "^1.1.245",
+    "@wix/cli": "^1.1.246",
     "@wix/sdk-types": "^1.0.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
