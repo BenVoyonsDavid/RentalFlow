@@ -213,10 +213,12 @@ function handleError(error: unknown): Response {
 }
 
 export const GET: APIRoute = async ({ request }) => {
+  // This endpoint exposes only non-sensitive connection metadata. Keep it
+  // independent from dashboard auth/data so the settings page can always learn
+  // the Wix-hosted callback URL and whether server credentials are configured.
+  // All actions that read/write merchant authorization remain protected in POST.
   try {
-    await requireDashboardUser();
     const callbackUrl = callbackUrlFor(request);
-    const account = await loadPaymentAccount();
     return json({
       ok: true,
       environments: {
@@ -225,7 +227,7 @@ export const GET: APIRoute = async ({ request }) => {
       },
       callbackUrl,
       callbackIsHttps: callbackUrl.startsWith('https://'),
-      account: publicAccount(account),
+      account: null,
     });
   } catch (error) {
     return handleError(error);
