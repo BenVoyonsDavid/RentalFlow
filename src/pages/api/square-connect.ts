@@ -19,11 +19,19 @@ import {
 const PAYMENT_ACCOUNTS = '@pilotedavid1/rental-flow/payment-accounts';
 const PAYMENT_CREDENTIALS = '@pilotedavid1/rental-flow/payment-credentials';
 
-const elevatedQuery = auth.elevate(items.query);
-const elevatedInsert = auth.elevate(items.insert);
-const elevatedUpdate = auth.elevate(items.update);
-
 type DataRecord = Record<string, unknown> & { _id?: string };
+
+function elevatedQuery(collectionId: string): any {
+  return auth.elevate(items.query)(collectionId);
+}
+
+async function elevatedInsert(collectionId: string, payload: DataRecord): Promise<DataRecord> {
+  return auth.elevate(items.insert)(collectionId, payload) as Promise<DataRecord>;
+}
+
+async function elevatedUpdate(collectionId: string, payload: DataRecord): Promise<DataRecord> {
+  return auth.elevate(items.update)(collectionId, payload) as Promise<DataRecord>;
+}
 type SquareAction = 'start' | 'refresh' | 'complete';
 
 type SquareRequestBody = {
