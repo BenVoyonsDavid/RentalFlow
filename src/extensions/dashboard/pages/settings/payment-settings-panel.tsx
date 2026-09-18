@@ -109,7 +109,16 @@ const PaymentSettingsPanel: FC = () => {
       try {
         const [result, squareConfig] = await Promise.all([
           items.query(APP_SETTINGS).eq('settingsKey', 'default').limit(1).find(),
-          getSquareConnectConfiguration().catch(() => null),
+          getSquareConnectConfiguration().catch((e) => {
+            if (active) {
+              setError(
+                e instanceof Error
+                  ? `Square backend: ${e.message}`
+                  : t('Impossible de joindre le backend Square.', 'Unable to reach the Square backend.'),
+              );
+            }
+            return null;
+          }),
         ]);
         const existing = (result.items?.[0] as AppSettingsRecord | undefined) || emptyRecord;
         if (!active) return;
