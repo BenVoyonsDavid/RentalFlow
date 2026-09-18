@@ -48,8 +48,16 @@ const moduleOrigin = (() => {
 function apiOrigin(baseUrl?: string): string {
   const explicit = String(baseUrl || '').trim().replace(/\/$/, '');
   if (explicit) return explicit;
+
+  // Wix CLI injects BASE_API_URL for frontend extensions so they can call
+  // this project's own backend HTTP endpoints in dev, preview, and release.
+  const wixBackendOrigin = String(import.meta.env.BASE_API_URL || '').trim().replace(/\/$/, '');
+  if (wixBackendOrigin) return wixBackendOrigin;
+
+  // Fallback only. Dashboard JS can be served from an asset origin that is not
+  // the app backend, so import.meta.url must not take precedence over BASE_API_URL.
   if (moduleOrigin) return moduleOrigin;
-  return String(import.meta.env.BASE_API_URL || '').replace(/\/$/, '');
+  return '';
 }
 
 async function parseResponse<T>(response: Response): Promise<T> {
