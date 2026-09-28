@@ -3,7 +3,7 @@ import { bookingImageUrl, normalizeBookingTheme } from '../../../../lib/booking-
 import type { CSSProperties, FC, FormEvent, ReactNode } from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { items } from '@wix/data';
-import { files } from '@wix/media';
+import { httpClient } from '@wix/essentials';
 import { Page, WixDesignSystemProvider } from '@wix/design-system';
 import '@wix/design-system/styles.global.css';
 import { assetLimits, hasFeature, planLabels, type RentalFlowPlan } from '../../../../lib/plans';
@@ -216,11 +216,25 @@ const SettingsV2Page: FC = () => {
 
     setUploadingLogo(true); setError(''); setSuccess('');
     try {
-      const generated = await files.generateFileUploadUrl(file.type, {
-        fileName: file.name,
-        filePath: '/RentalFlow/logos',
-        private: false,
-      });
+      const baseApiUrl = new URL(import.meta.url).origin;
+      const generateResponse = await httpClient.fetchWithAuth(
+        `${baseApiUrl}/api/rentalflow-logo-upload-url`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            mimeType: file.type,
+            fileName: file.name,
+            sizeInBytes: file.size,
+          }),
+        }
+      );
+      const generateRaw = await generateResponse.text();
+      let generated: { uploadUrl?: string; error?: string } = {};
+      try { generated = generateRaw ? JSON.parse(generateRaw) : {}; } catch { generated = {}; }
+      if (!generateResponse.ok) {
+        throw new Error(generated.error || `Impossible de préparer le téléversement du logo (HTTP ${generateResponse.status}).`);
+      }
       if (!generated.uploadUrl) throw new Error('Wix n’a pas retourné d’URL de téléversement.');
 
       const uploadResponse = await fetch(generated.uploadUrl, {
