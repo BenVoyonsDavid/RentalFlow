@@ -356,6 +356,7 @@ const bookingWidget: Record<string, string> = {
   "2 · Coordonnées": "2 · Contact details",
   "3 · Confirmation": "3 · Confirmation",
   "Planifiez votre location": "Plan your rental",
+  "Sélectionnez vos dates": "Select your dates",
   "Mois précédent": "Previous month",
   "Mois suivant": "Next month",
   "Sélectionnez le début, puis la fin.": "Select the start, then the end.",
