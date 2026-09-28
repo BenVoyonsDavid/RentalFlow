@@ -3,7 +3,7 @@ import { getCurrentPlan, resolveDashboardPlan, type RentalFlowPlan } from './pla
 
 export function useRentalFlowPlan(): { plan: RentalFlowPlan; loading: boolean } {
   const [plan, setPlan] = useState<RentalFlowPlan>(() => getCurrentPlan());
-  const [loading, setLoading] = useState(!import.meta.env.DEV);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let mounted = true;
