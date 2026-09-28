@@ -118,15 +118,38 @@ class RentalFlowBookingElement extends HTMLElement {
   }
 
   private apiUrl(params = ''): string {
-    const base = `${import.meta.env.BASE_API_URL}/api/public-booking`;
+    const baseApiUrl = String(import.meta.env.BASE_API_URL || '').trim().replace(/\/$/, '');
+    const origin = baseApiUrl || new URL(import.meta.url).origin;
+    const base = `${origin}/api/public-booking`;
     return params ? `${base}?${params}` : base;
   }
 
   private async fetchJson(url: string, options?: RequestInit): Promise<any> {
-    const response = await httpClient.fetchWithAuth(url, options);
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(payload?.error || `Erreur ${response.status}`);
-    return payload;
+    const candidates = [url];
+    try {
+      const parsed = new URL(url);
+      const moduleOrigin = new URL(import.meta.url).origin;
+      if (moduleOrigin && moduleOrigin !== parsed.origin) {
+        candidates.push(`${moduleOrigin}${parsed.pathname}${parsed.search}`);
+      }
+    } catch {
+      // Keep the original URL only.
+    }
+
+    let lastError: unknown = null;
+    for (const candidate of [...new Set(candidates)]) {
+      try {
+        const response = await httpClient.fetchWithAuth(candidate, options);
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload?.error || `Erreur ${response.status}`);
+        return payload;
+      } catch (error) {
+        lastError = error;
+      }
+    }
+
+    const detail = lastError instanceof Error ? lastError.message : String(lastError || 'Failed to fetch');
+    throw new Error(detail);
   }
 
   private async loadCatalog() {
