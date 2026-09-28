@@ -119,6 +119,12 @@ export function planFromAppInstanceResponse(response: unknown): RentalFlowPlan {
   const freeTrialStatus = String((billing as any)?.freeTrialInfo?.status || '').toUpperCase();
   if (freeTrialStatus === 'IN_PROGRESS') return 'TRIAL';
 
+  // Wix development sites don't purchase App Market plans. Treat them like a
+  // full-feature trial so preview/testing stays possible without creating a
+  // permanent free tier for real customer sites.
+  const siteUrl = String((root as any)?.site?.url || (instance as any)?.site?.url || '').toLowerCase();
+  if (isFree === true && siteUrl.includes('wix-development-sites.org')) return 'TRIAL';
+
   const packageName =
     (billing as any)?.packageName ??
     (instance as any)?.packageName ??
@@ -154,7 +160,7 @@ export async function resolveDashboardPlan(): Promise<RentalFlowPlan> {
 /**
  * Synchronous compatibility accessor for legacy pages. Dashboard localization
  * resolves the plan before/while those pages render, so subsequent renders use
- * this cache. Production defaults to Basic until Wix confirms a paid package.
+ * this cache. Customer sites default to no access until Wix confirms an active trial or paid package.
  */
 export function getCurrentPlan(): RentalFlowPlan {
   return resolvedPlanCache || 'NO_PLAN';
