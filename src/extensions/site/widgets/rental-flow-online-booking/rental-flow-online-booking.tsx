@@ -365,9 +365,19 @@ class RentalFlowBookingElement extends HTMLElement {
         :host{${Object.entries(bookingThemeVariables(this.data.settings.theme)).map(([key,value]) => `${key}:${value}`).join(';')}}
       </style>
       <div class="wrap">
-        <header>
-          ${bookingImageUrl(company.logoUrl) ? `<img src="${this.escape(bookingImageUrl(company.logoUrl))}" alt="">` : ''}
-          <div><p class="brand" translate="no">${this.escape(company.name || 'Réservation en ligne')}</p><h1>Planifiez votre location</h1><p class="muted">${paymentsEnabled ? 'Choisissez vos dates, vos équipements et payez de façon sécurisée avec Wix.' : 'Choisissez vos dates et vos équipements pour créer votre réservation.'}</p></div>
+        <header class="booking-hero">
+          <div class="hero-inner">
+            <div class="hero-logo">
+              ${bookingImageUrl(company.logoUrl)
+                ? `<img src="${this.escape(bookingImageUrl(company.logoUrl))}" alt="">`
+                : '<span class="hero-logo-fallback" aria-hidden="true">R</span>'}
+            </div>
+            <div class="hero-copy">
+              <p class="brand" translate="no">${this.escape(company.name || 'Réservation en ligne')}</p>
+              <h1>Planifiez votre location</h1>
+              <p class="muted">${paymentsEnabled ? 'Choisissez vos dates, vos équipements et payez de façon sécurisée avec Wix.' : 'Choisissez vos dates et vos équipements pour créer votre réservation.'}</p>
+            </div>
+          </div>
         </header>
         <main>
           ${this.error ? `<div class="notice error" role="alert">${this.escape(this.error)}</div>` : ''}
@@ -385,7 +395,7 @@ class RentalFlowBookingElement extends HTMLElement {
             <nav data-rf-step-navigation aria-label="Réservation"><span>1 · Dates et équipements</span><span>2 · Coordonnées</span><span>3 · Confirmation</span></nav>
             <div class="booking-layout">
             <section class="section dates-panel">
-              <div class="step">1 · Dates</div><h2>Quand souhaitez-vous louer?</h2>
+              <div class="step">1 · Dates</div><h2>Sélectionnez vos dates</h2>
               ${this.calendar()}<div class="search-row">
                 <div class="field"><label for="start">Début</label><input ${this.searching || this.submitting ? 'disabled' : ''} id="start" type="datetime-local" value="${this.escape(this.startValue)}"></div>
                 <div class="field"><label for="end">Fin</label><input ${this.searching || this.submitting ? 'disabled' : ''} id="end" type="datetime-local" value="${this.escape(this.endValue)}"></div>
