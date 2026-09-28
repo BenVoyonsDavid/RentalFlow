@@ -169,8 +169,30 @@ class RentalFlowBookingElement extends HTMLElement {
     const attemptedHosts = [...new Set(candidates.map((candidate) => {
       try { return new URL(candidate).origin; } catch { return candidate; }
     }))].join(', ');
+
+    let plainPing = 'not-run';
+    let authPing = 'not-run';
+    const pingOrigin = (() => {
+      try { return new URL(candidates[0]).origin; } catch { return ''; }
+    })();
+    if (pingOrigin) {
+      const pingUrl = `${pingOrigin}/api/rentalflow-network-ping`;
+      try {
+        const response = await fetch(pingUrl, { method: 'GET', mode: 'cors', cache: 'no-store' });
+        plainPing = `HTTP ${response.status}`;
+      } catch (error) {
+        plainPing = error instanceof Error ? error.message : 'failed';
+      }
+      try {
+        const response = await httpClient.fetchWithAuth(pingUrl, { method: 'GET' });
+        authPing = `HTTP ${response.status}`;
+      } catch (error) {
+        authPing = error instanceof Error ? error.message : 'failed';
+      }
+    }
+
     throw new Error(
-      `${detail} · backend=${entryBase || moduleBase || 'absent'} · module=${moduleOrigin || 'absent'} · page=${pageOrigin || 'absent'} · tried=${attemptedHosts || 'none'}`
+      `${detail} · backend=${entryBase || moduleBase || 'absent'} · module=${moduleOrigin || 'absent'} · page=${pageOrigin || 'absent'} · tried=${attemptedHosts || 'none'} · ping=${plainPing} · authPing=${authPing}`
     );
   }
 
