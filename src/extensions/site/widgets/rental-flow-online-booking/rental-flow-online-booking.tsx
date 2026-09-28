@@ -136,19 +136,29 @@ class RentalFlowBookingElement extends HTMLElement {
       // Keep the original URL only.
     }
 
-    let lastError: unknown = null;
+    let lastNetworkError: unknown = null;
     for (const candidate of [...new Set(candidates)]) {
+      let response: Response;
       try {
-        const response = await httpClient.fetchWithAuth(candidate, options);
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(payload?.error || `Erreur ${response.status}`);
-        return payload;
+        response = await httpClient.fetchWithAuth(candidate, options);
       } catch (error) {
-        lastError = error;
+        // Retry another origin only when the browser could not reach this one.
+        lastNetworkError = error;
+        continue;
       }
+
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        // The backend was reached. Preserve its real error instead of masking it
+        // with a later fallback request that may fail at the network layer.
+        throw new Error(payload?.error || `Erreur ${response.status}`);
+      }
+      return payload;
     }
 
-    const detail = lastError instanceof Error ? lastError.message : String(lastError || 'Failed to fetch');
+    const detail = lastNetworkError instanceof Error
+      ? lastNetworkError.message
+      : String(lastNetworkError || 'Failed to fetch');
     throw new Error(detail);
   }
 
