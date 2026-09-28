@@ -118,84 +118,55 @@ class RentalFlowBookingElement extends HTMLElement {
   }
 
   private apiUrl(params = ''): string {
-    const entryBaseApiUrl = String((globalThis as any).__RENTALFLOW_BASE_API_URL__ || '').trim().replace(/\/$/, '');
-    const moduleBaseApiUrl = String(import.meta.env.BASE_API_URL || '').trim().replace(/\/$/, '');
-    const origin = entryBaseApiUrl || moduleBaseApiUrl || new URL(import.meta.url).origin;
-    const base = `${origin}/api/public-booking`;
+    // Wix-managed site extensions must call this app's HTTP endpoints through
+    // BASE_API_URL. Do not fall back to import.meta.url: on a published site
+    // that points to the custom-element asset host, not the app backend.
+    const base = `${import.meta.env.BASE_API_URL}/api/public-booking`;
     return params ? `${base}?${params}` : base;
   }
 
   private async fetchJson(url: string, options?: RequestInit): Promise<any> {
-    const candidates = [url];
+    let response: Response;
     try {
-      const parsed = new URL(url);
-      const moduleOrigin = new URL(import.meta.url).origin;
-      if (moduleOrigin && moduleOrigin !== parsed.origin) {
-        candidates.push(`${moduleOrigin}${parsed.pathname}${parsed.search}`);
+      response = await httpClient.fetchWithAuth(url, options);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error || 'Failed to fetch');
+      const baseApiUrl = String(import.meta.env.BASE_API_URL || '').trim();
+      const moduleOrigin = (() => {
+        try { return new URL(import.meta.url).origin; } catch { return ''; }
+      })();
+      const pageOrigin = typeof window !== 'undefined' ? window.location.origin : '';
+
+      let plainPing = 'not-run';
+      let authPing = 'not-run';
+      if (baseApiUrl) {
+        const pingUrl = `${baseApiUrl.replace(/\/$/, '')}/api/rentalflow-network-ping`;
+        try {
+          const pingResponse = await fetch(pingUrl, { method: 'GET', mode: 'cors', cache: 'no-store' });
+          const body = (await pingResponse.text().catch(() => '')).replace(/\s+/g, ' ').trim().slice(0, 240);
+          plainPing = `HTTP ${pingResponse.status}${body ? ` [${body}]` : ''}`;
+        } catch (pingError) {
+          plainPing = pingError instanceof Error ? pingError.message : 'failed';
+        }
+        try {
+          const pingResponse = await httpClient.fetchWithAuth(pingUrl, { method: 'GET' });
+          const body = (await pingResponse.text().catch(() => '')).replace(/\s+/g, ' ').trim().slice(0, 240);
+          authPing = `HTTP ${pingResponse.status}${body ? ` [${body}]` : ''}`;
+        } catch (pingError) {
+          authPing = pingError instanceof Error ? pingError.message : 'failed';
+        }
       }
-    } catch {
-      // Keep the original URL only.
+
+      throw new Error(
+        `${detail} · backend=${baseApiUrl || 'absent'} · module=${moduleOrigin || 'absent'} · page=${pageOrigin || 'absent'} · tried=${url} · ping=${plainPing} · authPing=${authPing}`
+      );
     }
 
-    let lastNetworkError: unknown = null;
-    for (const candidate of [...new Set(candidates)]) {
-      let response: Response;
-      try {
-        response = await httpClient.fetchWithAuth(candidate, options);
-      } catch (error) {
-        // Retry another origin only when the browser could not reach this one.
-        lastNetworkError = error;
-        continue;
-      }
-
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        // The backend was reached. Preserve its real error instead of masking it
-        // with a later fallback request that may fail at the network layer.
-        throw new Error(payload?.error || `Erreur ${response.status}`);
-      }
-      return payload;
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(payload?.error || `Erreur ${response.status}`);
     }
-
-    const detail = lastNetworkError instanceof Error
-      ? lastNetworkError.message
-      : String(lastNetworkError || 'Failed to fetch');
-    const entryBase = String((globalThis as any).__RENTALFLOW_BASE_API_URL__ || '').trim();
-    const moduleBase = String(import.meta.env.BASE_API_URL || '').trim();
-    const moduleOrigin = (() => {
-      try { return new URL(import.meta.url).origin; } catch { return ''; }
-    })();
-    const pageOrigin = typeof window !== 'undefined' ? window.location.origin : '';
-    const attemptedHosts = [...new Set(candidates.map((candidate) => {
-      try { return new URL(candidate).origin; } catch { return candidate; }
-    }))].join(', ');
-
-    let plainPing = 'not-run';
-    let authPing = 'not-run';
-    const pingOrigin = (() => {
-      try { return new URL(candidates[0]).origin; } catch { return ''; }
-    })();
-    if (pingOrigin) {
-      const pingUrl = `${pingOrigin}/api/rentalflow-network-ping`;
-      try {
-        const response = await fetch(pingUrl, { method: 'GET', mode: 'cors', cache: 'no-store' });
-        const body = (await response.text().catch(() => '')).replace(/\s+/g, ' ').trim().slice(0, 240);
-        plainPing = `HTTP ${response.status}${body ? ` [${body}]` : ''}`;
-      } catch (error) {
-        plainPing = error instanceof Error ? error.message : 'failed';
-      }
-      try {
-        const response = await httpClient.fetchWithAuth(pingUrl, { method: 'GET' });
-        const body = (await response.text().catch(() => '')).replace(/\s+/g, ' ').trim().slice(0, 240);
-        authPing = `HTTP ${response.status}${body ? ` [${body}]` : ''}`;
-      } catch (error) {
-        authPing = error instanceof Error ? error.message : 'failed';
-      }
-    }
-
-    throw new Error(
-      `${detail} · backend=${entryBase || moduleBase || 'absent'} · module=${moduleOrigin || 'absent'} · page=${pageOrigin || 'absent'} · tried=${attemptedHosts || 'none'} · ping=${plainPing} · authPing=${authPing}`
-    );
+    return payload;
   }
 
   private async loadCatalog() {
