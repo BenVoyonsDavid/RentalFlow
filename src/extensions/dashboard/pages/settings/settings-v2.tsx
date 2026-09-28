@@ -1,8 +1,9 @@
 import BookingAppearance from './booking-appearance';
-import { normalizeBookingTheme } from '../../../../lib/booking-theme';
+import { bookingImageUrl, normalizeBookingTheme } from '../../../../lib/booking-theme';
 import type { CSSProperties, FC, FormEvent, ReactNode } from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { items } from '@wix/data';
+import { files } from '@wix/media';
 import { Page, WixDesignSystemProvider } from '@wix/design-system';
 import '@wix/design-system/styles.global.css';
 import { assetLimits, hasFeature, planLabels, type RentalFlowPlan } from '../../../../lib/plans';
@@ -141,6 +142,7 @@ const SettingsV2Page: FC = () => {
   const [templates, setTemplates] = useState<DocumentTemplate[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [templateOpen, setTemplateOpen] = useState(false);
@@ -172,28 +174,28 @@ const SettingsV2Page: FC = () => {
     [templates]
   );
 
+  const persistSettings = async (nextSettings: AppSettings): Promise<AppSettings> => {
+    const payload = {
+      ...nextSettings,
+      settingsKey: 'default',
+      bookingThemeJson: JSON.stringify(normalizeBookingTheme(nextSettings.bookingThemeJson)),
+      defaultBufferBeforeHours: numberValue(nextSettings.defaultBufferBeforeHours),
+      defaultBufferAfterHours: numberValue(nextSettings.defaultBufferAfterHours),
+      tax1Rate: numberValue(nextSettings.tax1Rate),
+      tax2Rate: numberValue(nextSettings.tax2Rate),
+      defaultDepositValue: numberValue(nextSettings.defaultDepositValue),
+      paymentProvider: 'WIX',
+      active: true,
+    };
+    if (nextSettings._id) return await items.update(SETTINGS, payload) as AppSettings;
+    return await items.insert(SETTINGS, payload) as AppSettings;
+  };
+
   const saveSettings = async () => {
     setSaving(true); setError(''); setSuccess('');
     try {
-      const payload = {
-        ...settings,
-        settingsKey: 'default',
-        bookingThemeJson: JSON.stringify(normalizeBookingTheme(settings.bookingThemeJson)),
-        defaultBufferBeforeHours: numberValue(settings.defaultBufferBeforeHours),
-        defaultBufferAfterHours: numberValue(settings.defaultBufferAfterHours),
-        tax1Rate: numberValue(settings.tax1Rate),
-        tax2Rate: numberValue(settings.tax2Rate),
-        defaultDepositValue: numberValue(settings.defaultDepositValue),
-        paymentProvider: 'WIX',
-        active: true,
-      };
-      if (settings._id) {
-        const updated = await items.update(SETTINGS, payload) as AppSettings;
-        setSettings({ ...defaultSettings, ...updated });
-      } else {
-        const created = await items.insert(SETTINGS, payload) as AppSettings;
-        setSettings({ ...defaultSettings, ...created });
-      }
+      const saved = await persistSettings(settings);
+      setSettings({ ...defaultSettings, ...saved });
       setSuccess('Paramètres enregistrés. Les nouvelles réservations utiliseront ces valeurs par défaut.');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Impossible d’enregistrer les paramètres.');
@@ -201,6 +203,68 @@ const SettingsV2Page: FC = () => {
       setSaving(false);
     }
   };
+
+  const uploadLogo = async (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      setError('Le logo doit être une image.');
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setError('Le logo doit faire 10 Mo ou moins.');
+      return;
+    }
+
+    setUploadingLogo(true); setError(''); setSuccess('');
+    try {
+      const generated = await files.generateFileUploadUrl(file.type, {
+        fileName: file.name,
+        filePath: '/RentalFlow/logos',
+        private: false,
+      });
+      if (!generated.uploadUrl) throw new Error('Wix n’a pas retourné d’URL de téléversement.');
+
+      const uploadResponse = await fetch(generated.uploadUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': file.type },
+        body: file,
+      });
+      const raw = await uploadResponse.text();
+      let uploadResult: any = {};
+      try { uploadResult = raw ? JSON.parse(raw) : {}; } catch { uploadResult = {}; }
+      if (!uploadResponse.ok) {
+        throw new Error(uploadResult?.message || uploadResult?.error || `Échec du téléversement du logo (HTTP ${uploadResponse.status}).`);
+      }
+
+      const logoUrl = uploadResult?.file?.url
+        || uploadResult?.file?.media?.image?.image?.url
+        || uploadResult?.file?.thumbnailUrl
+        || '';
+      if (!logoUrl) throw new Error('Le logo a été téléversé, mais Wix n’a pas retourné son URL.');
+
+      const saved = await persistSettings({ ...settings, logoUrl });
+      setSettings({ ...defaultSettings, ...saved });
+      setSuccess('Logo téléversé dans le Gestionnaire de médias Wix et enregistré.');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Impossible de téléverser le logo.');
+    } finally {
+      setUploadingLogo(false);
+    }
+  };
+
+  const removeLogo = async () => {
+    setUploadingLogo(true); setError(''); setSuccess('');
+    try {
+      const saved = await persistSettings({ ...settings, logoUrl: '' });
+      setSettings({ ...defaultSettings, ...saved });
+      setSuccess('Logo retiré des paramètres RentalFlow.');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Impossible de retirer le logo.');
+    } finally {
+      setUploadingLogo(false);
+    }
+  };
+
+  const logoPreviewUrl = bookingImageUrl(settings.logoUrl);
 
   const openNewTemplate = (documentType: DocumentType) => {
     const defaults: Record<DocumentType, Partial<TemplateForm>> = {
@@ -317,12 +381,44 @@ const SettingsV2Page: FC = () => {
                 <h2 style={{ marginTop: 0 }}>Entreprise et opérations</h2>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(240px,1fr))', gap: 16 }}>
                   <Field label="Nom de l’entreprise"><input style={input} value={settings.companyName || ''} onChange={(e) => setSettings({ ...settings, companyName: e.target.value })} /></Field>
-                  <Field label="Logo (URL)"><input style={input} value={settings.logoUrl || ''} onChange={(e) => setSettings({ ...settings, logoUrl: e.target.value })} placeholder="https://…" /></Field>
+                  <Field label="Logo de l’entreprise">
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                      <label style={{ ...secondary, display: 'inline-flex', alignItems: 'center', opacity: uploadingLogo ? .6 : 1, cursor: uploadingLogo ? 'wait' : 'pointer' }}>
+                        {uploadingLogo ? 'Téléversement…' : settings.logoUrl ? 'Remplacer le logo' : 'Choisir un logo'}
+                        <input
+                          type="file"
+                          accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml"
+                          disabled={uploadingLogo}
+                          style={{ display: 'none' }}
+                          onChange={(event) => {
+                            const selectedFile = event.currentTarget.files?.[0];
+                            event.currentTarget.value = '';
+                            if (selectedFile) void uploadLogo(selectedFile);
+                          }}
+                        />
+                      </label>
+                      {settings.logoUrl ? <button type="button" disabled={uploadingLogo} style={{ ...danger, opacity: uploadingLogo ? .6 : 1 }} onClick={() => void removeLogo()}>Supprimer</button> : null}
+                    </div>
+                    <div style={{ color: '#64748b', fontSize: 12, marginTop: 7 }}>PNG, JPG, WebP, GIF ou SVG · maximum 10 Mo. Le fichier est enregistré dans le Gestionnaire de médias Wix.</div>
+                  </Field>
                   <Field label="Devise par défaut"><select style={input} value={settings.currency || 'CAD'} onChange={(e) => setSettings({ ...settings, currency: e.target.value })}><option value="CAD">CAD</option><option value="USD">USD</option><option value="EUR">EUR</option></select></Field>
                   <Field label="Buffer avant par défaut (heures)"><input type="number" min="0" step="0.5" style={input} value={settings.defaultBufferBeforeHours ?? 0} onChange={(e) => setSettings({ ...settings, defaultBufferBeforeHours: numberValue(e.target.value) })} /></Field>
                   <Field label="Buffer après par défaut (heures)"><input type="number" min="0" step="0.5" style={input} value={settings.defaultBufferAfterHours ?? 0} onChange={(e) => setSettings({ ...settings, defaultBufferAfterHours: numberValue(e.target.value) })} /></Field>
                 </div>
-                {settings.logoUrl ? <div style={{ marginTop: 18 }}><div style={{ color: '#64748b', fontSize: 13, marginBottom: 8 }}>Aperçu du logo</div><img src={settings.logoUrl} alt="Logo" style={{ maxWidth: 220, maxHeight: 100, objectFit: 'contain', border: '1px solid #e5e7eb', borderRadius: 8, padding: 8 }} /></div> : null}
+                {logoPreviewUrl ? (
+                  <div style={{ marginTop: 18 }}>
+                    <div style={{ color: '#64748b', fontSize: 13, marginBottom: 8 }}>Aperçu du logo</div>
+                    <div style={{ display: 'inline-flex', minWidth: 120, minHeight: 70, alignItems: 'center', justifyContent: 'center', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, padding: 10 }}>
+                      <img src={logoPreviewUrl} alt="Logo de l’entreprise" style={{ maxWidth: 220, maxHeight: 100, objectFit: 'contain', display: 'block' }} />
+                    </div>
+                  </div>
+                ) : settings.logoUrl ? (
+                  <div style={{ marginTop: 18, padding: 12, borderRadius: 8, background: '#fff7ed', color: '#9a3412' }}>
+                    Le logo enregistré n’est pas une adresse d’image valide. Choisissez un nouveau logo pour le remplacer.
+                  </div>
+                ) : (
+                  <div style={{ marginTop: 18, color: '#64748b', fontSize: 13 }}>Aucun logo configuré.</div>
+                )}
                 <SaveButton saving={saving} onClick={() => void saveSettings()} />
               </div>
             )}
