@@ -118,8 +118,9 @@ class RentalFlowBookingElement extends HTMLElement {
   }
 
   private apiUrl(params = ''): string {
-    const baseApiUrl = String(import.meta.env.BASE_API_URL || '').trim().replace(/\/$/, '');
-    const origin = baseApiUrl || new URL(import.meta.url).origin;
+    const entryBaseApiUrl = String((globalThis as any).__RENTALFLOW_BASE_API_URL__ || '').trim().replace(/\/$/, '');
+    const moduleBaseApiUrl = String(import.meta.env.BASE_API_URL || '').trim().replace(/\/$/, '');
+    const origin = entryBaseApiUrl || moduleBaseApiUrl || new URL(import.meta.url).origin;
     const base = `${origin}/api/public-booking`;
     return params ? `${base}?${params}` : base;
   }
@@ -159,7 +160,18 @@ class RentalFlowBookingElement extends HTMLElement {
     const detail = lastNetworkError instanceof Error
       ? lastNetworkError.message
       : String(lastNetworkError || 'Failed to fetch');
-    throw new Error(detail);
+    const entryBase = String((globalThis as any).__RENTALFLOW_BASE_API_URL__ || '').trim();
+    const moduleBase = String(import.meta.env.BASE_API_URL || '').trim();
+    const moduleOrigin = (() => {
+      try { return new URL(import.meta.url).origin; } catch { return ''; }
+    })();
+    const pageOrigin = typeof window !== 'undefined' ? window.location.origin : '';
+    const attemptedHosts = [...new Set(candidates.map((candidate) => {
+      try { return new URL(candidate).origin; } catch { return candidate; }
+    }))].join(', ');
+    throw new Error(
+      `${detail} · backend=${entryBase || moduleBase || 'absent'} · module=${moduleOrigin || 'absent'} · page=${pageOrigin || 'absent'} · tried=${attemptedHosts || 'none'}`
+    );
   }
 
   private async loadCatalog() {
