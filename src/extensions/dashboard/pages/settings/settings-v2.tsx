@@ -5,7 +5,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { items } from '@wix/data';
 import { Page, WixDesignSystemProvider } from '@wix/design-system';
 import '@wix/design-system/styles.global.css';
-import { getCurrentPlan, planLabels } from '../../../../lib/plans';
+import { assetLimits, hasFeature, planLabels, type RentalFlowPlan } from '../../../../lib/plans';
+import { useRentalFlowPlan } from '../../../../lib/use-plan';
 import PaymentSettingsPanel from './payment-settings-panel';
 
 const SETTINGS = '@pilotedavid1/rental-flow/app-settings';
@@ -134,7 +135,7 @@ function typeLabel(type?: DocumentType): string {
 }
 
 const SettingsV2Page: FC = () => {
-  const plan = getCurrentPlan();
+  const { plan, loading: planLoading } = useRentalFlowPlan();
   const [tab, setTab] = useState<SettingsTab>('GENERAL');
   const [settings, setSettings] = useState<AppSettings>(defaultSettings);
   const [templates, setTemplates] = useState<DocumentTemplate[]>([]);
@@ -392,21 +393,48 @@ const SettingsV2Page: FC = () => {
               </div>
             )}
 
-            {!loading && tab === 'PLANS' && (
-              <div style={card}>
-                <h2 style={{ marginTop: 0 }}>Abonnement</h2>
-                <div style={{ fontSize: 18 }}>Plan actuel : <strong>{planLabels[plan]}</strong></div>
-                <p style={{ color: '#64748b' }}>Pour la bêta privée, toutes les fonctions sont ouvertes afin de tester le flux complet. Avant l’App Market public, RentalFlow lira le vrai forfait Wix installé.</p>
-                <div style={{ overflowX: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 720 }}><thead><tr style={{ textAlign: 'left', color: '#64748b' }}><th style={{ padding: 10 }}>Fonction</th><th>Gratuit</th><th>Starter</th><th>Business</th><th>Pro</th></tr></thead><tbody>
-                  <PlanRow label="Réservations, buffers, calendrier mensuel" values={[true,true,true,true]} />
-                  <PlanRow label="Tarifs hebdomadaires + documents" values={[false,true,true,true]} />
-                  <PlanRow label="Paiements Wix et dépôt" values={[false,true,true,true]} />
-                  <PlanRow label="Tarifs mensuels + rabais + inspections" values={[false,false,true,true]} />
-                  <PlanRow label="Modèles avancés / historique complet" values={[false,false,true,true]} />
-                  <PlanRow label="Inventaire illimité / automatisations avancées" values={[false,false,false,true]} />
-                </tbody></table></div>
-              </div>
-            )}
+            {!loading && tab === 'PLANS' && (() => {
+              const plans: RentalFlowPlan[] = ['FREE', 'STARTER', 'BUSINESS', 'PRO'];
+              const featureValues = (feature: Parameters<typeof hasFeature>[1]) => plans.map((candidate) => hasFeature(candidate, feature));
+              return (
+                <div style={card}>
+                  <h2 style={{ marginTop: 0 }}>Abonnement</h2>
+                  <div style={{ fontSize: 18 }}>
+                    Plan Wix actuel : <strong>{planLoading ? 'Vérification…' : planLabels[plan]}</strong>
+                  </div>
+                  <p style={{ color: '#64748b' }}>
+                    RentalFlow lit directement le forfait installé sur ce site Wix. Les limites et fonctions ci-dessous sont appliquées par l’application; un forfait supérieur déverrouille automatiquement les fonctions correspondantes.
+                  </p>
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 820 }}>
+                      <thead>
+                        <tr style={{ textAlign: 'left', color: '#64748b' }}>
+                          <th style={{ padding: 10 }}>Fonction</th>
+                          <th>Basic</th>
+                          <th>Starter</th>
+                          <th>Business</th>
+                          <th>Pro</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <PlanRow label="Réservations, clients, calendrier et buffers" values={[true, true, true, true]} />
+                        <PlanRow label="Catégories, catalogue et extras de réservation" values={[true, true, true, true]} />
+                        <PlanRow label="Réservation en ligne et tarif journalier" values={[true, true, true, true]} />
+                        <PlanTextRow label="Équipements actifs" values={plans.map((candidate) => assetLimits[candidate] === null ? 'Illimité' : String(assetLimits[candidate]))} />
+                        <PlanRow label="Tarifs hebdomadaires" values={featureValues('WEEKLY_PRICING')} />
+                        <PlanRow label="Documents (devis, contrats, factures)" values={featureValues('DOCUMENTS')} />
+                        <PlanRow label="Paiements Wix et dépôt" values={featureValues('PAYMENTS')} />
+                        <PlanRow label="Tarifs mensuels" values={featureValues('MONTHLY_PRICING')} />
+                        <PlanRow label="Rabais longue durée et rabais client" values={featureValues('LONG_TERM_DISCOUNT')} />
+                        <PlanRow label="Inspections départ / retour" values={featureValues('INSPECTIONS')} />
+                        <PlanRow label="Historique complet et vues calendrier avancées" values={featureValues('FULL_HISTORY')} />
+                        <PlanRow label="Inventaire illimité" values={featureValues('UNLIMITED_ASSETS')} />
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         </Page.Content>
       </Page>
@@ -443,6 +471,7 @@ const Field: FC<{ label: string; children: ReactNode }> = ({ label, children }) 
 const TabButton: FC<{ active: boolean; onClick: () => void; children: string }> = ({ active, onClick, children }) => <button onClick={onClick} style={{ ...secondary, background: active ? '#116dff' : '#fff', color: active ? '#fff' : '#116dff' }}>{children}</button>;
 const SaveButton: FC<{ saving: boolean; onClick: () => void }> = ({ saving, onClick }) => <div style={{ marginTop: 20, display: 'flex', justifyContent: 'flex-end' }}><button style={primary} disabled={saving} onClick={onClick}>{saving ? 'Enregistrement…' : 'Enregistrer les paramètres'}</button></div>;
 const PlanRow: FC<{ label: string; values: boolean[] }> = ({ label, values }) => <tr style={{ borderTop: '1px solid #e5e7eb' }}><td style={{ padding: 12, fontWeight: 600 }}>{label}</td>{values.map((value, index) => <td key={index} style={{ padding: 12 }}>{value ? '✓' : '—'}</td>)}</tr>;
+const PlanTextRow: FC<{ label: string; values: string[] }> = ({ label, values }) => <tr style={{ borderTop: '1px solid #e5e7eb' }}><td style={{ padding: 12, fontWeight: 600 }}>{label}</td>{values.map((value, index) => <td key={index} style={{ padding: 12 }}>{value}</td>)}</tr>;
 const TemplateSelect: FC<{ label: string; type: DocumentType; templates: DocumentTemplate[]; value: string; onChange: (value: string) => void }> = ({ label, type, templates, value, onChange }) => <Field label={label}><select style={input} value={value} onChange={(e) => onChange(e.target.value)}><option value="">Aucun par défaut</option>{templates.filter((template) => template.documentType === type).map((template) => <option key={template._id} value={template._id}>{template.name}</option>)}</select></Field>;
 
 export default SettingsV2Page;
