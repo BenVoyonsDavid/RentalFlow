@@ -23,6 +23,9 @@ type AppSettings = {
   companyName?: string;
   logoUrl?: string;
   bookingThemeJson?: string;
+  bookingHeroTitle?: string;
+  bookingHeroSubtitle?: string;
+  bookingHeroBackgroundUrl?: string;
   currency?: string;
   defaultBufferBeforeHours?: number;
   defaultBufferAfterHours?: number;
@@ -90,6 +93,9 @@ const defaultSettings: AppSettings = {
   settingsKey: 'default',
   companyName: '',
   logoUrl: '',
+  bookingHeroTitle: '',
+  bookingHeroSubtitle: '',
+  bookingHeroBackgroundUrl: '',
   currency: 'CAD',
   defaultBufferBeforeHours: 0,
   defaultBufferAfterHours: 0,
@@ -143,6 +149,7 @@ const SettingsV2Page: FC = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [uploadingHeroBackground, setUploadingHeroBackground] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [templateOpen, setTemplateOpen] = useState(false);
@@ -280,6 +287,82 @@ const SettingsV2Page: FC = () => {
 
   const logoPreviewUrl = bookingImageUrl(settings.logoUrl);
 
+  const uploadHeroBackground = async (file: File) => {
+    if (!['image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(file.type)) {
+      setError('L’arrière-plan doit être une image PNG, JPG, WebP ou GIF.');
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setError('L’image d’arrière-plan doit faire 10 Mo ou moins.');
+      return;
+    }
+
+    setUploadingHeroBackground(true); setError(''); setSuccess('');
+    try {
+      const baseApiUrl = new URL(import.meta.url).origin;
+      const generateResponse = await httpClient.fetchWithAuth(
+        `${baseApiUrl}/api/rentalflow-booking-header-upload-url`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            mimeType: file.type,
+            fileName: file.name,
+            sizeInBytes: file.size,
+          }),
+        }
+      );
+      const generateRaw = await generateResponse.text();
+      let generated: { uploadUrl?: string; error?: string } = {};
+      try { generated = generateRaw ? JSON.parse(generateRaw) : {}; } catch { generated = {}; }
+      if (!generateResponse.ok) {
+        throw new Error(generated.error || `Impossible de préparer le téléversement (HTTP ${generateResponse.status}).`);
+      }
+      if (!generated.uploadUrl) throw new Error('Wix n’a pas retourné d’URL de téléversement.');
+
+      const uploadResponse = await fetch(generated.uploadUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': file.type },
+        body: file,
+      });
+      const raw = await uploadResponse.text();
+      let uploadResult: any = {};
+      try { uploadResult = raw ? JSON.parse(raw) : {}; } catch { uploadResult = {}; }
+      if (!uploadResponse.ok) {
+        throw new Error(uploadResult?.message || uploadResult?.error || `Échec du téléversement (HTTP ${uploadResponse.status}).`);
+      }
+
+      const bookingHeroBackgroundUrl = uploadResult?.file?.url
+        || uploadResult?.file?.media?.image?.image?.url
+        || uploadResult?.file?.thumbnailUrl
+        || '';
+      if (!bookingHeroBackgroundUrl) throw new Error('L’image a été téléversée, mais Wix n’a pas retourné son URL.');
+
+      const saved = await persistSettings({ ...settings, bookingHeroBackgroundUrl });
+      setSettings({ ...defaultSettings, ...saved });
+      setSuccess('Arrière-plan du bandeau téléversé et enregistré.');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Impossible de téléverser l’arrière-plan.');
+    } finally {
+      setUploadingHeroBackground(false);
+    }
+  };
+
+  const removeHeroBackground = async () => {
+    setUploadingHeroBackground(true); setError(''); setSuccess('');
+    try {
+      const saved = await persistSettings({ ...settings, bookingHeroBackgroundUrl: '' });
+      setSettings({ ...defaultSettings, ...saved });
+      setSuccess('Arrière-plan personnalisé retiré. Le dégradé RentalFlow sera utilisé.');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Impossible de retirer l’arrière-plan.');
+    } finally {
+      setUploadingHeroBackground(false);
+    }
+  };
+
+  const heroBackgroundPreviewUrl = bookingImageUrl(settings.bookingHeroBackgroundUrl);
+
   const openNewTemplate = (documentType: DocumentType) => {
     const defaults: Record<DocumentType, Partial<TemplateForm>> = {
       QUOTE: { titleText: 'Devis de location', introText: 'Voici votre proposition de location.' },
@@ -387,6 +470,91 @@ const SettingsV2Page: FC = () => {
 
             {!loading && tab === 'APPEARANCE' && <div style={card}>
               <BookingAppearance value={settings.bookingThemeJson} onChange={(bookingThemeJson) => setSettings({ ...settings, bookingThemeJson })} />
+
+              <div style={{ marginTop: 28, paddingTop: 24, borderTop: '1px solid #e5e7eb' }}>
+                <h3 style={{ marginTop: 0, marginBottom: 6 }}>En-tête de la réservation</h3>
+                <p style={{ marginTop: 0, color: '#64748b', fontSize: 13 }}>
+                  Personnalisez le grand titre, le sous-titre et l’image derrière l’en-tête. Laissez les textes vides pour utiliser les textes RentalFlow par défaut.
+                </p>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(260px,1fr))', gap: 16, marginTop: 18 }}>
+                  <Field label="Grand titre">
+                    <input
+                      style={input}
+                      maxLength={100}
+                      value={settings.bookingHeroTitle || ''}
+                      placeholder="Planifiez votre location"
+                      onChange={(e) => setSettings({ ...settings, bookingHeroTitle: e.target.value })}
+                    />
+                  </Field>
+                  <Field label="Sous-titre">
+                    <textarea
+                      style={{ ...input, minHeight: 82, resize: 'vertical' }}
+                      maxLength={240}
+                      value={settings.bookingHeroSubtitle || ''}
+                      placeholder="Choisissez vos dates et vos équipements pour créer votre réservation."
+                      onChange={(e) => setSettings({ ...settings, bookingHeroSubtitle: e.target.value })}
+                    />
+                  </Field>
+                </div>
+
+                <div style={{ marginTop: 18 }}>
+                  <Field label="Arrière-plan du grand titre">
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                      <label style={{ ...secondary, display: 'inline-flex', alignItems: 'center', opacity: uploadingHeroBackground ? .6 : 1, cursor: uploadingHeroBackground ? 'wait' : 'pointer' }}>
+                        {uploadingHeroBackground ? 'Téléversement…' : settings.bookingHeroBackgroundUrl ? 'Remplacer l’image' : 'Ajouter une image'}
+                        <input
+                          type="file"
+                          accept="image/png,image/jpeg,image/webp,image/gif"
+                          disabled={uploadingHeroBackground}
+                          style={{ display: 'none' }}
+                          onChange={(event) => {
+                            const selectedFile = event.currentTarget.files?.[0];
+                            event.currentTarget.value = '';
+                            if (selectedFile) void uploadHeroBackground(selectedFile);
+                          }}
+                        />
+                      </label>
+                      {settings.bookingHeroBackgroundUrl ? (
+                        <button
+                          type="button"
+                          disabled={uploadingHeroBackground}
+                          style={{ ...danger, opacity: uploadingHeroBackground ? .6 : 1 }}
+                          onClick={() => void removeHeroBackground()}
+                        >
+                          Supprimer l’image
+                        </button>
+                      ) : null}
+                    </div>
+                    <div style={{ color: '#64748b', fontSize: 12, marginTop: 7 }}>
+                      PNG, JPG, WebP ou GIF · maximum 10 Mo. Sans image, le dégradé de la palette reste affiché.
+                    </div>
+                  </Field>
+                </div>
+
+                {heroBackgroundPreviewUrl ? (
+                  <div style={{ marginTop: 14 }}>
+                    <div style={{ color: '#64748b', fontSize: 13, marginBottom: 8 }}>Aperçu de l’arrière-plan</div>
+                    <div style={{
+                      minHeight: 150,
+                      borderRadius: 14,
+                      overflow: 'hidden',
+                      padding: 22,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      justifyContent: 'flex-end',
+                      color: '#fff',
+                      backgroundImage: `linear-gradient(rgba(8,23,43,.28),rgba(8,23,43,.48)), url("${heroBackgroundPreviewUrl}")`,
+                      backgroundSize: 'cover',
+                      backgroundPosition: 'center',
+                    }}>
+                      <strong style={{ fontSize: 26 }}>{settings.bookingHeroTitle || 'Planifiez votre location'}</strong>
+                      <span style={{ marginTop: 6, opacity: .9 }}>{settings.bookingHeroSubtitle || 'Choisissez vos dates et vos équipements pour créer votre réservation.'}</span>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+
               <SaveButton saving={saving} onClick={() => void saveSettings()} />
             </div>}
 
