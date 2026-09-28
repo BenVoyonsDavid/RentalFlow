@@ -118,11 +118,13 @@ class RentalFlowBookingElement extends HTMLElement {
   }
 
   private apiUrl(params = ''): string {
-    // Wix-managed site extensions must call this app's HTTP endpoints through
-    // BASE_API_URL. Do not fall back to import.meta.url: on a published site
-    // that points to the custom-element asset host, not the app backend.
-    const base = `${import.meta.env.BASE_API_URL}/api/public-booking`;
-    return params ? `${base}?${params}` : base;
+    // In the current unified Wix CLI, Astro endpoints are reached from the
+    // deployed extension origin. BASE_API_URL is not available in this
+    // published custom-element bundle, so building a URL from import.meta.url
+    // avoids requests to /undefined/api/....
+    const url = new URL('/api/public-booking', import.meta.url);
+    if (params) url.search = params;
+    return url.toString();
   }
 
   private async fetchJson(url: string, options?: RequestInit): Promise<any> {
@@ -131,7 +133,6 @@ class RentalFlowBookingElement extends HTMLElement {
       response = await httpClient.fetchWithAuth(url, options);
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error || 'Failed to fetch');
-      const baseApiUrl = String(import.meta.env.BASE_API_URL || '').trim();
       const moduleOrigin = (() => {
         try { return new URL(import.meta.url).origin; } catch { return ''; }
       })();
@@ -139,8 +140,10 @@ class RentalFlowBookingElement extends HTMLElement {
 
       let plainPing = 'not-run';
       let authPing = 'not-run';
-      if (baseApiUrl) {
-        const pingUrl = `${baseApiUrl.replace(/\/$/, '')}/api/rentalflow-network-ping`;
+      const pingUrl = (() => {
+        try { return new URL('/api/rentalflow-network-ping', import.meta.url).toString(); } catch { return ''; }
+      })();
+      if (pingUrl) {
         try {
           const pingResponse = await fetch(pingUrl, { method: 'GET', mode: 'cors', cache: 'no-store' });
           const body = (await pingResponse.text().catch(() => '')).replace(/\s+/g, ' ').trim().slice(0, 240);
@@ -158,7 +161,7 @@ class RentalFlowBookingElement extends HTMLElement {
       }
 
       throw new Error(
-        `${detail} · backend=${baseApiUrl || 'absent'} · module=${moduleOrigin || 'absent'} · page=${pageOrigin || 'absent'} · tried=${url} · ping=${plainPing} · authPing=${authPing}`
+        `${detail} · backend=${moduleOrigin || 'absent'} · page=${pageOrigin || 'absent'} · tried=${url} · ping=${plainPing} · authPing=${authPing}`
       );
     }
 
