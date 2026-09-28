@@ -118,9 +118,9 @@ class RentalFlowBookingElement extends HTMLElement {
   }
 
   private apiUrl(params = ''): string {
-    const baseApiUrl = String(import.meta.env.BASE_API_URL || '').trim().replace(/\/$/, '');
-    const base = `${baseApiUrl}/api/public-booking`;
-    return params ? `${base}?${params}` : base;
+    const url = new URL('/api/public-booking', import.meta.url);
+    if (params) url.search = params;
+    return url.toString();
   }
 
   private async fetchJson(url: string, options?: RequestInit): Promise<any> {
@@ -129,7 +129,6 @@ class RentalFlowBookingElement extends HTMLElement {
       response = await httpClient.fetchWithAuth(url, options);
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error || 'Failed to fetch');
-      const baseApiUrl = String(import.meta.env.BASE_API_URL || '').trim().replace(/\/$/, '');
       const moduleOrigin = (() => {
         try { return new URL(import.meta.url).origin; } catch { return ''; }
       })();
@@ -137,7 +136,7 @@ class RentalFlowBookingElement extends HTMLElement {
 
       let plainPing = 'not-run';
       let authPing = 'not-run';
-      const pingUrl = baseApiUrl ? `${baseApiUrl}/api/rentalflow-network-ping` : '';
+      const pingUrl = moduleOrigin ? `${moduleOrigin}/api/rentalflow-network-ping` : '';
       if (pingUrl) {
         try {
           const pingResponse = await fetch(pingUrl, { method: 'GET', mode: 'cors', cache: 'no-store' });
@@ -156,7 +155,7 @@ class RentalFlowBookingElement extends HTMLElement {
       }
 
       throw new Error(
-        `${detail} · backend=${baseApiUrl || 'absent'} · module=${moduleOrigin || 'absent'} · page=${pageOrigin || 'absent'} · tried=${url} · ping=${plainPing} · authPing=${authPing}`
+        `${detail} · backend=${moduleOrigin || 'absent'} · page=${pageOrigin || 'absent'} · tried=${url} · ping=${plainPing} · authPing=${authPing}`
       );
     }
 
