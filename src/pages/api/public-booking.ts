@@ -207,14 +207,22 @@ async function requireAppInstance(): Promise<void> {
   if (!tokenInfo?.instanceId) throw new Error('UNAUTHORIZED');
 }
 
-async function loadCurrentPlan(): Promise<RentalFlowPlan> {
+function isWixDevelopmentRequest(request: Request): boolean {
+  const origin = String(request.headers.get('origin') || '').toLowerCase();
+  const referer = String(request.headers.get('referer') || '').toLowerCase();
+  return origin.includes('wix-development-sites.org') || referer.includes('wix-development-sites.org');
+}
+
+async function loadCurrentPlan(request: Request): Promise<RentalFlowPlan> {
   try {
     const getInstance = auth.elevate(appInstances.getAppInstance);
     const response = await getInstance();
-    return planFromAppInstanceResponse(response);
+    const resolved = planFromAppInstanceResponse(response);
+    if (resolved === 'NO_PLAN' && isWixDevelopmentRequest(request)) return 'TRIAL';
+    return resolved;
   } catch (error) {
     console.error('RentalFlow public booking could not resolve Wix plan.', error);
-    return 'NO_PLAN';
+    return isWixDevelopmentRequest(request) ? 'TRIAL' : 'NO_PLAN';
   }
 }
 
@@ -456,7 +464,7 @@ export const GET: APIRoute = async ({ request }) => {
       loadSettingsAndTemplates(),
       loadActiveAssets(),
       loadActiveCatalog(),
-      loadCurrentPlan(),
+      loadCurrentPlan(request),
     ]);
 
     let start: Date | undefined;
