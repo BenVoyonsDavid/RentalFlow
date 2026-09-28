@@ -1,6 +1,6 @@
 import { appInstances } from '@wix/app-management';
 
-export type RentalFlowPlan = 'FREE' | 'STARTER' | 'BUSINESS' | 'PRO';
+export type RentalFlowPlan = 'NO_PLAN' | 'TRIAL' | 'STARTER' | 'BUSINESS' | 'PRO';
 
 export type RentalFlowFeature =
   | 'WEEKLY_PRICING'
@@ -16,10 +16,12 @@ export type RentalFlowFeature =
   | 'UNLIMITED_ASSETS';
 
 const planLevel: Record<RentalFlowPlan, number> = {
-  FREE: 0,
+  NO_PLAN: -1,
   STARTER: 1,
   BUSINESS: 2,
   PRO: 3,
+  // Wix free trial exposes the full RentalFlow experience.
+  TRIAL: 3,
 };
 
 const minimumPlan: Record<RentalFlowFeature, RentalFlowPlan> = {
@@ -37,14 +39,16 @@ const minimumPlan: Record<RentalFlowFeature, RentalFlowPlan> = {
 };
 
 export const assetLimits: Record<RentalFlowPlan, number | null> = {
-  FREE: 5,
+  NO_PLAN: 0,
+  TRIAL: null,
   STARTER: 25,
   BUSINESS: 100,
   PRO: null,
 };
 
 export const planLabels: Record<RentalFlowPlan, string> = {
-  FREE: 'Basic',
+  NO_PLAN: 'Aucun abonnement',
+  TRIAL: 'Essai gratuit',
   STARTER: 'Starter',
   BUSINESS: 'Business',
   PRO: 'Pro',
@@ -54,7 +58,16 @@ let resolvedPlanCache: RentalFlowPlan | null = null;
 let resolvePlanPromise: Promise<RentalFlowPlan> | null = null;
 
 export function hasFeature(plan: RentalFlowPlan, feature: RentalFlowFeature): boolean {
+  if (plan === 'NO_PLAN') return false;
   return planLevel[plan] >= planLevel[minimumPlan[feature]];
+}
+
+export function hasAppAccess(plan: RentalFlowPlan): boolean {
+  return plan !== 'NO_PLAN';
+}
+
+export function isTrialPlan(plan: RentalFlowPlan): boolean {
+  return plan === 'TRIAL';
 }
 
 export function requiredPlan(feature: RentalFlowFeature): RentalFlowPlan {
@@ -78,18 +91,19 @@ function normalizePlanName(value: unknown): string {
 }
 
 export function planFromPackageName(packageName: unknown, isFree?: boolean): RentalFlowPlan {
-  if (isFree === true) return 'FREE';
+  if (isFree === true) return 'NO_PLAN';
 
   const normalized = normalizePlanName(packageName);
-  if (!normalized) return isFree === false ? 'STARTER' : 'FREE';
+  if (!normalized) return isFree === false ? 'STARTER' : 'NO_PLAN';
 
   if (normalized.includes('PRO') || normalized.includes('PREMIUM')) return 'PRO';
   if (normalized.includes('BUSINESS') || normalized.includes('GROWTH')) return 'BUSINESS';
   if (normalized.includes('STARTER') || normalized.includes('PLUS')) return 'STARTER';
-  if (normalized.includes('BASIC') || normalized.includes('FREE') || normalized.includes('GRATUIT')) return 'FREE';
+  // There is no permanent free tier. Any free/basic package is treated as no subscription.
+  if (normalized.includes('BASIC') || normalized.includes('FREE') || normalized.includes('GRATUIT')) return 'NO_PLAN';
 
   // Unknown paid packages fail closed to the lowest paid tier.
-  return isFree === false ? 'STARTER' : 'FREE';
+  return isFree === false ? 'STARTER' : 'NO_PLAN';
 }
 
 /**
@@ -101,10 +115,13 @@ export function planFromAppInstanceResponse(response: unknown): RentalFlowPlan {
   const root = (response as any)?.data ?? response ?? {};
   const instance = (root as any)?.instance ?? (root as any)?.appInstance ?? root;
   const isFree = (instance as any)?.isFree ?? (root as any)?.isFree;
+  const billing = (instance as any)?.billing ?? (root as any)?.billing ?? {};
+  const freeTrialStatus = String((billing as any)?.freeTrialInfo?.status || '').toUpperCase();
+  if (freeTrialStatus === 'IN_PROGRESS') return 'TRIAL';
+
   const packageName =
-    (instance as any)?.billing?.packageName ??
+    (billing as any)?.packageName ??
     (instance as any)?.packageName ??
-    (root as any)?.billing?.packageName ??
     (root as any)?.packageName;
 
   return planFromPackageName(packageName, isFree);
@@ -112,7 +129,7 @@ export function planFromAppInstanceResponse(response: unknown): RentalFlowPlan {
 
 /**
  * Resolves the installed Wix pricing plan once per page session and caches it.
- * Any lookup failure fails closed to Basic rather than granting paid features.
+ * Any lookup failure fails closed to no access rather than granting paid features.
  */
 export async function resolveDashboardPlan(): Promise<RentalFlowPlan> {
   if (resolvedPlanCache) return resolvedPlanCache;
@@ -124,11 +141,11 @@ export async function resolveDashboardPlan(): Promise<RentalFlowPlan> {
       resolvedPlanCache = planFromAppInstanceResponse(response);
     } catch (error) {
       console.error('RentalFlow could not resolve the Wix pricing plan.', error);
-      resolvedPlanCache = 'FREE';
+      resolvedPlanCache = 'NO_PLAN';
     } finally {
       resolvePlanPromise = null;
     }
-    return resolvedPlanCache || 'FREE';
+    return resolvedPlanCache || 'NO_PLAN';
   })();
 
   return resolvePlanPromise;
@@ -140,5 +157,5 @@ export async function resolveDashboardPlan(): Promise<RentalFlowPlan> {
  * this cache. Production defaults to Basic until Wix confirms a paid package.
  */
 export function getCurrentPlan(): RentalFlowPlan {
-  return resolvedPlanCache || 'FREE';
+  return resolvedPlanCache || 'NO_PLAN';
 }
