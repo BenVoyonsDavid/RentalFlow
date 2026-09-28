@@ -82,6 +82,9 @@ type AppSettings = {
   companyName?: string;
   logoUrl?: string;
   bookingThemeJson?: string;
+  bookingHeroTitle?: string;
+  bookingHeroSubtitle?: string;
+  bookingHeroBackgroundUrl?: string;
   currency?: string;
   defaultBufferBeforeHours?: number;
   defaultBufferAfterHours?: number;
@@ -505,6 +508,11 @@ export const GET: APIRoute = async ({ request }) => {
 
     return json({
       company: { name: settings.companyName || 'Location en ligne', logoUrl: settings.logoUrl || '' },
+      hero: {
+        title: settings.bookingHeroTitle || '',
+        subtitle: settings.bookingHeroSubtitle || '',
+        backgroundUrl: bookingImageUrl(settings.bookingHeroBackgroundUrl),
+      },
       settings: {
         theme: normalizeBookingTheme(settings.bookingThemeJson),
         currency,
