@@ -150,12 +150,32 @@ const defaultSettings: AppSettings = {
   defaultDepositValue: 25,
 };
 
-function json(data: unknown, status = 200): Response {
+function corsHeaders(request?: Request): Record<string, string> {
+  const origin = String(request?.headers.get('origin') || '').trim();
+  return {
+    'access-control-allow-origin': origin || '*',
+    'access-control-allow-methods': 'GET,POST,OPTIONS',
+    'access-control-allow-headers': 'Authorization,Content-Type',
+    'access-control-allow-credentials': origin ? 'true' : 'false',
+    'access-control-max-age': '600',
+    'vary': 'Origin',
+  };
+}
+
+function json(data: unknown, status = 200, request?: Request): Response {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },
+    headers: {
+      'content-type': 'application/json; charset=utf-8',
+      'cache-control': 'no-store',
+      ...corsHeaders(request),
+    },
   });
 }
+
+export const OPTIONS: APIRoute = async ({ request }) => {
+  return new Response(null, { status: 204, headers: corsHeaders(request) });
+};
 
 function asDate(value?: Date | string): Date {
   if (value instanceof Date) return value;
@@ -477,7 +497,7 @@ export const GET: APIRoute = async ({ request }) => {
       blockingItems = await loadBlockingItems(start, end, settings.defaultBufferBeforeHours || 0, settings.defaultBufferAfterHours || 0);
     }
 
-    if (!hasAppAccess(plan)) return json({ error: 'Un abonnement RentalFlow actif est requis.' }, 402);
+    if (!hasAppAccess(plan)) return json({ error: 'Un abonnement RentalFlow actif est requis.' }, 402, request);
 
     const paymentsEnabled = hasFeature(plan, 'PAYMENTS');
     const depositEnabled = paymentsEnabled && hasFeature(plan, 'SECURITY_DEPOSIT') && settings.defaultDepositEnabled === true;
@@ -502,12 +522,12 @@ export const GET: APIRoute = async ({ request }) => {
       },
       assets: assets.map((asset) => publicAsset(asset, plan, start, end, settings, blockingItems)),
       catalogItems: catalog.map((item) => publicCatalogItem(item, currency)),
-    });
+    }, 200, request);
   } catch (error) {
-    if (error instanceof Error && error.message === 'UNAUTHORIZED') return json({ error: 'Unauthorized' }, 401);
-    if (error instanceof Error && ['INVALID_PERIOD', 'PERIOD_TOO_LONG', 'PAST_PERIOD'].includes(error.message)) return json({ error: error.message }, 400);
+    if (error instanceof Error && error.message === 'UNAUTHORIZED') return json({ error: 'Unauthorized' }, 401, request);
+    if (error instanceof Error && ['INVALID_PERIOD', 'PERIOD_TOO_LONG', 'PAST_PERIOD'].includes(error.message)) return json({ error: error.message }, 400, request);
     console.error('RentalFlow public booking GET failed', error);
-    return json({ error: 'Impossible de charger la réservation en ligne.' }, 500);
+    return json({ error: 'Impossible de charger la réservation en ligne.' }, 500, request);
   }
 };
 
@@ -551,7 +571,7 @@ export const POST: APIRoute = async ({ request }) => {
       loadCurrentPlan(),
     ]);
 
-    if (!hasAppAccess(plan)) return json({ error: 'Votre essai RentalFlow est terminé. Un forfait Starter, Business ou Pro est requis.' }, 402);
+    if (!hasAppAccess(plan)) return json({ error: 'Votre essai RentalFlow est terminé. Un forfait Starter, Business ou Pro est requis.' }, 402, request);
 
     const requiredFields = requiredFieldsForDefaults(settings, templates);
     const missing = validateRequiredFields(requiredFields, {
@@ -851,9 +871,9 @@ export const POST: APIRoute = async ({ request }) => {
       }
     }
 
-    if (error instanceof Error && error.message === 'UNAUTHORIZED') return json({ error: 'Unauthorized' }, 401);
+    if (error instanceof Error && error.message === 'UNAUTHORIZED') return json({ error: 'Unauthorized' }, 401, request);
     if (error instanceof Error && error.message === 'BOOKING_BUSY') return json({ error: 'Cette disponibilité est en cours de réservation. Réessayez dans quelques secondes.' }, 409);
-    if (error instanceof Error && ['INVALID_PERIOD', 'PERIOD_TOO_LONG', 'PAST_PERIOD'].includes(error.message)) return json({ error: error.message }, 400);
+    if (error instanceof Error && ['INVALID_PERIOD', 'PERIOD_TOO_LONG', 'PAST_PERIOD'].includes(error.message)) return json({ error: error.message }, 400, request);
     if (error instanceof Error && error.message.startsWith('PAYLINK')) return json({ error: 'La réservation n’a pas été confirmée parce que le paiement Wix n’a pas pu être préparé.' }, 502);
     return json({ error: 'Impossible de compléter la réservation en ligne.' }, 500);
   } finally {
