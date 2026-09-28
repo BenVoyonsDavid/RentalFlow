@@ -50,7 +50,7 @@ export const planLabels: Record<RentalFlowPlan, string> = {
   PRO: 'Pro',
 };
 
-let resolvedPlanCache: RentalFlowPlan | null = import.meta.env.DEV ? 'PRO' : null;
+let resolvedPlanCache: RentalFlowPlan | null = null;
 let resolvePlanPromise: Promise<RentalFlowPlan> | null = null;
 
 export function hasFeature(plan: RentalFlowPlan, feature: RentalFlowFeature): boolean {
@@ -83,9 +83,9 @@ export function planFromPackageName(packageName: unknown, isFree?: boolean): Ren
   const normalized = normalizePlanName(packageName);
   if (!normalized) return isFree === false ? 'STARTER' : 'FREE';
 
-  if (normalized.includes('PRO')) return 'PRO';
-  if (normalized.includes('BUSINESS')) return 'BUSINESS';
-  if (normalized.includes('STARTER')) return 'STARTER';
+  if (normalized.includes('PRO') || normalized.includes('PREMIUM')) return 'PRO';
+  if (normalized.includes('BUSINESS') || normalized.includes('GROWTH')) return 'BUSINESS';
+  if (normalized.includes('STARTER') || normalized.includes('PLUS')) return 'STARTER';
   if (normalized.includes('BASIC') || normalized.includes('FREE') || normalized.includes('GRATUIT')) return 'FREE';
 
   // Unknown paid packages fail closed to the lowest paid tier.
@@ -140,5 +140,5 @@ export async function resolveDashboardPlan(): Promise<RentalFlowPlan> {
  * this cache. Production defaults to Basic until Wix confirms a paid package.
  */
 export function getCurrentPlan(): RentalFlowPlan {
-  return import.meta.env.DEV ? 'PRO' : resolvedPlanCache || 'FREE';
+  return resolvedPlanCache || 'FREE';
 }
