@@ -1,3 +1,5 @@
+import BookingAppearance from './booking-appearance';
+import { normalizeBookingTheme } from '../../../../lib/booking-theme';
 import type { CSSProperties, FC, FormEvent, ReactNode } from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { items } from '@wix/data';
@@ -9,7 +11,7 @@ import PaymentSettingsPanel from './payment-settings-panel';
 const SETTINGS = '@pilotedavid1/rental-flow/app-settings';
 const TEMPLATES = '@pilotedavid1/rental-flow/document-templates';
 
-type SettingsTab = 'GENERAL' | 'TAXES_PAYMENTS' | 'TEMPLATES' | 'PLANS';
+type SettingsTab = 'APPEARANCE' | 'GENERAL' | 'TAXES_PAYMENTS' | 'TEMPLATES' | 'PLANS';
 type DocumentType = 'QUOTE' | 'CONTRACT' | 'INVOICE';
 type DepositType = 'PERCENT' | 'FIXED';
 
@@ -18,6 +20,7 @@ type AppSettings = {
   settingsKey?: string;
   companyName?: string;
   logoUrl?: string;
+  bookingThemeJson?: string;
   currency?: string;
   defaultBufferBeforeHours?: number;
   defaultBufferAfterHours?: number;
@@ -174,6 +177,7 @@ const SettingsV2Page: FC = () => {
       const payload = {
         ...settings,
         settingsKey: 'default',
+        bookingThemeJson: JSON.stringify(normalizeBookingTheme(settings.bookingThemeJson)),
         defaultBufferBeforeHours: numberValue(settings.defaultBufferBeforeHours),
         defaultBufferAfterHours: numberValue(settings.defaultBufferAfterHours),
         tax1Rate: numberValue(settings.tax1Rate),
@@ -292,6 +296,7 @@ const SettingsV2Page: FC = () => {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 18, paddingBottom: 50 }}>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <TabButton active={tab === 'GENERAL'} onClick={() => setTab('GENERAL')}>Général</TabButton>
+              <TabButton active={tab === 'APPEARANCE'} onClick={() => setTab('APPEARANCE')}>Apparence</TabButton>
               <TabButton active={tab === 'TAXES_PAYMENTS'} onClick={() => setTab('TAXES_PAYMENTS')}>Taxes & paiements</TabButton>
               <TabButton active={tab === 'TEMPLATES'} onClick={() => setTab('TEMPLATES')}>Modèles de documents</TabButton>
               <TabButton active={tab === 'PLANS'} onClick={() => setTab('PLANS')}>Abonnement</TabButton>
@@ -300,6 +305,11 @@ const SettingsV2Page: FC = () => {
             {error && <div style={{ ...card, borderColor: '#fecaca', background: '#fef2f2', color: '#991b1b' }}>{error}</div>}
             {success && <div style={{ ...card, borderColor: '#86efac', background: '#f0fdf4', color: '#166534' }}>{success}</div>}
             {loading ? <div style={card}>Chargement…</div> : null}
+
+            {!loading && tab === 'APPEARANCE' && <div style={card}>
+              <BookingAppearance value={settings.bookingThemeJson} onChange={(bookingThemeJson) => setSettings({ ...settings, bookingThemeJson })} />
+              <SaveButton saving={saving} onClick={() => void saveSettings()} />
+            </div>}
 
             {!loading && tab === 'GENERAL' && (
               <div style={card}>

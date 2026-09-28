@@ -1,8 +1,12 @@
 import { httpClient } from '@wix/essentials';
+import { bookingThemeVariables, bookingImageUrl, type BookingTheme } from '../../../../lib/booking-theme';
+import { resolveLocale, resolveLanguage } from '../../../../intl';
+import designStyles from './booking-design.css?inline';
 
 type PublicAsset = {
   id: string;
   title: string;
+  imageUrl?: string;
   productType: string;
   currency: string;
   dailyRateCents: number;
@@ -15,6 +19,7 @@ type PublicAsset = {
 };
 
 type BookingSettings = {
+  theme?: BookingTheme;
   currency: string;
   taxesEnabled: boolean;
   tax1Name: string;
@@ -90,6 +95,8 @@ class RentalFlowBookingElement extends HTMLElement {
   private data: BookingData = { company: { name: 'Location en ligne', logoUrl: '' }, settings: initialSettings, assets: [] };
   private selected = new Set<string>();
   private customerDraft: CustomerDraft = { ...blankCustomerDraft };
+  private calendarMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+  private choosingEnd = false;
   private startValue = '';
   private endValue = '';
   private paymentMode: 'FULL' | 'DEPOSIT' = 'FULL';
@@ -223,6 +230,7 @@ class RentalFlowBookingElement extends HTMLElement {
   }
 
   private async submitBooking() {
+    if (this.submitting || this.searching) return;
     if (!this.startValue || !this.endValue || this.selected.size === 0) {
       this.error = 'Choisissez une période et au moins un équipement.';
       this.render();
@@ -291,7 +299,34 @@ class RentalFlowBookingElement extends HTMLElement {
     }[char] || char));
   }
 
+  private invalidateDates() {
+    this.selected.clear();
+    this.data.assets.forEach(asset => { asset.available = null; });
+    this.result = null;
+    this.message = '';
+    this.error = '';
+    this.render();
+  }
+
+  private calendar() {
+    const year = this.calendarMonth.getFullYear(), month = this.calendarMonth.getMonth();
+    const dateKey = (date: Date) => `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
+    const today = dateKey(new Date());
+    const first = (new Date(year, month, 1).getDay() + 6) % 7;
+    const count = new Date(year, month + 1, 0).getDate();
+    const locale = resolveLocale('site', 'auto');
+    const start = this.startValue.slice(0,10), end = this.endValue.slice(0,10);
+    const weekdays = Array.from({length:7}, (_,i) => `<span>${new Intl.DateTimeFormat(locale, {weekday:'narrow'}).format(new Date(2024,0,1+i))}</span>`).join('');
+    const days = Array.from({length:count}, (_,i) => {
+      const date = new Date(year,month,i+1), key = dateKey(date);
+      const edge = key === start || key === end;
+      return `<button type="button" data-day="${key}" class="day ${edge ? 'edge' : ''} ${start && end && key > start && key < end ? 'range' : ''}" aria-label="${this.escape(new Intl.DateTimeFormat(locale,{dateStyle:'full'}).format(date))}" aria-pressed="${edge}" ${key < today || this.searching || this.submitting ? 'disabled' : ''}>${i+1}</button>`;
+    }).join('');
+    return `<div class="calendar"><div class="month"><button type="button" data-month="-1" aria-label="Mois précédent">‹</button><strong>${this.escape(new Intl.DateTimeFormat(locale,{month:'long',year:'numeric'}).format(this.calendarMonth))}</strong><button type="button" data-month="1" aria-label="Mois suivant">›</button></div><div class="days">${weekdays}${'<span></span>'.repeat(first)}${days}</div><p class="muted calendar-hint">Sélectionnez le début, puis la fin.</p></div>`;
+  }
+
   private render() {
+    const language = resolveLanguage('site', 'auto');
     const company = this.data.company;
     const assets = this.data.assets;
     const searched = assets.some((asset) => asset.available !== null);
@@ -308,17 +343,17 @@ class RentalFlowBookingElement extends HTMLElement {
       const price = searched && asset.available !== null
         ? this.money(asset.lineTotalCents, asset.currency)
         : asset.dailyRateCents > 0
-          ? `${this.money(asset.dailyRateCents, asset.currency)} / jour`
+          ? `${this.money(asset.dailyRateCents, asset.currency)} / ${language === 'en' ? 'day' : 'jour'}`
           : 'Tarif sur demande';
       return `
-        <button class="asset ${availabilityClass} ${selected ? 'selected' : ''}" data-asset="${this.escape(asset.id)}" ${asset.available === false || !searched ? 'disabled' : ''}>
-          <span class="check">${selected ? '✓' : ''}</span>
+        <button class="asset ${availabilityClass} ${selected ? 'selected' : ''}" aria-pressed="${selected}" data-asset="${this.escape(asset.id)}" ${asset.available !== true || this.submitting ? 'disabled' : ''}>
+          <span class="asset-image">${bookingImageUrl(asset.imageUrl) ? `<img src="${this.escape(bookingImageUrl(asset.imageUrl))}" alt="" loading="lazy">` : '<span aria-hidden="true">◇</span>'}</span>
           <span class="asset-main">
-            <strong>${this.escape(asset.title)}</strong>
-            <small>${this.escape(asset.productType || 'Équipement')}</small>
-            ${searched && asset.billableDays ? `<small>${asset.billableDays} jour${asset.billableDays > 1 ? 's' : ''} · ${this.escape(asset.pricingMode)}</small>` : ''}
+            <strong translate="no">${this.escape(asset.title)}</strong>
+            <small translate="no">${this.escape(asset.productType || 'Équipement')}</small>
+            ${searched && asset.billableDays ? `<small>${asset.billableDays} ${language === 'en' ? 'day' : 'jour'}${asset.billableDays > 1 ? 's' : ''}</small>` : ''}
           </span>
-          <span class="asset-price">${price}</span>
+          <span class="asset-price">${price}<small>${selected ? 'Sélectionné' : asset.available === true ? 'Disponible' : asset.available === false ? 'Indisponible' : 'Choisissez vos dates'}</small></span>
         </button>`;
     }).join('');
 
@@ -326,28 +361,18 @@ class RentalFlowBookingElement extends HTMLElement {
     const requiredPhone = this.isRequired('CUSTOMER_PHONE');
 
     this.root.innerHTML = `
-      <style>
-        :host{display:block;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#162033;--rf:#116dff;--rf-soft:#eef5ff;--border:#dce3ec;--muted:#64748b;--danger:#b42318;--success:#157347}
-        *{box-sizing:border-box}.wrap{max-width:1100px;margin:auto;background:#fff;border:1px solid var(--border);border-radius:18px;overflow:hidden;box-shadow:0 12px 35px rgba(30,55,90,.08)}
-        header{padding:24px 26px;background:linear-gradient(135deg,#f8fbff,#eef5ff);display:flex;align-items:center;gap:18px;border-bottom:1px solid var(--border)}
-        header img{max-width:150px;max-height:66px;object-fit:contain}h1{font-size:26px;margin:0 0 4px}p{margin:0}.muted{color:var(--muted)}main{padding:24px}.section{margin-bottom:26px}.step{font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--rf);margin-bottom:7px}h2{font-size:20px;margin:0 0 14px}
-        .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.field{display:flex;flex-direction:column;gap:6px}.field.full{grid-column:1/-1}label{font-size:13px;font-weight:700}input,textarea,select{width:100%;border:1px solid #c9d2df;border-radius:10px;padding:11px 12px;font:inherit;background:#fff}textarea{min-height:82px;resize:vertical}input:focus,textarea:focus,select:focus{outline:2px solid rgba(17,109,255,.16);border-color:var(--rf)}
-        .button{border:0;border-radius:10px;padding:11px 17px;font:inherit;font-weight:800;cursor:pointer;background:var(--rf);color:#fff}.button.secondary{background:#fff;color:var(--rf);border:1px solid var(--rf)}.button:disabled{opacity:.55;cursor:not-allowed}.search-row{display:flex;gap:12px;align-items:end}.search-row .field{flex:1}
-        .notice{padding:12px 14px;border-radius:10px;margin:0 0 18px;font-size:14px}.notice.success{background:#ecfdf3;color:var(--success);border:1px solid #abefc6}.notice.error{background:#fef3f2;color:var(--danger);border:1px solid #fecdca}.notice.info{background:#eff6ff;color:#1e40af;border:1px solid #bfdbfe}
-        .assets{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:11px}.asset{width:100%;display:grid;grid-template-columns:28px 1fr auto;gap:10px;align-items:center;text-align:left;padding:14px;border:1px solid var(--border);border-radius:12px;background:#fff;color:inherit;cursor:pointer}.asset:hover:not(:disabled){border-color:#9bbdfd;background:#fbfdff}.asset.selected{border:2px solid var(--rf);background:var(--rf-soft)}.asset.unavailable{opacity:.5}.asset-main{display:flex;flex-direction:column;gap:3px}.asset-main small{color:var(--muted)}.asset-price{font-weight:800;white-space:nowrap}.check{width:22px;height:22px;border:2px solid #b9c5d6;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#fff}.asset.selected .check{background:var(--rf);border-color:var(--rf)}
-        .summary{background:#f8fafc;border:1px solid var(--border);border-radius:14px;padding:17px}.sumrow{display:flex;justify-content:space-between;gap:20px;padding:5px 0}.sumrow.total{font-size:18px;font-weight:900;border-top:1px solid var(--border);margin-top:7px;padding-top:12px}.sumrow.due{color:var(--rf);font-weight:900}.payment-options{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}.choice{display:flex;gap:8px;align-items:center;border:1px solid var(--border);border-radius:10px;padding:10px 13px;cursor:pointer}.choice.active{border-color:var(--rf);background:var(--rf-soft)}.choice input{width:auto}
-        .complete{padding:28px;text-align:center;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:14px}.complete h2{color:#166534}.complete .number{font-size:20px;font-weight:900;margin:10px 0}.loading{padding:38px;text-align:center;color:var(--muted)}
-        @media(max-width:720px){header{align-items:flex-start;flex-direction:column}.grid,.assets{grid-template-columns:1fr}.search-row{display:grid}.asset{grid-template-columns:28px 1fr}.asset-price{grid-column:2}.wrap{border-radius:12px}main{padding:18px}}
+      <style>${designStyles}
+        :host{${Object.entries(bookingThemeVariables(this.data.settings.theme)).map(([key,value]) => `${key}:${value}`).join(';')}}
       </style>
       <div class="wrap">
         <header>
-          ${company.logoUrl ? `<img src="${this.escape(company.logoUrl)}" alt="">` : ''}
-          <div><h1>${this.escape(company.name || 'Réservation en ligne')}</h1><p class="muted">${paymentsEnabled ? 'Choisissez vos dates, vos équipements et payez de façon sécurisée avec Wix.' : 'Choisissez vos dates et vos équipements pour créer votre réservation.'}</p></div>
+          ${bookingImageUrl(company.logoUrl) ? `<img src="${this.escape(bookingImageUrl(company.logoUrl))}" alt="">` : ''}
+          <div><p class="brand" translate="no">${this.escape(company.name || 'Réservation en ligne')}</p><h1>Planifiez votre location</h1><p class="muted">${paymentsEnabled ? 'Choisissez vos dates, vos équipements et payez de façon sécurisée avec Wix.' : 'Choisissez vos dates et vos équipements pour créer votre réservation.'}</p></div>
         </header>
         <main>
-          ${this.error ? `<div class="notice error">${this.escape(this.error)}</div>` : ''}
-          ${this.message ? `<div class="notice success">${this.escape(this.message)}</div>` : ''}
-          ${!paymentsEnabled && !this.loading && !this.result ? '<div class="notice info">Le paiement en ligne n’est pas activé pour ce locateur. Le solde sera payable selon ses modalités.</div>' : ''}
+          ${this.error ? `<div class="notice error" role="alert">${this.escape(this.error)}</div>` : ''}
+          ${this.message ? `<div class="notice success" role="status">${this.escape(this.message)}</div>` : ''}
+
           ${this.loading ? '<div class="loading">Chargement de la disponibilité…</div>' : this.result ? `
             <div class="complete">
               <h2>Votre réservation est créée</h2>
@@ -357,39 +382,46 @@ class RentalFlowBookingElement extends HTMLElement {
               ${this.result.balanceDueCents > 0 ? `<p class="muted" style="margin-top:5px">Solde restant : ${this.money(this.result.balanceDueCents, this.result.currency)}</p>` : ''}
               ${this.result.checkoutUrl ? `<a class="button" style="display:inline-block;text-decoration:none;margin-top:18px" href="${this.escape(this.result.checkoutUrl)}">Payer avec Wix</a>` : '<p style="margin-top:14px">Aucun paiement en ligne immédiat requis.</p>'}
             </div>` : `
-            <section class="section">
+            <nav data-rf-step-navigation aria-label="Réservation"><span>1 · Dates et équipements</span><span>2 · Coordonnées</span><span>3 · Confirmation</span></nav>
+            <div class="booking-layout">
+            <section class="section dates-panel">
               <div class="step">1 · Dates</div><h2>Quand souhaitez-vous louer?</h2>
-              <div class="search-row">
-                <div class="field"><label>Début</label><input id="start" type="datetime-local" value="${this.escape(this.startValue)}"></div>
-                <div class="field"><label>Fin</label><input id="end" type="datetime-local" value="${this.escape(this.endValue)}"></div>
-                <button id="search" class="button" ${this.searching ? 'disabled' : ''}>${this.searching ? 'Recherche…' : 'Voir les disponibilités'}</button>
+              ${this.calendar()}<div class="search-row">
+                <div class="field"><label for="start">Début</label><input ${this.searching || this.submitting ? 'disabled' : ''} id="start" type="datetime-local" value="${this.escape(this.startValue)}"></div>
+                <div class="field"><label for="end">Fin</label><input ${this.searching || this.submitting ? 'disabled' : ''} id="end" type="datetime-local" value="${this.escape(this.endValue)}"></div>
+                <button id="search" class="button" ${this.searching || this.submitting ? 'disabled' : ''}>${this.searching ? 'Recherche…' : 'Voir les disponibilités'}</button>
               </div>
             </section>
-            <section class="section">
+            <div class="booking-content"><section class="section equipment-panel">
               <div class="step">2 · Équipements</div><h2>${searched ? 'Équipements disponibles' : 'Nos équipements'}</h2>
               ${assets.length ? `<div class="assets">${assetCards}</div>` : '<p class="muted">Aucun équipement actif pour le moment.</p>'}
             </section>
+            <div data-rf-extras></div>
             ${selectedAssets.length ? `
-              <section class="section">
+              <section class="section contact-panel" data-rf-contact-section>
                 <div class="step">3 · Vos informations</div><h2>Coordonnées</h2>
-                <div class="grid">
-                  <div class="field"><label>Nom complet *</label><input name="customerName" autocomplete="name" value="${this.escape(this.customerDraft.customerName)}"></div>
-                  <div class="field"><label>Courriel *</label><input name="customerEmail" type="email" autocomplete="email" value="${this.escape(this.customerDraft.customerEmail)}"></div>
-                  <div class="field"><label>Téléphone ${requiredPhone ? '*' : ''}</label><input name="customerPhone" autocomplete="tel" value="${this.escape(this.customerDraft.customerPhone)}"></div>
-                  <div class="field"><label>Adresse ${requiredAddress ? '*' : ''}</label><input name="addressLine1" autocomplete="street-address" value="${this.escape(this.customerDraft.addressLine1)}"></div>
-                  <div class="field"><label>Adresse 2</label><input name="addressLine2" value="${this.escape(this.customerDraft.addressLine2)}"></div>
-                  <div class="field"><label>Ville ${requiredAddress ? '*' : ''}</label><input name="city" autocomplete="address-level2" value="${this.escape(this.customerDraft.city)}"></div>
-                  <div class="field"><label>Province / État ${requiredAddress ? '*' : ''}</label><input name="region" autocomplete="address-level1" value="${this.escape(this.customerDraft.region)}"></div>
-                  <div class="field"><label>Code postal ${requiredAddress ? '*' : ''}</label><input name="postalCode" autocomplete="postal-code" value="${this.escape(this.customerDraft.postalCode)}"></div>
-                  <div class="field"><label>Pays ${requiredAddress ? '*' : ''}</label><input name="country" autocomplete="country-name" value="${this.escape(this.customerDraft.country)}"></div>
-                  <div class="field full"><label>Notes</label><textarea name="notes" placeholder="Information utile concernant votre réservation">${this.escape(this.customerDraft.notes)}</textarea></div>
-                </div>
-              </section>
-              <section class="section">
-                <div class="step">4 · ${paymentsEnabled ? 'Paiement' : 'Confirmation'}</div><h2>Résumé</h2>
+                <form id="customer-form" class="grid">
+                  <div class="field"><label for="rf-customerName">Nom complet *</label><input id="rf-customerName" name="customerName" required autocomplete="name" value="${this.escape(this.customerDraft.customerName)}"></div>
+                  <div class="field"><label for="rf-customerEmail">Courriel *</label><input id="rf-customerEmail" name="customerEmail" required type="email" autocomplete="email" value="${this.escape(this.customerDraft.customerEmail)}"></div>
+                  <div class="field"><label for="rf-customerPhone">Téléphone ${requiredPhone ? '*' : ''}</label><input id="rf-customerPhone" name="customerPhone" ${requiredPhone ? 'required' : ''} autocomplete="tel" value="${this.escape(this.customerDraft.customerPhone)}"></div>
+                  <div class="field"><label for="rf-addressLine1">Adresse ${requiredAddress ? '*' : ''}</label><input id="rf-addressLine1" name="addressLine1" ${requiredAddress ? 'required' : ''} autocomplete="street-address" value="${this.escape(this.customerDraft.addressLine1)}"></div>
+                  <div class="field"><label for="rf-addressLine2">Adresse 2</label><input id="rf-addressLine2" name="addressLine2" value="${this.escape(this.customerDraft.addressLine2)}"></div>
+                  <div class="field"><label for="rf-city">Ville ${requiredAddress ? '*' : ''}</label><input id="rf-city" name="city" ${requiredAddress ? 'required' : ''} autocomplete="address-level2" value="${this.escape(this.customerDraft.city)}"></div>
+                  <div class="field"><label for="rf-region">Province / État ${requiredAddress ? '*' : ''}</label><input id="rf-region" name="region" ${requiredAddress ? 'required' : ''} autocomplete="address-level1" value="${this.escape(this.customerDraft.region)}"></div>
+                  <div class="field"><label for="rf-postalCode">Code postal ${requiredAddress ? '*' : ''}</label><input id="rf-postalCode" name="postalCode" ${requiredAddress ? 'required' : ''} autocomplete="postal-code" value="${this.escape(this.customerDraft.postalCode)}"></div>
+                  <div class="field"><label for="rf-country">Pays ${requiredAddress ? '*' : ''}</label><input id="rf-country" name="country" ${requiredAddress ? 'required' : ''} autocomplete="country-name" value="${this.escape(this.customerDraft.country)}"></div>
+                  <div class="field full"><label for="rf-notes">Notes</label><textarea id="rf-notes" name="notes" placeholder="Information utile concernant votre réservation">${this.escape(this.customerDraft.notes)}</textarea></div>
+                </form>
+              </section>` : ''}
+            </div>
+              <section class="section summary-panel">
+                <div class="step">4 · ${paymentsEnabled ? 'Paiement' : 'Confirmation'}</div><h2>Votre réservation</h2>
+                ${selectedAssets.length ? selectedAssets.map(asset => `<div class="summary-item"><strong translate="no">${this.escape(asset.title)}</strong><span>${this.money(asset.lineTotalCents,asset.currency)}</span></div>`).join('') : '<p class="empty-summary">Choisissez vos dates et vos équipements pour commencer.</p>'}
+                <div data-rf-summary-extras></div>
+                ${selectedAssets.length ? '<button class="button secondary" id="continue">Continuer vers les coordonnées</button>' : ''}
                 ${paymentsEnabled && this.data.settings.depositEnabled ? `<div class="payment-options">
-                  <label class="choice ${this.paymentMode === 'DEPOSIT' ? 'active' : ''}"><input type="radio" name="paymentMode" value="DEPOSIT" ${this.paymentMode === 'DEPOSIT' ? 'checked' : ''}> Payer le dépôt (${this.data.settings.depositType === 'PERCENT' ? `${this.data.settings.depositValue}%` : this.money(Math.round(this.data.settings.depositValue * 100))})</label>
-                  <label class="choice ${this.paymentMode === 'FULL' ? 'active' : ''}"><input type="radio" name="paymentMode" value="FULL" ${this.paymentMode === 'FULL' ? 'checked' : ''}> Payer en totalité</label>
+                  <label class="choice ${this.paymentMode === 'DEPOSIT' ? 'active' : ''}"><input type="radio" ${this.submitting ? 'disabled' : ''} name="paymentMode" value="DEPOSIT" ${this.paymentMode === 'DEPOSIT' ? 'checked' : ''}> Payer le dépôt (${this.data.settings.depositType === 'PERCENT' ? `${this.data.settings.depositValue}%` : this.money(Math.round(this.data.settings.depositValue * 100))})</label>
+                  <label class="choice ${this.paymentMode === 'FULL' ? 'active' : ''}"><input type="radio" ${this.submitting ? 'disabled' : ''} name="paymentMode" value="FULL" ${this.paymentMode === 'FULL' ? 'checked' : ''}> Payer en totalité</label>
                 </div>` : ''}
                 <div class="summary">
                   <div class="sumrow"><span>Sous-total</span><strong>${this.money(subtotal)}</strong></div>
@@ -398,8 +430,9 @@ class RentalFlowBookingElement extends HTMLElement {
                   ${paymentsEnabled ? `<div class="sumrow due"><span>À payer maintenant</span><span>${this.money(dueNow)}</span></div>` : ''}
                   ${balance > 0 ? `<div class="sumrow"><span>Solde restant</span><span>${this.money(balance)}</span></div>` : ''}
                 </div>
-                <button id="submit" class="button" style="width:100%;margin-top:14px;padding:14px" ${this.submitting ? 'disabled' : ''}>${this.submitting ? 'Création de la réservation…' : paymentsEnabled ? 'Réserver et continuer au paiement' : 'Créer la réservation'}</button>
-              </section>` : ''}
+                <button id="submit" class="button" style="width:100%;margin-top:14px;padding:14px" ${this.submitting || !selectedAssets.length ? 'disabled' : ''}>${this.submitting ? 'Création de la réservation…' : paymentsEnabled ? 'Réserver et continuer au paiement' : 'Créer la réservation'}</button>
+              <p class="payment-note">${paymentsEnabled ? 'Paiement sécurisé avec Wix.' : 'Paiement selon les modalités du locateur.'}</p></section>
+            </div>
           `}
         </main>
       </div>`;
@@ -408,10 +441,33 @@ class RentalFlowBookingElement extends HTMLElement {
   }
 
   private bindEvents() {
+    this.root.querySelectorAll<HTMLElement>('[data-month]').forEach(button => button.addEventListener('click', () => {
+      this.calendarMonth = new Date(this.calendarMonth.getFullYear(), this.calendarMonth.getMonth() + Number(button.dataset.month),1);
+      this.render();
+      this.root.querySelector<HTMLButtonElement>(`[data-month="${button.dataset.month}"]`)?.focus();
+    }));
+    this.root.querySelectorAll<HTMLElement>('[data-day]').forEach(button => button.addEventListener('click', () => {
+      const day = button.dataset.day!;
+      if (!this.choosingEnd || day < this.startValue.slice(0,10)) {
+        this.startValue = `${day}T${this.startValue.slice(11) || '09:00'}`;
+        this.endValue = '';
+        this.choosingEnd = true;
+      } else {
+        this.endValue = `${day}T17:00`;
+        this.choosingEnd = false;
+      }
+      this.invalidateDates();
+      this.root.querySelector<HTMLButtonElement>(`[data-day="${day}"]`)?.focus();
+    }));
+    this.root.querySelector('#continue')?.addEventListener('click', () => {
+      this.root.querySelector('[data-rf-contact-section]')?.scrollIntoView({behavior:'smooth',block:'start'});
+      this.root.querySelector<HTMLInputElement>('[name="customerName"]')?.focus({preventScroll:true});
+    });
+    this.root.querySelector('#customer-form')?.addEventListener('submit', event => { event.preventDefault(); void this.submitBooking(); });
     const start = this.root.querySelector<HTMLInputElement>('#start');
     const end = this.root.querySelector<HTMLInputElement>('#end');
-    start?.addEventListener('change', () => { this.startValue = start.value; });
-    end?.addEventListener('change', () => { this.endValue = end.value; });
+    start?.addEventListener('change', () => { this.startValue = start.value; if (start.value) this.calendarMonth = new Date(new Date(start.value).getFullYear(),new Date(start.value).getMonth(),1); this.invalidateDates(); });
+    end?.addEventListener('change', () => { this.endValue = end.value; this.invalidateDates(); });
     this.root.querySelector('#search')?.addEventListener('click', (event) => {
       event.preventDefault();
       this.startValue = start?.value || this.startValue;
@@ -448,7 +504,7 @@ class RentalFlowBookingElement extends HTMLElement {
 
     this.root.querySelector('#submit')?.addEventListener('click', (event) => {
       event.preventDefault();
-      void this.submitBooking();
+      if (this.root.querySelector<HTMLFormElement>('#customer-form')?.reportValidity()) void this.submitBooking();
     });
   }
 }

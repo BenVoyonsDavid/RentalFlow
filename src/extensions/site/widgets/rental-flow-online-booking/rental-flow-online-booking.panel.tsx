@@ -63,6 +63,8 @@ const Panel: FC = () => {
         <SidePanel.Content noPadding stretchVertically>
           <SidePanel.Field>
             <SectionHelper fullWidth appearance="success">
+              Les couleurs se personnalisent dans RentalFlow → Paramètres → Apparence.
+              <br />
               Le nom de l’entreprise, le logo, les taxes, le dépôt et les modèles utilisés par ce widget se configurent dans Paramètres → RentalFlow.
             </SectionHelper>
           </SidePanel.Field>

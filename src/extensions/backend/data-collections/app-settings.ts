@@ -9,6 +9,7 @@ export default {
     { type: 'TEXT', displayName: 'Clé', key: 'settingsKey' },
     { type: 'TEXT', displayName: 'Nom entreprise', key: 'companyName' },
     { type: 'TEXT', displayName: 'URL logo', key: 'logoUrl' },
+    { type: 'TEXT', displayName: 'Couleurs du module de réservation (JSON)', key: 'bookingThemeJson' },
     { type: 'TEXT', displayName: 'Devise par défaut', key: 'currency' },
     { type: 'NUMBER', displayName: 'Buffer avant par défaut (h)', key: 'defaultBufferBeforeHours' },
     { type: 'NUMBER', displayName: 'Buffer après par défaut (h)', key: 'defaultBufferAfterHours' },

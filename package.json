@@ -16,7 +16,8 @@
     "release": "wix release",
     "generate": "wix generate",
     "skills": "wix skills",
-    "typecheck": "astro check"
+    "typecheck": "astro check",
+    "test:booking-design": "node tests/booking-design.mjs"
   },
   "dependencies": {
     "@wix/app-management": "^1.0.159",
@@ -40,6 +41,8 @@
     "@wix/cli": "^1.1.245",
     "@wix/sdk-types": "^1.0.0",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "esbuild": "^0.25.0",
+    "playwright": "^1.58.0"
   }
 }

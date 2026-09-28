@@ -179,9 +179,10 @@ function injectCatalogExtras(instance: any): boolean {
       .filter((line) => line.catalogItemId)
       .map((line) => [line.catalogItemId as string, line]),
   );
+  const extrasSlot = root.querySelector('[data-rf-extras]');
   const contactSection = Array.from(root.querySelectorAll<HTMLElement>('section.section'))
     .find((section) => section.querySelector('.step')?.textContent?.includes('Vos informations'));
-  if (!contactSection) return false;
+  if (!extrasSlot && !contactSection) return false;
 
   const section = document.createElement('section');
   section.className = 'section rf-catalog-extras';
@@ -204,16 +205,16 @@ function injectCatalogExtras(instance: any): boolean {
     return `
       <div class="rf-extra ${selected ? 'selected' : ''} ${unavailable ? 'unavailable' : ''}">
         <label class="rf-extra-select">
-          <input type="checkbox" data-catalog-toggle="${escapeHtml(item.id)}" ${selected ? 'checked' : ''} ${item.required || unavailable ? 'disabled' : ''}>
+          <input type="checkbox" data-catalog-toggle="${escapeHtml(item.id)}" ${selected ? 'checked' : ''} ${item.required || unavailable || instance.submitting ? 'disabled' : ''}>
           <span class="rf-extra-main">
-            <span class="rf-extra-title"><strong>${escapeHtml(item.name)}</strong>${badges}</span>
-            ${item.description ? `<small>${escapeHtml(item.description)}</small>` : ''}
+            <span class="rf-extra-title"><strong translate="no">${escapeHtml(item.name)}</strong>${badges}</span>
+            ${item.description ? `<small translate="no">${escapeHtml(item.description)}</small>` : ''}
             <small>${escapeHtml(typeLabel(item, language))} · ${escapeHtml(pricingLabel(instance, item, language))}</small>
             ${unavailable ? `<small class="rf-extra-stock">${language === 'fr' ? 'Indisponible' : 'Unavailable'}</small>` : ''}
           </span>
         </label>
         <div class="rf-extra-actions">
-          ${showQuantity ? `<label>${language === 'fr' ? 'Qté' : 'Qty'} <input type="number" min="1" max="${Math.max(1, max)}" value="${quantity}" data-catalog-qty="${escapeHtml(item.id)}"></label>` : ''}
+          ${showQuantity ? `<label>${language === 'fr' ? 'Qté' : 'Qty'} <input type="number" ${instance.submitting ? 'disabled' : ''} min="1" max="${Math.max(1, max)}" value="${quantity}" data-catalog-qty="${escapeHtml(item.id)}"></label>` : ''}
           ${total}
         </div>
       </div>`;
@@ -221,8 +222,8 @@ function injectCatalogExtras(instance: any): boolean {
 
   section.innerHTML = `
     <style>
-      .rf-extra-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:11px}
-      .rf-extra{border:1px solid var(--border);border-radius:12px;padding:14px;background:#fff;display:flex;justify-content:space-between;gap:14px;align-items:center}
+      .rf-extra-list{display:grid;grid-template-columns:1fr;gap:11px}
+      .rf-extra{border:1px solid var(--border);border-radius:12px;padding:14px;background:var(--rf-surface);display:flex;justify-content:space-between;gap:14px;align-items:center}
       .rf-extra.selected{border:2px solid var(--rf);background:var(--rf-soft)}
       .rf-extra.unavailable{opacity:.55}.rf-extra-select{display:flex;gap:11px;align-items:flex-start;cursor:pointer;flex:1}.rf-extra-select input{width:auto;margin-top:3px}
       .rf-extra-main{display:flex;flex-direction:column;gap:4px}.rf-extra-main small{color:var(--muted)}.rf-extra-title{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
@@ -235,7 +236,13 @@ function injectCatalogExtras(instance: any): boolean {
     <p class="muted" style="margin-bottom:14px">${language === 'fr' ? 'Ajoutez les produits, services ou options compatibles avec les équipements choisis.' : 'Add products, services, or options compatible with your selected equipment.'}</p>
     <div class="rf-extra-list">${cards}</div>`;
 
-  contactSection.before(section);
+  const summaryExtras = root.querySelector('[data-rf-summary-extras]');
+  if (summaryExtras) summaryExtras.innerHTML = [...lines.values()].map(line => {
+    const item = compatible.find(candidate => candidate.id === line.catalogItemId);
+    return `<div class="summary-item"><strong translate="no">${escapeHtml(item?.name || '')} × ${map.get(line.catalogItemId!) || 1}</strong><span>${escapeHtml(instance.money(line.lineTotalCents || 0, line.currency || 'CAD'))}</span></div>`;
+  }).join('');
+  if (extrasSlot) extrasSlot.append(section);
+  else contactSection?.before(section);
 
   section.querySelectorAll<HTMLInputElement>('[data-catalog-toggle]').forEach((input) => {
     input.addEventListener('change', () => {

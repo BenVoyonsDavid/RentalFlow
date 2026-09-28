@@ -1,4 +1,10 @@
 const common: Record<string, string> = {
+  'Apparence': 'Appearance',
+  'Océan': 'Ocean',
+  'Forêt': 'Forest',
+  'Bleu': 'Blue',
+  'Prune': 'Plum',
+  'Ardoise': 'Slate',
   'Tableau de bord': 'Dashboard',
   'Calendrier': 'Calendar',
   'Clients': 'Customers',
@@ -346,6 +352,27 @@ const settings: Record<string, string> = {
 };
 
 const bookingWidget: Record<string, string> = {
+  "1 · Dates et équipements": "1 · Dates and equipment",
+  "2 · Coordonnées": "2 · Contact details",
+  "3 · Confirmation": "3 · Confirmation",
+  "Planifiez votre location": "Plan your rental",
+  "Mois précédent": "Previous month",
+  "Mois suivant": "Next month",
+  "Sélectionnez le début, puis la fin.": "Select the start, then the end.",
+  "Dates et équipements": "Dates and equipment",
+  "Votre réservation": "Your reservation",
+  "Choisissez vos dates et vos équipements pour commencer.": "Choose your dates and equipment to get started.",
+  "Continuer vers les coordonnées": "Continue to contact details",
+  "Paiement sécurisé avec Wix.": "Secure payment with Wix.",
+  "Paiement selon les modalités du locateur.": "Payment according to the rental company’s terms.",
+  "Choisissez vos dates": "Choose your dates",
+  "Sélectionné": "Selected",
+  "Choisissez vos dates et vos équipements pour créer votre réservation.": "Choose your dates and equipment to create your reservation.",
+  "Aucun paiement en ligne immédiat requis.": "No immediate online payment required.",
+  "Créer la réservation": "Create reservation",
+  "Confirmation": "Confirmation",
+  "Courriel *": "Email *",
+
   'Location en ligne': 'Online booking',
   'Réservation en ligne': 'Online booking',
   'Choisissez vos dates, vos équipements et payez de façon sécurisée avec Wix.': 'Choose your dates and equipment, then pay securely with Wix.',
@@ -382,6 +409,7 @@ const bookingWidget: Record<string, string> = {
 };
 
 const widgetPanel: Record<string, string> = {
+  "Les couleurs se personnalisent dans RentalFlow → Paramètres → Apparence.": "Customize colors in RentalFlow → Settings → Appearance.",
   '(réponse vide)': '(empty response)',
   '(vide)': '(empty)',
   'ERREUR': 'ERROR',

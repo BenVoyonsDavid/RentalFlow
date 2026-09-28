@@ -1,3 +1,4 @@
+import { normalizeBookingTheme, bookingImageUrl } from '../../lib/booking-theme';
 import type { APIRoute } from 'astro';
 import { appInstances } from '@wix/app-management';
 import { items } from '@wix/data';
@@ -40,6 +41,7 @@ const MAX_PUBLIC_CATALOG_ITEMS = 50;
 const MAX_CATALOG_QUANTITY = 999;
 
 type Asset = {
+  image?: unknown;
   _id?: string;
   title?: string;
   assetNumber?: string;
@@ -79,6 +81,7 @@ type AppSettings = {
   settingsKey?: string;
   companyName?: string;
   logoUrl?: string;
+  bookingThemeJson?: string;
   currency?: string;
   defaultBufferBeforeHours?: number;
   defaultBufferAfterHours?: number;
@@ -360,6 +363,7 @@ function publicAsset(
 
   return {
     id: asset._id || '',
+    imageUrl: bookingImageUrl(asset.image),
     title: asset.title || 'Équipement',
     productType: asset.productType || '',
     catalogTagsJson: asset.catalogTagsJson || '[]',
@@ -472,6 +476,7 @@ export const GET: APIRoute = async ({ request }) => {
     return json({
       company: { name: settings.companyName || 'Location en ligne', logoUrl: settings.logoUrl || '' },
       settings: {
+        theme: normalizeBookingTheme(settings.bookingThemeJson),
         currency,
         taxesEnabled: settings.taxesEnabled !== false,
         tax1Name: settings.tax1Name || '',
