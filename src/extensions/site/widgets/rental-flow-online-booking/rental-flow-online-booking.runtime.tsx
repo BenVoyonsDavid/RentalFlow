@@ -15,11 +15,12 @@ import {
 // constructor can't be registered twice, so export a distinct subclass for Wix.
 class RentalFlowOnlineBookingElement extends RentalFlowBookingElement {}
 
-// Wix's current CLI tutorial recommends deriving the app backend origin from
-// the module URL so the same endpoint URL works in local development and after
-// deployment. BASE_API_URL is compiled to undefined in this custom-element
-// bundle, so don't depend on it here.
-const appOrigin = new URL(import.meta.url).origin;
+// Wix-managed site extensions should call this app's HTTP endpoints through
+// BASE_API_URL. In the editor/dev environment the module origin can also work,
+// but on a published site it may be the static asset origin instead of the app
+// backend. Keep module origin only as a compatibility fallback.
+const wixBaseApiUrl = String(import.meta.env.BASE_API_URL || '').trim().replace(/\/$/, '');
+const appOrigin = wixBaseApiUrl || new URL(import.meta.url).origin;
 
 const Element = RentalFlowOnlineBookingElement as unknown as {
   new (): HTMLElement;
