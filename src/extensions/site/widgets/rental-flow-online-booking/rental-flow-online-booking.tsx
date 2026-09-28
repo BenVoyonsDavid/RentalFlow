@@ -36,6 +36,7 @@ type BookingSettings = {
 
 type BookingData = {
   company: { name: string; logoUrl: string };
+  hero?: { title?: string; subtitle?: string; backgroundUrl?: string };
   settings: BookingSettings;
   assets: PublicAsset[];
 };
@@ -92,7 +93,12 @@ const blankCustomerDraft: CustomerDraft = {
 
 class RentalFlowBookingElement extends HTMLElement {
   private root: ShadowRoot;
-  private data: BookingData = { company: { name: 'Location en ligne', logoUrl: '' }, settings: initialSettings, assets: [] };
+  private data: BookingData = {
+    company: { name: 'Location en ligne', logoUrl: '' },
+    hero: { title: '', subtitle: '', backgroundUrl: '' },
+    settings: initialSettings,
+    assets: [],
+  };
   private selected = new Set<string>();
   private customerDraft: CustomerDraft = { ...blankCustomerDraft };
   private calendarMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
@@ -365,6 +371,16 @@ class RentalFlowBookingElement extends HTMLElement {
   private render() {
     const language = resolveLanguage('site', 'auto');
     const company = this.data.company;
+    const hero = this.data.hero || {};
+    const heroTitle = String(hero.title || '').trim();
+    const heroSubtitle = String(hero.subtitle || '').trim();
+    const heroBackgroundUrl = bookingImageUrl(hero.backgroundUrl);
+    const defaultHeroSubtitle = this.data.settings.paymentsEnabled
+      ? 'Choisissez vos dates, vos équipements et payez de façon sécurisée avec Wix.'
+      : 'Choisissez vos dates et vos équipements pour créer votre réservation.';
+    const heroStyle = heroBackgroundUrl
+      ? ` style="background-image:linear-gradient(180deg,rgba(8,23,43,.24),rgba(8,23,43,.48)),url('${this.escape(heroBackgroundUrl)}');background-size:cover;background-position:center"`
+      : '';
     const assets = this.data.assets;
     const searched = assets.some((asset) => asset.available !== null);
     const selectedAssets = this.selectedAssets();
@@ -402,7 +418,7 @@ class RentalFlowBookingElement extends HTMLElement {
         :host{${Object.entries(bookingThemeVariables(this.data.settings.theme)).map(([key,value]) => `${key}:${value}`).join(';')}}
       </style>
       <div class="wrap">
-        <header class="booking-hero">
+        <header class="booking-hero"${heroStyle}>
           <div class="hero-inner">
             <div class="hero-logo">
               ${bookingImageUrl(company.logoUrl)
@@ -411,8 +427,8 @@ class RentalFlowBookingElement extends HTMLElement {
             </div>
             <div class="hero-copy">
               <p class="brand" translate="no">${this.escape(company.name || 'Réservation en ligne')}</p>
-              <h1>Planifiez votre location</h1>
-              <p class="muted">${paymentsEnabled ? 'Choisissez vos dates, vos équipements et payez de façon sécurisée avec Wix.' : 'Choisissez vos dates et vos équipements pour créer votre réservation.'}</p>
+              <h1${heroTitle ? ' translate="no"' : ''}>${this.escape(heroTitle || 'Planifiez votre location')}</h1>
+              <p class="muted"${heroSubtitle ? ' translate="no"' : ''}>${this.escape(heroSubtitle || defaultHeroSubtitle)}</p>
             </div>
           </div>
         </header>
