@@ -282,14 +282,6 @@ function renumberSteps(root: ShadowRoot): void {
   });
 }
 
-// apiUrl is private only at TypeScript compile time. Patch the booking element
-// before Wix registers it so all GET/POST booking calls use the Wix-managed app
-// origin without hardcoding a development or deployment host.
-(Element.prototype as any).apiUrl = function apiUrl(params = ''): string {
-  const url = `${appOrigin}/api/public-booking`;
-  return params ? `${url}?${params}` : url;
-};
-
 // The public widget follows the site's active Wix language automatically.
 // Keep currency formatting aligned with Wix's locale as well.
 (Element.prototype as any).money = function money(cents = 0, currency = 'CAD'): string {
