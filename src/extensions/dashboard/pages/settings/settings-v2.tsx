@@ -394,32 +394,45 @@ const SettingsV2Page: FC = () => {
             )}
 
             {!loading && tab === 'PLANS' && (() => {
-              const plans: RentalFlowPlan[] = ['FREE', 'STARTER', 'BUSINESS', 'PRO'];
+              const plans: RentalFlowPlan[] = ['STARTER', 'BUSINESS', 'PRO'];
               const featureValues = (feature: Parameters<typeof hasFeature>[1]) => plans.map((candidate) => hasFeature(candidate, feature));
+              const statusMessage = plan === 'TRIAL'
+                ? 'Votre essai Wix est actif : toutes les fonctions Pro sont temporairement déverrouillées.'
+                : plan === 'NO_PLAN'
+                  ? 'Aucun abonnement RentalFlow actif. À la fin de l’essai, un forfait Starter, Business ou Pro est requis.'
+                  : `Le forfait Wix ${planLabels[plan]} est actif sur ce site.`;
               return (
                 <div style={card}>
                   <h2 style={{ marginTop: 0 }}>Abonnement</h2>
                   <div style={{ fontSize: 18 }}>
-                    Plan Wix actuel : <strong>{planLoading ? 'Vérification…' : planLabels[plan]}</strong>
+                    Statut Wix actuel : <strong>{planLoading ? 'Vérification…' : planLabels[plan]}</strong>
+                  </div>
+                  <div style={{
+                    marginTop: 12,
+                    padding: 12,
+                    borderRadius: 9,
+                    background: plan === 'NO_PLAN' ? '#fef2f2' : plan === 'TRIAL' ? '#eff6ff' : '#f0fdf4',
+                    color: plan === 'NO_PLAN' ? '#991b1b' : plan === 'TRIAL' ? '#1e40af' : '#166534',
+                  }}>
+                    {planLoading ? 'RentalFlow vérifie le forfait installé auprès de Wix…' : statusMessage}
                   </div>
                   <p style={{ color: '#64748b' }}>
-                    RentalFlow lit directement le forfait installé sur ce site Wix. Les limites et fonctions ci-dessous sont appliquées par l’application; un forfait supérieur déverrouille automatiquement les fonctions correspondantes.
+                    RentalFlow est une application Premium : il n’y a pas de forfait gratuit permanent. Wix gère la période d’essai et le forfait payé. Pendant l’essai, RentalFlow donne accès aux fonctions Pro; ensuite les fonctions correspondent au Product ID Wix installé : starter, business ou pro.
                   </p>
                   <div style={{ overflowX: 'auto' }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 820 }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 700 }}>
                       <thead>
                         <tr style={{ textAlign: 'left', color: '#64748b' }}>
                           <th style={{ padding: 10 }}>Fonction</th>
-                          <th>Basic</th>
                           <th>Starter</th>
                           <th>Business</th>
                           <th>Pro</th>
                         </tr>
                       </thead>
                       <tbody>
-                        <PlanRow label="Réservations, clients, calendrier et buffers" values={[true, true, true, true]} />
-                        <PlanRow label="Catégories, catalogue et extras de réservation" values={[true, true, true, true]} />
-                        <PlanRow label="Réservation en ligne et tarif journalier" values={[true, true, true, true]} />
+                        <PlanRow label="Réservations, clients, calendrier et buffers" values={[true, true, true]} />
+                        <PlanRow label="Catégories, catalogue et extras de réservation" values={[true, true, true]} />
+                        <PlanRow label="Réservation en ligne et tarif journalier" values={[true, true, true]} />
                         <PlanTextRow label="Équipements actifs" values={plans.map((candidate) => assetLimits[candidate] === null ? 'Illimité' : String(assetLimits[candidate]))} />
                         <PlanRow label="Tarifs hebdomadaires" values={featureValues('WEEKLY_PRICING')} />
                         <PlanRow label="Documents (devis, contrats, factures)" values={featureValues('DOCUMENTS')} />
@@ -432,6 +445,9 @@ const SettingsV2Page: FC = () => {
                       </tbody>
                     </table>
                   </div>
+                  <p style={{ color: '#64748b', fontSize: 13, marginBottom: 0 }}>
+                    Essai gratuit : mêmes fonctions que Pro jusqu’à la fin de la période configurée dans Wix.
+                  </p>
                 </div>
               );
             })()}
