@@ -15,12 +15,13 @@ import {
 // constructor can't be registered twice, so export a distinct subclass for Wix.
 class RentalFlowOnlineBookingElement extends RentalFlowBookingElement {}
 
-// Wix-managed site extensions should call this app's HTTP endpoints through
-// BASE_API_URL. In the editor/dev environment the module origin can also work,
-// but on a published site it may be the static asset origin instead of the app
-// backend. Keep module origin only as a compatibility fallback.
-const wixBaseApiUrl = String(import.meta.env.BASE_API_URL || '').trim().replace(/\/$/, '');
-const appOrigin = wixBaseApiUrl || new URL(import.meta.url).origin;
+function rentalFlowAppOrigin(): string {
+  const injected = (globalThis as any).__RENTALFLOW_BASE_API_URL__;
+  if (typeof injected === 'string' && injected.trim()) {
+    return injected.trim().replace(/\/$/, '');
+  }
+  return new URL(import.meta.url).origin;
+}
 
 const Element = RentalFlowOnlineBookingElement as unknown as {
   new (): HTMLElement;
@@ -346,12 +347,12 @@ if (typeof originalSubmitBooking === 'function') {
         sendRentalFlowBiEvent({
           eventName: 'PRIMARY_ACTION_PERFORMED',
           eventData: { source: 'online_booking_widget' },
-        }, appOrigin),
+        }, rentalFlowAppOrigin()),
         sendRentalFlowBiEvent({
           eventName: 'CUSTOM',
           customEventName: 'rentalflow_online_booking_created',
           eventData: { source: 'online_booking_widget' },
-        }, appOrigin),
+        }, rentalFlowAppOrigin()),
       ]);
     }
 
