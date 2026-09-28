@@ -1,9 +1,6 @@
 import RentalFlowOnlineBookingElement from './rental-flow-online-booking.runtime';
 import { localizeDom, resolveLanguage } from '../../../../intl';
 
-const rentalFlowBaseApiUrl = String(import.meta.env.BASE_API_URL || '').trim().replace(/\/$/, '');
-(globalThis as any).__RENTALFLOW_BASE_API_URL__ = rentalFlowBaseApiUrl;
-
 class NavigableRentalFlowOnlineBookingElement extends (RentalFlowOnlineBookingElement as any) {}
 
 function installBookingStepNavigation(root: ShadowRoot): void {
