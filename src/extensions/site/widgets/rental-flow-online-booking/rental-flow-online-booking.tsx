@@ -118,13 +118,9 @@ class RentalFlowBookingElement extends HTMLElement {
   }
 
   private apiUrl(params = ''): string {
-    // In the current unified Wix CLI, Astro endpoints are reached from the
-    // deployed extension origin. BASE_API_URL is not available in this
-    // published custom-element bundle, so building a URL from import.meta.url
-    // avoids requests to /undefined/api/....
-    const url = new URL('/api/public-booking', import.meta.url);
-    if (params) url.search = params;
-    return url.toString();
+    const baseApiUrl = String(import.meta.env.BASE_API_URL || '').trim().replace(/\/$/, '');
+    const base = `${baseApiUrl}/api/public-booking`;
+    return params ? `${base}?${params}` : base;
   }
 
   private async fetchJson(url: string, options?: RequestInit): Promise<any> {
@@ -133,6 +129,7 @@ class RentalFlowBookingElement extends HTMLElement {
       response = await httpClient.fetchWithAuth(url, options);
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error || 'Failed to fetch');
+      const baseApiUrl = String(import.meta.env.BASE_API_URL || '').trim().replace(/\/$/, '');
       const moduleOrigin = (() => {
         try { return new URL(import.meta.url).origin; } catch { return ''; }
       })();
@@ -140,9 +137,7 @@ class RentalFlowBookingElement extends HTMLElement {
 
       let plainPing = 'not-run';
       let authPing = 'not-run';
-      const pingUrl = (() => {
-        try { return new URL('/api/rentalflow-network-ping', import.meta.url).toString(); } catch { return ''; }
-      })();
+      const pingUrl = baseApiUrl ? `${baseApiUrl}/api/rentalflow-network-ping` : '';
       if (pingUrl) {
         try {
           const pingResponse = await fetch(pingUrl, { method: 'GET', mode: 'cors', cache: 'no-store' });
@@ -161,7 +156,7 @@ class RentalFlowBookingElement extends HTMLElement {
       }
 
       throw new Error(
-        `${detail} · backend=${moduleOrigin || 'absent'} · page=${pageOrigin || 'absent'} · tried=${url} · ping=${plainPing} · authPing=${authPing}`
+        `${detail} · backend=${baseApiUrl || 'absent'} · module=${moduleOrigin || 'absent'} · page=${pageOrigin || 'absent'} · tried=${url} · ping=${plainPing} · authPing=${authPing}`
       );
     }
 
