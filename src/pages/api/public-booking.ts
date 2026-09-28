@@ -11,7 +11,7 @@ import {
   type DepositType,
   type PaymentMode,
 } from '../../lib/reservation-finance';
-import { hasFeature, planFromAppInstanceResponse, type RentalFlowPlan } from '../../lib/plans';
+import { hasAppAccess, hasFeature, planFromAppInstanceResponse, type RentalFlowPlan } from '../../lib/plans';
 import {
   catalogBillableDays,
   catalogItemToReservationLine,
@@ -214,7 +214,7 @@ async function loadCurrentPlan(): Promise<RentalFlowPlan> {
     return planFromAppInstanceResponse(response);
   } catch (error) {
     console.error('RentalFlow public booking could not resolve Wix plan.', error);
-    return 'FREE';
+    return 'NO_PLAN';
   }
 }
 
@@ -469,6 +469,8 @@ export const GET: APIRoute = async ({ request }) => {
       blockingItems = await loadBlockingItems(start, end, settings.defaultBufferBeforeHours || 0, settings.defaultBufferAfterHours || 0);
     }
 
+    if (!hasAppAccess(plan)) return json({ error: 'Un abonnement RentalFlow actif est requis.' }, 402);
+
     const paymentsEnabled = hasFeature(plan, 'PAYMENTS');
     const depositEnabled = paymentsEnabled && hasFeature(plan, 'SECURITY_DEPOSIT') && settings.defaultDepositEnabled === true;
     const currency = settings.currency || 'CAD';
@@ -540,6 +542,8 @@ export const POST: APIRoute = async ({ request }) => {
       loadActiveCatalog(),
       loadCurrentPlan(),
     ]);
+
+    if (!hasAppAccess(plan)) return json({ error: 'Votre essai RentalFlow est terminé. Un forfait Starter, Business ou Pro est requis.' }, 402);
 
     const requiredFields = requiredFieldsForDefaults(settings, templates);
     const missing = validateRequiredFields(requiredFields, {
