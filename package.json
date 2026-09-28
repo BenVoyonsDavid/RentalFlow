@@ -28,6 +28,7 @@
     "@wix/editor": "^1.356.0",
     "@wix/essentials": "^1.0.14",
     "@wix/get-paid": "^1.0.86",
+    "@wix/media": "^1.0.271",
     "astro": "^5.8.0",
     "react-to-webcomponent": "^2.0.0",
     "typescript": "^5.8.3"
