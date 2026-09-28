@@ -179,13 +179,15 @@ class RentalFlowBookingElement extends HTMLElement {
       const pingUrl = `${pingOrigin}/api/rentalflow-network-ping`;
       try {
         const response = await fetch(pingUrl, { method: 'GET', mode: 'cors', cache: 'no-store' });
-        plainPing = `HTTP ${response.status}`;
+        const body = (await response.text().catch(() => '')).replace(/\s+/g, ' ').trim().slice(0, 240);
+        plainPing = `HTTP ${response.status}${body ? ` [${body}]` : ''}`;
       } catch (error) {
         plainPing = error instanceof Error ? error.message : 'failed';
       }
       try {
         const response = await httpClient.fetchWithAuth(pingUrl, { method: 'GET' });
-        authPing = `HTTP ${response.status}`;
+        const body = (await response.text().catch(() => '')).replace(/\s+/g, ' ').trim().slice(0, 240);
+        authPing = `HTTP ${response.status}${body ? ` [${body}]` : ''}`;
       } catch (error) {
         authPing = error instanceof Error ? error.message : 'failed';
       }
