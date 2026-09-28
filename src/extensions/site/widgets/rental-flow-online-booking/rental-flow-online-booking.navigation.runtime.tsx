@@ -1,11 +1,6 @@
 import RentalFlowOnlineBookingElement from './rental-flow-online-booking.runtime';
 import { localizeDom, resolveLanguage } from '../../../../intl';
 
-// Read Wix's injected backend URL in the actual custom-element entrypoint.
-// Imported implementation modules don't reliably receive this build-time value
-// in the published site bundle, so pass it explicitly to the widget runtime.
-const rentalFlowBaseApiUrl = import.meta.env.BASE_API_URL;
-(globalThis as any).__RENTALFLOW_BASE_API_URL__ = rentalFlowBaseApiUrl;
 
 class NavigableRentalFlowOnlineBookingElement extends (RentalFlowOnlineBookingElement as any) {}
 
