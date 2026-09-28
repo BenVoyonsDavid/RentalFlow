@@ -568,7 +568,7 @@ export const POST: APIRoute = async ({ request }) => {
       loadSettingsAndTemplates(),
       loadActiveAssets(),
       loadActiveCatalog(),
-      loadCurrentPlan(),
+      loadCurrentPlan(request),
     ]);
 
     if (!hasAppAccess(plan)) return json({ error: 'Votre essai RentalFlow est terminé. Un forfait Starter, Business ou Pro est requis.' }, 402, request);
