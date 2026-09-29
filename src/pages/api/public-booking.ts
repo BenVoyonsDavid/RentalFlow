@@ -1,33 +1,29 @@
 import { normalizeBookingTheme, bookingImageUrl } from '../../lib/booking-theme';
 import type { APIRoute } from 'astro';
-import { appInstances } from '@wix/app-management';
-import { items } from '@wix/data';
 import { auth } from '@wix/essentials';
-import { COLLECTIONS } from '../../lib/collection-ids';
 import { isAssetAvailable } from '../../lib/asset-availability';
+import { bookingPricingOptions, publicBookingAsset } from '../../lib/booking-assets';
 import { normalizePublicCustomer, validatePublicCustomer, type PublicCustomerInput } from '../../lib/booking-customer';
+import { requiredFieldsForDefaults, validateBookingPeriod } from '../../lib/public-booking-config';
 import { acquireCatalogStockLocks, loadCatalogBlockingItems, releaseCatalogStockLocks } from '../../server/catalog-stock';
 import { acquireBookingLocks, loadBlockingItems, releaseBookingLocks } from '../../server/booking-availability';
 import { findOrCreatePublicCustomer } from '../../server/customer-service';
 import { createOnlineReservation, rollbackReservationCreation, type CreatedOnlineReservation } from '../../server/reservation-service';
 import { createOnlinePayment } from '../../server/payment-service';
+import { loadActiveAssets, loadActiveCatalog, loadCurrentPlan, loadSettingsAndTemplates } from '../../server/public-booking-context';
 import type {
-  AppSettings,
   Asset,
   BookingLock,
   CatalogStockLock,
-  DocumentTemplate,
   ReservationItem,
 } from '../../domain/types';
 import { calculateRentalPrice } from '../../lib/rental-pricing';
 import {
   calculateDeposit,
-  parseRequiredFields,
   validateRequiredFields,
-  type DepositType,
   type PaymentMode,
 } from '../../lib/reservation-finance';
-import { hasAppAccess, hasFeature, planFromAppInstanceResponse, type RentalFlowPlan } from '../../lib/plans';
+import { hasAppAccess, hasFeature } from '../../lib/plans';
 import {
   computeReservationFinancials,
   type ReservationCatalogLine,
@@ -42,11 +38,6 @@ import {
   type PublicCatalogSelection,
 } from '../../lib/booking-catalog';
 
-const ASSETS = COLLECTIONS.assets;
-const CATALOG = COLLECTIONS.catalogItems;
-const DOCUMENT_TEMPLATES = COLLECTIONS.documentTemplates;
-const SETTINGS = COLLECTIONS.appSettings;
-
 const MAX_PUBLIC_ASSETS = 25;
 
 type BookingRequest = {
@@ -57,22 +48,6 @@ type BookingRequest = {
   paymentMode?: 'FULL' | 'DEPOSIT';
   customer?: PublicCustomerInput;
   notes?: string;
-};
-
-const defaultSettings: AppSettings = {
-  settingsKey: 'default',
-  currency: 'CAD',
-  defaultBufferBeforeHours: 0,
-  defaultBufferAfterHours: 0,
-  taxesEnabled: true,
-  tax1Name: 'TPS',
-  tax1Rate: 5,
-  tax2Name: 'TVQ',
-  tax2Rate: 9.975,
-  tax2Compound: false,
-  defaultDepositEnabled: false,
-  defaultDepositType: 'PERCENT',
-  defaultDepositValue: 25,
 };
 
 function corsHeaders(request?: Request): Record<string, string> {
@@ -106,137 +81,9 @@ function clean(value: unknown, max = 200): string {
   return String(value ?? '').trim().slice(0, max);
 }
 
-function elevatedQuery(collectionId: string): any {
-  const query = auth.elevate(items.query);
-  return query(collectionId);
-}
-
-async function elevatedFind(query: any): Promise<any> {
-  return query.find();
-}
-
-async function elevatedRemove(collectionId: string, itemId: string): Promise<any> {
-  const remove = auth.elevate(items.remove);
-  return remove(collectionId, itemId);
-}
-
 async function requireAppInstance(): Promise<void> {
   const tokenInfo = await auth.getTokenInfo();
   if (!tokenInfo?.instanceId) throw new Error('UNAUTHORIZED');
-}
-
-function isWixDevelopmentRequest(request: Request): boolean {
-  const origin = String(request.headers.get('origin') || '').toLowerCase();
-  const referer = String(request.headers.get('referer') || '').toLowerCase();
-  return origin.includes('wix-development-sites.org') || referer.includes('wix-development-sites.org');
-}
-
-async function loadCurrentPlan(request: Request): Promise<RentalFlowPlan> {
-  try {
-    const getInstance = auth.elevate(appInstances.getAppInstance);
-    const response = await getInstance();
-    const resolved = planFromAppInstanceResponse(response);
-    if (resolved === 'NO_PLAN' && isWixDevelopmentRequest(request)) return 'TRIAL';
-    return resolved;
-  } catch (error) {
-    console.error('RentalFlow public booking could not resolve Wix plan.', error);
-    return isWixDevelopmentRequest(request) ? 'TRIAL' : 'NO_PLAN';
-  }
-}
-
-async function loadSettingsAndTemplates(): Promise<{ settings: AppSettings; templates: DocumentTemplate[] }> {
-  const [settingsResult, templatesResult] = await Promise.all([
-    elevatedFind(elevatedQuery(SETTINGS).eq('settingsKey', 'default').limit(1)),
-    elevatedFind(elevatedQuery(DOCUMENT_TEMPLATES).limit(100)),
-  ]);
-  const saved = settingsResult.items?.[0] as AppSettings | undefined;
-  return {
-    settings: { ...defaultSettings, ...(saved || {}) },
-    templates: (templatesResult.items || []) as DocumentTemplate[],
-  };
-}
-
-function requiredFieldsForDefaults(settings: AppSettings, templates: DocumentTemplate[]): string[] {
-  const ids = [settings.defaultQuoteTemplateId, settings.defaultContractTemplateId, settings.defaultInvoiceTemplateId].filter(Boolean);
-  const fields = ids.flatMap((id) => {
-    const template = templates.find((candidate) => candidate._id === id && candidate.active !== false);
-    return parseRequiredFields(template?.requiredFieldsCsv);
-  });
-  return [...new Set(fields)];
-}
-
-async function loadActiveAssets(): Promise<Asset[]> {
-  const result = await elevatedFind(elevatedQuery(ASSETS).ne('active', false).ne('status', 'INACTIVE').limit(1000));
-  return result.items as Asset[];
-}
-
-async function loadActiveCatalog(): Promise<BookingCatalogItem[]> {
-  const result = await elevatedFind(elevatedQuery(CATALOG).ne('active', false).limit(1000));
-  return (result.items || []).filter((item: BookingCatalogItem) => item.active !== false) as BookingCatalogItem[];
-}
-
-function pricingOptions(plan: RentalFlowPlan) {
-  return {
-    allowWeekly: hasFeature(plan, 'WEEKLY_PRICING'),
-    allowMonthly: hasFeature(plan, 'MONTHLY_PRICING'),
-    allowLongTermDiscount: hasFeature(plan, 'LONG_TERM_DISCOUNT'),
-  };
-}
-
-function validatePeriod(startValue?: string, endValue?: string): { start: Date; end: Date } {
-  const start = startValue ? new Date(startValue) : new Date(0);
-  const end = endValue ? new Date(endValue) : new Date(0);
-  if (!start.getTime() || !end.getTime() || end <= start) throw new Error('INVALID_PERIOD');
-  const maxDuration = 366 * 24 * 60 * 60 * 1000;
-  if (end.getTime() - start.getTime() > maxDuration) throw new Error('PERIOD_TOO_LONG');
-  if (end.getTime() < Date.now()) throw new Error('PAST_PERIOD');
-  return { start, end };
-}
-
-function publicAsset(
-  asset: Asset,
-  plan: RentalFlowPlan,
-  start?: Date,
-  end?: Date,
-  settings?: AppSettings,
-  blockingItems: ReservationItem[] = []
-) {
-  const before = settings?.defaultBufferBeforeHours || 0;
-  const after = settings?.defaultBufferAfterHours || 0;
-  let available: boolean | null = null;
-  let billableDays = 0;
-  let lineTotalCents = 0;
-  let pricingMode = '';
-
-  if (asset._id && start && end && settings) {
-    available = isAssetAvailable(asset._id, start, end, before, after, blockingItems);
-    try {
-      const price = calculateRentalPrice(asset, start, end, pricingOptions(plan));
-      billableDays = price.billableDays;
-      lineTotalCents = price.totalCents;
-      pricingMode = price.pricingMode;
-    } catch {
-      available = false;
-    }
-  }
-
-  return {
-    id: asset._id || '',
-    imageUrl: bookingImageUrl(asset.image),
-    title: asset.title || 'Équipement',
-    productType: asset.productType || '',
-    categoryId: asset.categoryId || '',
-    categoryName: asset.categoryName || '',
-    catalogTagsJson: asset.catalogTagsJson || '[]',
-    currency: asset.currency || settings?.currency || 'CAD',
-    dailyRateCents: asset.dailyRateCents || 0,
-    weeklyRateCents: hasFeature(plan, 'WEEKLY_PRICING') ? asset.weeklyRateCents || 0 : 0,
-    monthlyRateCents: hasFeature(plan, 'MONTHLY_PRICING') ? asset.monthlyRateCents || 0 : 0,
-    available,
-    billableDays,
-    lineTotalCents,
-    pricingMode,
-  };
 }
 
 export const GET: APIRoute = async ({ request }) => {
@@ -257,7 +104,7 @@ export const GET: APIRoute = async ({ request }) => {
     let blockingItems: ReservationItem[] = [];
     let catalogBlockingItems: ReservationItem[] = [];
     if (startValue && endValue) {
-      const period = validatePeriod(startValue, endValue);
+      const period = validateBookingPeriod(startValue, endValue);
       start = period.start;
       end = period.end;
       [blockingItems, catalogBlockingItems] = await Promise.all([
@@ -294,7 +141,7 @@ export const GET: APIRoute = async ({ request }) => {
         depositValue: settings.defaultDepositValue || 0,
         requiredFields: requiredFieldsForDefaults(settings, templates),
       },
-      assets: assets.map((asset) => publicAsset(asset, plan, start, end, settings, blockingItems)),
+      assets: assets.map((asset) => publicBookingAsset(asset, plan, start, end, settings, blockingItems)),
       catalogItems: catalog.map((item) => publicCatalogItem(item, currency, catalogBlockingItems)),
     }, 200, request);
   } catch (error) {
@@ -313,7 +160,7 @@ export const POST: APIRoute = async ({ request }) => {
   try {
     await requireAppInstance();
     const body = await request.json() as BookingRequest;
-    const { start, end } = validatePeriod(body.startDateTime, body.endDateTime);
+    const { start, end } = validateBookingPeriod(body.startDateTime, body.endDateTime);
     const assetIds = [...new Set((body.assetIds || []).map((id) => clean(id, 80)).filter(Boolean))];
     if (!assetIds.length || assetIds.length > MAX_PUBLIC_ASSETS) return json({ error: 'Sélection d’équipement invalide.' }, 400);
 
@@ -373,7 +220,7 @@ export const POST: APIRoute = async ({ request }) => {
       }
     }
 
-    const priceLines = selectedAssets.map((asset) => ({ asset, ...calculateRentalPrice(asset, start, end, pricingOptions(plan)) }));
+    const priceLines = selectedAssets.map((asset) => ({ asset, ...calculateRentalPrice(asset, start, end, bookingPricingOptions(plan)) }));
     const currency = priceLines[0]?.asset.currency || settings.currency || 'CAD';
 
     let selectedCatalogItems: BookingCatalogItem[];
