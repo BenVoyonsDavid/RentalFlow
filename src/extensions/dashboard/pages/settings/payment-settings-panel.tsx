@@ -2,6 +2,7 @@ import type { CSSProperties, FC } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { items } from '@wix/data';
 import { useRentalFlowI18n } from '../../../../intl';
+import { COLLECTIONS } from '../../../../lib/collection-ids';
 import {
   decodeStringList,
   maskedPaymentAccountId,
@@ -13,7 +14,7 @@ import {
   type PaymentProvider,
 } from '../../../../lib/payment-provider';
 
-const APP_SETTINGS = '@pilotedavid1/rental-flow/app-settings';
+const APP_SETTINGS = COLLECTIONS.appSettings;
 
 const card: CSSProperties = {
   background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12,
