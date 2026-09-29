@@ -23,6 +23,7 @@ async function bundle(source, output) {
 
 const finance = await bundle('src/lib/reservation-finance.ts', 'finance.mjs');
 const pricing = await bundle('src/lib/rental-pricing.ts', 'pricing.mjs');
+const availability = await bundle('src/lib/asset-availability.ts', 'asset-availability.mjs');
 const catalog = await bundle('src/lib/reservation-catalog.ts', 'catalog.mjs');
 const inventory = await bundle('src/lib/catalog-inventory.ts', 'catalog-inventory.mjs');
 const compatibility = await bundle('src/lib/catalog-compatibility.ts', 'compatibility.mjs');
@@ -112,6 +113,49 @@ assert.equal(
   true,
 );
 
+// Asset availability ignores closed lines and respects buffers.
+const availabilityStart = new Date('2026-10-10T12:00:00Z');
+const availabilityEnd = new Date('2026-10-10T14:00:00Z');
+assert.equal(availability.isAssetAvailable(
+  'asset-1',
+  availabilityStart,
+  availabilityEnd,
+  0,
+  0,
+  [{
+    assetId: 'asset-1',
+    blockedStartDateTime: new Date('2026-10-10T13:00:00Z'),
+    blockedEndDateTime: new Date('2026-10-10T15:00:00Z'),
+    status: 'CONFIRMED',
+  }],
+), false);
+assert.equal(availability.isAssetAvailable(
+  'asset-1',
+  availabilityStart,
+  availabilityEnd,
+  0,
+  0,
+  [{
+    assetId: 'asset-1',
+    blockedStartDateTime: new Date('2026-10-10T13:00:00Z'),
+    blockedEndDateTime: new Date('2026-10-10T15:00:00Z'),
+    status: 'CANCELLED',
+  }],
+), true);
+assert.equal(availability.isAssetAvailable(
+  'asset-1',
+  availabilityStart,
+  availabilityEnd,
+  1,
+  0,
+  [{
+    assetId: 'asset-1',
+    blockedStartDateTime: new Date('2026-10-10T10:30:00Z'),
+    blockedEndDateTime: new Date('2026-10-10T11:30:00Z'),
+    status: 'CONFIRMED',
+  }],
+), false);
+
 // Human-facing reference numbers use date + 50 bits of secure entropy.
 const deterministicReference = references.generateReferenceNumber(
   'RF',
@@ -179,4 +223,4 @@ assert.equal(compatibility.catalogItemAppliesToAsset({
   excludedAssetIdsJson: JSON.stringify(['asset-1']),
 }, asset), false);
 
-console.log('PASS: RentalFlow domain pricing, finance, references, pagination, inventory and catalog rules.');
+console.log('PASS: RentalFlow domain pricing, availability, finance, references, pagination, inventory and catalog rules.');
