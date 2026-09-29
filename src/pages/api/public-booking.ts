@@ -4,13 +4,13 @@ import { appInstances } from '@wix/app-management';
 import { items } from '@wix/data';
 import { auth } from '@wix/essentials';
 import { COLLECTIONS } from '../../lib/collection-ids';
-import { generateReferenceNumber } from '../../lib/reference-number';
 import { isAssetAvailable } from '../../lib/asset-availability';
 import { normalizePublicCustomer, validatePublicCustomer, type PublicCustomerInput } from '../../lib/booking-customer';
 import { acquireCatalogStockLocks, loadCatalogBlockingItems, releaseCatalogStockLocks } from '../../server/catalog-stock';
 import { acquireBookingLocks, loadBlockingItems, releaseBookingLocks } from '../../server/booking-availability';
 import { findOrCreatePublicCustomer } from '../../server/customer-service';
 import { createOnlineReservation, rollbackReservationCreation, type CreatedOnlineReservation } from '../../server/reservation-service';
+import { createOnlinePayment } from '../../server/payment-service';
 import type {
   AppSettings,
   Asset,
@@ -46,8 +46,6 @@ const ASSETS = COLLECTIONS.assets;
 const CATALOG = COLLECTIONS.catalogItems;
 const DOCUMENT_TEMPLATES = COLLECTIONS.documentTemplates;
 const SETTINGS = COLLECTIONS.appSettings;
-const PAYMENTS = COLLECTIONS.payments;
-const ACTIVITY = COLLECTIONS.activityLog;
 
 const MAX_PUBLIC_ASSETS = 25;
 
@@ -115,11 +113,6 @@ function elevatedQuery(collectionId: string): any {
 
 async function elevatedFind(query: any): Promise<any> {
   return query.find();
-}
-
-async function elevatedInsert(collectionId: string, item: Record<string, unknown>): Promise<any> {
-  const insert = auth.elevate(items.insert);
-  return insert(collectionId, item);
 }
 
 async function elevatedRemove(collectionId: string, itemId: string): Promise<any> {
@@ -478,83 +471,23 @@ export const POST: APIRoute = async ({ request }) => {
       }, 201);
     }
 
-    const wixGetPaid = await import('@wix/get-paid') as any;
-    const api = wixGetPaid.paymentLinks;
-    if (!api?.createPaymentLink) throw new Error('PAYLINK_UNAVAILABLE');
-    const createPaymentLink = auth.elevate(api.createPaymentLink);
-    const label = paymentMode === 'DEPOSIT' ? 'Dépôt de réservation' : 'Paiement de location';
-    const paymentLinkResponse = await createPaymentLink({
-      title: `${reservationNumber} — ${label}`,
-      description: `Paiement RentalFlow pour ${customer.name}`,
-      currency,
-      type: 'ECOM',
-      paymentsLimit: 1,
-      displayData: {},
-      ecomPaymentLink: {
-        lineItems: [{
-          type: 'CUSTOM',
-          customItem: {
-            name: `${label} ${reservationNumber}`,
-            quantity: 1,
-            price: (amount / 100).toFixed(2),
-          },
-        }],
-      },
-    });
-
-    const link = paymentLinkResponse?.paymentLink || paymentLinkResponse;
-    const linkId = link?._id || link?.id;
-    if (!linkId) throw new Error('PAYLINK_NO_ID');
-
-    let checkoutUrl = link?.links?.find?.((entry: any) => entry?.url?.url)?.url?.url
-      || link?.links?.find?.((entry: any) => typeof entry?.url === 'string')?.url
-      || link?.url?.url
-      || link?.url
-      || '';
-    let checkoutId = '';
-
-    if (!checkoutUrl && api.initiatePayment) {
-      const initiatePayment = auth.elevate(api.initiatePayment);
-      const initiated = await initiatePayment(linkId);
-      checkoutUrl = initiated?.ecomCheckout?.checkoutUrl || initiated?.checkoutUrl || '';
-      checkoutId = initiated?.ecomCheckout?.checkoutId || initiated?.checkoutId || '';
-    }
-
-    await elevatedInsert(PAYMENTS, {
-      reservationId: createdReservation._id,
+    const payment = await createOnlinePayment({
+      reservationId: createdReservation._id || '',
       reservationNumber,
-      paymentNumber: generateReferenceNumber('PAY'),
-      paymentType: paymentMode === 'DEPOSIT' ? 'BOOKING_DEPOSIT' : 'PAYMENT',
-      method: 'WIX',
-      status: 'PENDING',
+      customerName: customer.name,
+      paymentMode,
       amountCents: amount,
+      totalCents: finance.totalCents,
       currency,
-      paymentDate: new Date(),
-      reference: label,
-      wixPaymentLinkId: linkId,
-      wixPaymentUrl: checkoutUrl,
-      wixCheckoutId: checkoutId,
-      wixOnlinePayment: true,
-      remainingBalanceCents: Math.max(0, finance.totalCents - amount),
-      notes: 'Lien de paiement Wix créé depuis la réservation en ligne RentalFlow.',
-    });
-
-    await elevatedInsert(ACTIVITY, {
-      reservationId: createdReservation._id,
-      reservationNumber,
-      actionType: 'ONLINE_PAYMENT_LINK_CREATED',
-      description: `${label} créé pour ${(amount / 100).toFixed(2)} ${currency}.`,
-      actor: 'RentalFlow Online Booking',
-      eventDate: new Date(),
     });
 
     return json({
       reservationNumber,
       totalCents: finance.totalCents,
-      amountDueNowCents: amount,
-      balanceDueCents: Math.max(0, finance.totalCents - amount),
+      amountDueNowCents: payment.amountDueNowCents,
+      balanceDueCents: payment.balanceDueCents,
       currency,
-      checkoutUrl,
+      checkoutUrl: payment.checkoutUrl,
     }, 201);
   } catch (error) {
     console.error('RentalFlow public booking POST failed', error);
