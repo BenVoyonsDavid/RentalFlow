@@ -13,14 +13,15 @@ import {
   type ReservationCatalogLine,
 } from '../../../../lib/reservation-catalog';
 import { useRentalFlowI18n } from '../../../../intl';
+import { COLLECTIONS } from '../../../../lib/collection-ids';
 
-const ASSETS = '@pilotedavid1/rental-flow/assets';
-const CATALOG = '@pilotedavid1/rental-flow/catalog-items';
-const RESERVATIONS = '@pilotedavid1/rental-flow/reservations';
-const RESERVATION_ITEMS = '@pilotedavid1/rental-flow/reservation-items';
-const PAYMENTS = '@pilotedavid1/rental-flow/payments';
-const SETTINGS = '@pilotedavid1/rental-flow/app-settings';
-const ACTIVITY = '@pilotedavid1/rental-flow/activity-log';
+const ASSETS = COLLECTIONS.assets;
+const CATALOG = COLLECTIONS.catalogItems;
+const RESERVATIONS = COLLECTIONS.reservations;
+const RESERVATION_ITEMS = COLLECTIONS.reservationItems;
+const PAYMENTS = COLLECTIONS.payments;
+const SETTINGS = COLLECTIONS.appSettings;
+const ACTIVITY = COLLECTIONS.activityLog;
 
 type Reservation = {
   _id?: string;
