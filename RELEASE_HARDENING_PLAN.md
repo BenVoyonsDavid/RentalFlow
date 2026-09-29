@@ -38,17 +38,19 @@ This branch groups the App Market hardening work into one update.
 
 6. **Release checklist / validation — implemented**
    - Updated `BETA_RELEASE_CHECKLIST.md`.
-   - Added GitHub Actions validation for `npm run typecheck` and `npm run build`.
+   - Added GitHub Actions validation for `npm run typecheck` and the booking regression suite. Wix-hosted builds remain a local/release gate because they require the Wix-managed environment pulled with `wix env pull`.
 
 ## Release gate
 
-Do not publish or merge as a production-ready release until:
+Do not publish or merge as a production-ready release until the GitHub validation passes and the Wix-hosted build is validated locally:
 
 ```bash
+npx wix env pull
 npm run typecheck
+npm run test:booking-design
 npm run build
 ```
 
-both pass, the four Wix pricing packages are mapped correctly, and the functional tests in `BETA_RELEASE_CHECKLIST.md` are completed on a Wix test site.
+These checks must pass, the four Wix pricing packages are mapped correctly, and the functional tests in `BETA_RELEASE_CHECKLIST.md` are completed on a Wix test site.
 
 Because this update changes Data Collections and indexes, publish it as a **Major** Wix app version.
