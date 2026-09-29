@@ -5,7 +5,7 @@ import { Page, WixDesignSystemProvider } from '@wix/design-system';
 import '@wix/design-system/styles.global.css';
 import { decodeCatalogList, encodeCatalogList, type CatalogCompatibilityMode } from '../../../../lib/catalog-compatibility';
 import type { CatalogCompatibilityRule } from '../../../../lib/catalog-compatibility';
-import type { CatalogItemType, CatalogCatalogPricingMode, CatalogReservationItem } from '../../../../lib/reservation-catalog';
+import type { CatalogItemType, CatalogPricingMode, CatalogReservationItem } from '../../../../lib/reservation-catalog';
 import { useRentalFlowI18n } from '../../../../intl';
 import { COLLECTIONS } from '../../../../lib/collection-ids';
 import type { Asset, Category } from '../../../../domain/types';
