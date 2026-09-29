@@ -12,11 +12,13 @@ This branch groups the App Market hardening work into one update.
    - Pro: unlimited active assets.
 
 2. **Plan enforcement — implemented for inventory and public booking**
+   - Basic / Free remains usable with a 5-active-asset limit.
    - Weekly pricing: Starter+.
    - Monthly pricing and long-term discounts: Business+.
    - Documents and Wix payments: Starter+ in the public booking flow.
    - Public security deposits: Starter+.
-   - Production plan lookup fails closed to Basic.
+   - Equipment create/reactivate writes are enforced server-side, including a serialized active-asset capacity check.
+   - Plan lookup failures fail closed to no access; confirmed Wix free/basic packages map to Basic.
    - Remaining legacy dashboard actions should continue to be migrated from UI-only controls to backend-enforced commands in future releases.
 
 3. **Wix payment synchronization — implemented for v1**
@@ -31,10 +33,12 @@ This branch groups the App Market hardening work into one update.
    - Public widget follows the Wix site language.
    - Wix-hosted extension labels still need App Dashboard translations.
 
-5. **Scale and double-booking hardening — implemented for the public flow**
+5. **Scale and concurrency hardening — implemented for critical flows**
    - Added collection indexes for common lookups.
+   - Availability and public catalog loading are paginated instead of silently truncating at 1,000 records.
    - Availability queries are restricted to the requested time window.
    - Added per-asset booking locks with a unique index and expiration to prevent concurrent public bookings from both succeeding.
+   - Added catalog stock locks and an asset-capacity lock so simultaneous writes cannot bypass stock or plan limits.
 
 6. **Release checklist / validation — implemented**
    - Updated `BETA_RELEASE_CHECKLIST.md`.
