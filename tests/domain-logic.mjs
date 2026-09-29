@@ -35,6 +35,7 @@ const inventory = await bundle('src/lib/catalog-inventory.ts', 'catalog-inventor
 const compatibility = await bundle('src/lib/catalog-compatibility.ts', 'compatibility.mjs');
 const pagination = await bundle('src/lib/pagination.ts', 'pagination.mjs');
 const references = await bundle('src/lib/reference-number.ts', 'reference-number.mjs');
+const plans = await bundle('src/lib/plans.ts', 'plans.mjs');
 
 // Taxes and deposits stay in integer cents.
 assert.deepEqual(finance.calculateTaxes(10_000, {
