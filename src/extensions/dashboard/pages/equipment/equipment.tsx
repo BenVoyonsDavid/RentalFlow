@@ -1,6 +1,7 @@
 import type { CSSProperties, FC, FormEvent, ReactNode } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { items } from '@wix/data';
+import { httpClient } from '@wix/essentials';
 import { Page, WixDesignSystemProvider } from '@wix/design-system';
 import '@wix/design-system/styles.global.css';
 import { assetLimitForPlan, canCreateAsset, hasFeature, planLabels, requiredPlan } from '../../../../lib/plans';
@@ -60,6 +61,27 @@ function money(cents?: number, currency = 'CAD'): string {
 }
 function rateToInput(cents?: number): string {
   return typeof cents === 'number' && cents > 0 ? (cents / 100).toFixed(2).replace('.', ',') : '';
+}
+
+async function persistAsset(assetId: string | undefined, asset: Asset): Promise<Asset> {
+  const response = await httpClient.fetchWithAuth(
+    new URL('/api/asset-write', import.meta.url).toString(),
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ assetId, asset }),
+    },
+  );
+
+  const raw = await response.text();
+  let payload: { asset?: Asset; error?: string } = {};
+  try { payload = raw ? JSON.parse(raw) : {}; } catch { payload = {}; }
+
+  if (!response.ok || !payload.asset) {
+    throw new Error(payload.error || 'Impossible d’enregistrer cet équipement.');
+  }
+
+  return payload.asset;
 }
 
 const EquipmentPage: FC = () => {
@@ -154,13 +176,12 @@ const EquipmentPage: FC = () => {
       };
       if ((payload.discountPercent ?? 0) > 100) throw new Error('Le rabais ne peut pas dépasser 100 %.');
 
+      const saved = await persistAsset(editing?._id, payload);
       if (editing?._id) {
-        const updated = await items.update(COLLECTION, { _id: editing._id, ...payload, image: editing.image }) as Asset;
-        setAssets((current) => current.map((asset) => asset._id === editing._id ? updated : asset));
+        setAssets((current) => current.map((asset) => asset._id === editing._id ? saved : asset));
         setSuccess(`${title} a été modifié.`);
       } else {
-        const created = await items.insert(COLLECTION, payload) as Asset;
-        setAssets((current) => [...current, created]);
+        setAssets((current) => [...current, saved]);
         setSuccess(`${title} a été ajouté.`);
       }
       setOpen(false); setEditing(null); setForm(blankForm);
@@ -174,9 +195,11 @@ const EquipmentPage: FC = () => {
     if (!window.confirm(`Désactiver ${asset.title ?? asset.assetNumber ?? 'cet équipement'} ? Il restera dans l’historique.`)) return;
     setError(''); setSuccess('');
     try {
-      const updated = await items.update(COLLECTION, {
-        ...asset, _id: asset._id, status: 'INACTIVE', active: false,
-      }) as Asset;
+      const updated = await persistAsset(asset._id, {
+        ...asset,
+        status: 'INACTIVE',
+        active: false,
+      });
       setAssets((current) => current.map((item) => item._id === asset._id ? updated : item));
       setSuccess(`${asset.title ?? 'L’équipement'} a été désactivé.`);
     } catch (e) { setError(e instanceof Error ? e.message : 'Impossible de désactiver cet équipement.'); }
