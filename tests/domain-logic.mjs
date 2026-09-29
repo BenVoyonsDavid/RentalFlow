@@ -37,6 +37,22 @@ const pagination = await bundle('src/lib/pagination.ts', 'pagination.mjs');
 const references = await bundle('src/lib/reference-number.ts', 'reference-number.mjs');
 const plans = await bundle('src/lib/plans.ts', 'plans.mjs');
 
+// Plan mapping and limits.
+assert.equal(plans.planFromPackageName('Basic', true), 'BASIC');
+assert.equal(plans.planFromPackageName('Free', true), 'BASIC');
+assert.equal(plans.planFromPackageName('Starter', false), 'STARTER');
+assert.equal(plans.planFromPackageName('Business', false), 'BUSINESS');
+assert.equal(plans.planFromPackageName('Pro', false), 'PRO');
+assert.equal(plans.assetLimitForPlan('BASIC'), 5);
+assert.equal(plans.canCreateAsset('BASIC', 4), true);
+assert.equal(plans.canCreateAsset('BASIC', 5), false);
+assert.equal(plans.hasAppAccess('BASIC'), true);
+assert.equal(plans.hasFeature('BASIC', 'WEEKLY_PRICING'), false);
+assert.equal(plans.hasFeature('STARTER', 'WEEKLY_PRICING'), true);
+assert.equal(plans.hasFeature('STARTER', 'MONTHLY_PRICING'), false);
+assert.equal(plans.hasFeature('BUSINESS', 'MONTHLY_PRICING'), true);
+assert.equal(plans.assetLimitForPlan('PRO'), null);
+
 // Taxes and deposits stay in integer cents.
 assert.deepEqual(finance.calculateTaxes(10_000, {
   taxesEnabled: false,
@@ -462,4 +478,4 @@ assert.equal(compatibility.catalogItemAppliesToAsset({
   excludedAssetIdsJson: JSON.stringify(['asset-1']),
 }, asset), false);
 
-console.log('PASS: RentalFlow domain pricing, availability, customers, payments, public booking controller, finance, references, pagination, inventory and booking catalog rules.');
+console.log('PASS: RentalFlow plans, pricing, availability, customers, payments, public booking controller, finance, references, pagination, inventory and booking catalog rules.');
