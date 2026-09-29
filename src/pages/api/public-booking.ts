@@ -5,6 +5,7 @@ import { items } from '@wix/data';
 import { auth } from '@wix/essentials';
 import { COLLECTIONS } from '../../lib/collection-ids';
 import { collectAllPages } from '../../lib/pagination';
+import { generateReferenceNumber } from '../../lib/reference-number';
 import type {
   AppSettings,
   Asset,
@@ -130,12 +131,6 @@ function asDate(value?: Date | string): Date {
 
 function clean(value: unknown, max = 200): string {
   return String(value ?? '').trim().slice(0, max);
-}
-
-function generatedNumber(prefix: string): string {
-  const now = new Date();
-  const stamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
-  return `${prefix}-${stamp}-${Math.floor(1000 + Math.random() * 9000)}`;
 }
 
 function lockToken(): string {
@@ -616,7 +611,7 @@ export const POST: APIRoute = async ({ request }) => {
 
     if (!customerId) {
       const createdCustomer = await elevatedInsert(CUSTOMERS, {
-        customerNumber: generatedNumber('C'),
+        customerNumber: generateReferenceNumber('C'),
         firstName: customer.name,
         lastName: '',
         companyName: '',
@@ -639,7 +634,7 @@ export const POST: APIRoute = async ({ request }) => {
     const quoteTemplate = documentsEnabled ? templates.find((template) => template._id === settings.defaultQuoteTemplateId && template.active !== false) : undefined;
     const contractTemplate = documentsEnabled ? templates.find((template) => template._id === settings.defaultContractTemplateId && template.active !== false) : undefined;
     const invoiceTemplate = documentsEnabled ? templates.find((template) => template._id === settings.defaultInvoiceTemplateId && template.active !== false) : undefined;
-    const reservationNumber = generatedNumber('RF');
+    const reservationNumber = generateReferenceNumber('RF');
 
     createdReservation = await elevatedInsert(RESERVATIONS, {
       reservationNumber,
@@ -797,7 +792,7 @@ export const POST: APIRoute = async ({ request }) => {
     await elevatedInsert(PAYMENTS, {
       reservationId: createdReservation._id,
       reservationNumber,
-      paymentNumber: generatedNumber('PAY'),
+      paymentNumber: generateReferenceNumber('PAY'),
       paymentType: paymentMode === 'DEPOSIT' ? 'BOOKING_DEPOSIT' : 'PAYMENT',
       method: 'WIX',
       status: 'PENDING',
