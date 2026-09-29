@@ -7,6 +7,7 @@ import { COLLECTIONS } from '../../lib/collection-ids';
 import { collectAllPages } from '../../lib/pagination';
 import { generateReferenceNumber } from '../../lib/reference-number';
 import { activeCatalogReservedQuantity, availableCatalogStock } from '../../lib/catalog-inventory';
+import { acquireCatalogStockLocks, loadCatalogBlockingItems, releaseCatalogStockLocks } from '../../server/catalog-stock';
 import type {
   AppSettings,
   Asset,
@@ -46,7 +47,6 @@ const SETTINGS = COLLECTIONS.appSettings;
 const PAYMENTS = COLLECTIONS.payments;
 const ACTIVITY = COLLECTIONS.activityLog;
 const BOOKING_LOCKS = COLLECTIONS.bookingLocks;
-const CATALOG_STOCK_LOCKS = COLLECTIONS.catalogStockLocks;
 
 const BOOKING_LOCK_TTL_MS = 2 * 60 * 1000;
 const MAX_PUBLIC_ASSETS = 25;
@@ -251,32 +251,6 @@ async function loadBlockingItems(
   return groups.flat();
 }
 
-async function loadCatalogBlockingItems(
-  start: Date,
-  end: Date,
-  catalogItemIds: string[] = [],
-): Promise<ReservationItem[]> {
-  const loadForCatalogItem = async (catalogItemId?: string): Promise<ReservationItem[]> => collectAllPages(
-    async (offset, limit) => {
-      let query = elevatedQuery(RESERVATION_ITEMS)
-        .lt('startDateTime', end)
-        .gt('endDateTime', start);
-
-      if (catalogItemId) query = query.eq('catalogItemId', catalogItemId);
-
-      const result = await elevatedFind(query.skip(offset).limit(limit));
-      return (result.items || []) as ReservationItem[];
-    },
-    1000,
-  );
-
-  const uniqueCatalogItemIds = [...new Set(catalogItemIds.filter(Boolean))];
-  if (!uniqueCatalogItemIds.length) return loadForCatalogItem();
-
-  const groups = await Promise.all(uniqueCatalogItemIds.map((catalogItemId) => loadForCatalogItem(catalogItemId)));
-  return groups.flat();
-}
-
 function pricingOptions(plan: RentalFlowPlan) {
   return {
     allowWeekly: hasFeature(plan, 'WEEKLY_PRICING'),
@@ -348,46 +322,6 @@ async function acquireBookingLocks(assetIds: string[]): Promise<BookingLock[]> {
 async function releaseBookingLocks(locks: BookingLock[]): Promise<void> {
   for (const lock of locks) {
     if (lock._id) await elevatedRemove(BOOKING_LOCKS, lock._id).catch(() => undefined);
-  }
-}
-
-async function acquireCatalogStockLocks(catalogItemIds: string[]): Promise<CatalogStockLock[]> {
-  const acquired: CatalogStockLock[] = [];
-  const token = lockToken();
-  const expiresAt = new Date(Date.now() + BOOKING_LOCK_TTL_MS);
-
-  try {
-    for (const catalogItemId of [...new Set(catalogItemIds)].sort()) {
-      const existingResult = await elevatedFind(
-        elevatedQuery(CATALOG_STOCK_LOCKS).eq('catalogItemId', catalogItemId).limit(1),
-      );
-      const existing = existingResult.items?.[0] as CatalogStockLock | undefined;
-      if (existing?._id) {
-        const expiry = asDate(existing.expiresAt);
-        if (expiry.getTime() && expiry.getTime() <= Date.now()) {
-          await elevatedRemove(CATALOG_STOCK_LOCKS, existing._id);
-        }
-      }
-
-      try {
-        const created = await elevatedInsert(CATALOG_STOCK_LOCKS, { catalogItemId, lockToken: token, expiresAt });
-        acquired.push(created as CatalogStockLock);
-      } catch {
-        throw new Error('CATALOG_STOCK_BUSY');
-      }
-    }
-    return acquired;
-  } catch (error) {
-    for (const lock of acquired) {
-      if (lock._id) await elevatedRemove(CATALOG_STOCK_LOCKS, lock._id).catch(() => undefined);
-    }
-    throw error;
-  }
-}
-
-async function releaseCatalogStockLocks(locks: CatalogStockLock[]): Promise<void> {
-  for (const lock of locks) {
-    if (lock._id) await elevatedRemove(CATALOG_STOCK_LOCKS, lock._id).catch(() => undefined);
   }
 }
 
