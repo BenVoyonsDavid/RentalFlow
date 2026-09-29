@@ -1,6 +1,6 @@
 import { appInstances } from '@wix/app-management';
 
-export type RentalFlowPlan = 'NO_PLAN' | 'TRIAL' | 'STARTER' | 'BUSINESS' | 'PRO';
+export type RentalFlowPlan = 'NO_PLAN' | 'BASIC' | 'TRIAL' | 'STARTER' | 'BUSINESS' | 'PRO';
 
 export type RentalFlowFeature =
   | 'WEEKLY_PRICING'
@@ -17,6 +17,7 @@ export type RentalFlowFeature =
 
 const planLevel: Record<RentalFlowPlan, number> = {
   NO_PLAN: -1,
+  BASIC: 0,
   STARTER: 1,
   BUSINESS: 2,
   PRO: 3,
@@ -40,6 +41,7 @@ const minimumPlan: Record<RentalFlowFeature, RentalFlowPlan> = {
 
 export const assetLimits: Record<RentalFlowPlan, number | null> = {
   NO_PLAN: 0,
+  BASIC: 5,
   TRIAL: null,
   STARTER: 25,
   BUSINESS: 100,
@@ -48,6 +50,7 @@ export const assetLimits: Record<RentalFlowPlan, number | null> = {
 
 export const planLabels: Record<RentalFlowPlan, string> = {
   NO_PLAN: 'Aucun abonnement',
+  BASIC: 'Basic',
   TRIAL: 'Essai gratuit',
   STARTER: 'Starter',
   BUSINESS: 'Business',
@@ -91,17 +94,22 @@ function normalizePlanName(value: unknown): string {
 }
 
 export function planFromPackageName(packageName: unknown, isFree?: boolean): RentalFlowPlan {
-  if (isFree === true) return 'NO_PLAN';
-
   const normalized = normalizePlanName(packageName);
+
+  if (
+    isFree === true
+    || normalized.includes('BASIC')
+    || normalized.includes('FREE')
+    || normalized.includes('GRATUIT')
+  ) {
+    return 'BASIC';
+  }
+
   if (!normalized) return isFree === false ? 'STARTER' : 'NO_PLAN';
 
   if (normalized.includes('PRO') || normalized.includes('PREMIUM')) return 'PRO';
   if (normalized.includes('BUSINESS') || normalized.includes('GROWTH')) return 'BUSINESS';
   if (normalized.includes('STARTER') || normalized.includes('PLUS')) return 'STARTER';
-  // There is no permanent free tier. Any free/basic package is treated as no subscription.
-  if (normalized.includes('BASIC') || normalized.includes('FREE') || normalized.includes('GRATUIT')) return 'NO_PLAN';
-
   // Unknown paid packages fail closed to the lowest paid tier.
   return isFree === false ? 'STARTER' : 'NO_PLAN';
 }
