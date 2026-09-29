@@ -9,6 +9,7 @@ export const COLLECTIONS = {
   assets: '@pilotedavid1/rental-flow/assets',
   bookingLocks: '@pilotedavid1/rental-flow/booking-locks',
   catalogItems: '@pilotedavid1/rental-flow/catalog-items',
+  catalogStockLocks: '@pilotedavid1/rental-flow/catalog-stock-locks',
   categories: '@pilotedavid1/rental-flow/categories',
   customers: '@pilotedavid1/rental-flow/customers',
   documentTemplates: '@pilotedavid1/rental-flow/document-templates',
