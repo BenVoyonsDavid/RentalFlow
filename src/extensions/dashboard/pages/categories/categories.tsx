@@ -4,8 +4,9 @@ import { items } from '@wix/data';
 import { Page, WixDesignSystemProvider } from '@wix/design-system';
 import '@wix/design-system/styles.global.css';
 import { useRentalFlowI18n } from '../../../../intl';
+import { COLLECTIONS } from '../../../../lib/collection-ids';
 
-const CATEGORIES = '@pilotedavid1/rental-flow/categories';
+const CATEGORIES = COLLECTIONS.categories;
 
 type Category = {
   _id?: string;
