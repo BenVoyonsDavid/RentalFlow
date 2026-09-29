@@ -24,6 +24,7 @@ async function bundle(source, output) {
 const finance = await bundle('src/lib/reservation-finance.ts', 'finance.mjs');
 const pricing = await bundle('src/lib/rental-pricing.ts', 'pricing.mjs');
 const catalog = await bundle('src/lib/reservation-catalog.ts', 'catalog.mjs');
+const inventory = await bundle('src/lib/catalog-inventory.ts', 'catalog-inventory.mjs');
 const compatibility = await bundle('src/lib/catalog-compatibility.ts', 'compatibility.mjs');
 const pagination = await bundle('src/lib/pagination.ts', 'pagination.mjs');
 const references = await bundle('src/lib/reference-number.ts', 'reference-number.mjs');
@@ -135,6 +136,19 @@ const pagedItems = await pagination.collectAllPages(async (offset, limit) => {
 assert.equal(pagedItems.length, 2505);
 assert.deepEqual(pageOffsets, [0, 1000, 2000]);
 
+// Inventory availability subtracts active overlapping reservation quantities.
+const inventoryLines = [
+  { catalogItemId: 'extra-1', reservationId: 'r1', quantity: 2, status: 'CONFIRMED' },
+  { catalogItemId: 'extra-1', reservationId: 'r2', quantity: 3, status: 'RENTED' },
+  { catalogItemId: 'extra-1', reservationId: 'r3', quantity: 4, status: 'CANCELLED' },
+  { catalogItemId: 'extra-1', reservationId: 'r4', quantity: 5, status: 'COMPLETED' },
+  { catalogItemId: 'other', reservationId: 'r5', quantity: 99, status: 'CONFIRMED' },
+];
+assert.equal(inventory.activeCatalogReservedQuantity(inventoryLines, 'extra-1'), 5);
+assert.equal(inventory.activeCatalogReservedQuantity(inventoryLines, 'extra-1', 'r2'), 2);
+assert.equal(inventory.availableCatalogStock(10, 5), 5);
+assert.equal(inventory.availableCatalogStock(3, 5), 0);
+
 // Catalog pricing and compatibility.
 const perDayItem = {
   _id: 'extra-1',
@@ -165,4 +179,4 @@ assert.equal(compatibility.catalogItemAppliesToAsset({
   excludedAssetIdsJson: JSON.stringify(['asset-1']),
 }, asset), false);
 
-console.log('PASS: RentalFlow domain pricing, finance, references, pagination and catalog rules.');
+console.log('PASS: RentalFlow domain pricing, finance, references, pagination, inventory and catalog rules.');
