@@ -8,6 +8,9 @@ type PublicAsset = {
   title: string;
   imageUrl?: string;
   productType: string;
+  categoryId?: string;
+  categoryName?: string;
+  catalogTagsJson?: string;
   currency: string;
   dailyRateCents: number;
   weeklyRateCents: number;
