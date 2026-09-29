@@ -6,6 +6,7 @@ import '@wix/design-system/styles.global.css';
 import { decodeCatalogList, encodeCatalogList, type CatalogCompatibilityMode } from '../../../../lib/catalog-compatibility';
 import { useRentalFlowI18n } from '../../../../intl';
 import { COLLECTIONS } from '../../../../lib/collection-ids';
+import type { Asset, Category } from '../../../../domain/types';
 
 const CATALOG = COLLECTIONS.catalogItems;
 const ASSETS = COLLECTIONS.assets;
@@ -14,13 +15,6 @@ const CATEGORIES = COLLECTIONS.categories;
 type CatalogItemType = 'PRODUCT' | 'ADDON' | 'SERVICE';
 type PricingMode = 'FIXED' | 'PER_UNIT' | 'PER_DAY' | 'PER_RESERVATION';
 
-type Asset = {
-  _id?: string; title?: string; assetNumber?: string; productType?: string; categoryId?: string; categoryName?: string;
-  catalogTagsJson?: string; active?: boolean;
-};
-type Category = {
-  _id?: string; name?: string; active?: boolean; forEquipment?: boolean; forProducts?: boolean; forExtras?: boolean; sortOrder?: number;
-};
 type CatalogItem = {
   _id?: string; name?: string; description?: string; itemType?: CatalogItemType; sku?: string; image?: unknown;
   categoryId?: string; categoryName?: string; priceCents?: number; currency?: string; pricingMode?: PricingMode;
