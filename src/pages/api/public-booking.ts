@@ -4,6 +4,13 @@ import { appInstances } from '@wix/app-management';
 import { items } from '@wix/data';
 import { auth } from '@wix/essentials';
 import { COLLECTIONS } from '../../lib/collection-ids';
+import type {
+  AppSettings,
+  Asset,
+  BookingLock,
+  DocumentTemplate,
+  ReservationItem,
+} from '../../domain/types';
 import { calculateRentalPrice, getBlockedRange, rangesOverlap } from '../../lib/rental-pricing';
 import {
   calculateDeposit,
@@ -41,74 +48,8 @@ const MAX_PUBLIC_ASSETS = 25;
 const MAX_PUBLIC_CATALOG_ITEMS = 50;
 const MAX_CATALOG_QUANTITY = 999;
 
-type Asset = {
-  image?: unknown;
-  _id?: string;
-  title?: string;
-  assetNumber?: string;
-  productType?: string;
-  catalogTagsJson?: string;
-  status?: string;
-  dailyRateCents?: number;
-  weeklyRateCents?: number;
-  monthlyRateCents?: number;
-  discountAfterDays?: number;
-  discountPercent?: number;
-  currency?: string;
-  active?: boolean;
-};
-
 type CatalogItem = CatalogReservationItem & CatalogCompatibilityRule & {
   image?: unknown;
-};
-
-type ReservationItem = {
-  _id?: string;
-  assetId?: string;
-  status?: string;
-  blockedStartDateTime?: Date | string;
-  blockedEndDateTime?: Date | string;
-};
-
-type BookingLock = {
-  _id?: string;
-  assetId?: string;
-  lockToken?: string;
-  expiresAt?: Date | string;
-};
-
-type AppSettings = {
-  _id?: string;
-  settingsKey?: string;
-  companyName?: string;
-  logoUrl?: string;
-  bookingThemeJson?: string;
-  bookingHeroTitle?: string;
-  bookingHeroSubtitle?: string;
-  bookingHeroBackgroundUrl?: string;
-  currency?: string;
-  defaultBufferBeforeHours?: number;
-  defaultBufferAfterHours?: number;
-  taxesEnabled?: boolean;
-  tax1Name?: string;
-  tax1Rate?: number;
-  tax2Name?: string;
-  tax2Rate?: number;
-  tax2Compound?: boolean;
-  defaultDepositEnabled?: boolean;
-  defaultDepositType?: DepositType;
-  defaultDepositValue?: number;
-  defaultQuoteTemplateId?: string;
-  defaultContractTemplateId?: string;
-  defaultInvoiceTemplateId?: string;
-};
-
-type DocumentTemplate = {
-  _id?: string;
-  name?: string;
-  documentType?: 'QUOTE' | 'CONTRACT' | 'INVOICE';
-  requiredFieldsCsv?: string;
-  active?: boolean;
 };
 
 type PublicCustomer = {
