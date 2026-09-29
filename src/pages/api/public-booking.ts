@@ -4,6 +4,7 @@ import { appInstances } from '@wix/app-management';
 import { items } from '@wix/data';
 import { auth } from '@wix/essentials';
 import { COLLECTIONS } from '../../lib/collection-ids';
+import { collectAllPages } from '../../lib/pagination';
 import type {
   AppSettings,
   Asset,
@@ -222,15 +223,34 @@ async function loadActiveCatalog(): Promise<CatalogItem[]> {
   return (result.items || []).filter((item: CatalogItem) => item.active !== false) as CatalogItem[];
 }
 
-async function loadBlockingItems(start: Date, end: Date, before: number, after: number): Promise<ReservationItem[]> {
+async function loadBlockingItems(
+  start: Date,
+  end: Date,
+  before: number,
+  after: number,
+  assetIds: string[] = [],
+): Promise<ReservationItem[]> {
   const requested = getBlockedRange(start, end, before, after);
-  const result = await elevatedFind(
-    elevatedQuery(RESERVATION_ITEMS)
-      .lt('blockedStartDateTime', requested.blockedEnd)
-      .gt('blockedEndDateTime', requested.blockedStart)
-      .limit(1000)
+
+  const loadForAsset = async (assetId?: string): Promise<ReservationItem[]> => collectAllPages(
+    async (offset, limit) => {
+      let query = elevatedQuery(RESERVATION_ITEMS)
+        .lt('blockedStartDateTime', requested.blockedEnd)
+        .gt('blockedEndDateTime', requested.blockedStart);
+
+      if (assetId) query = query.eq('assetId', assetId);
+
+      const result = await elevatedFind(query.skip(offset).limit(limit));
+      return (result.items || []) as ReservationItem[];
+    },
+    1000,
   );
-  return result.items as ReservationItem[];
+
+  const uniqueAssetIds = [...new Set(assetIds.filter(Boolean))];
+  if (!uniqueAssetIds.length) return loadForAsset();
+
+  const groups = await Promise.all(uniqueAssetIds.map((assetId) => loadForAsset(assetId)));
+  return groups.flat();
 }
 
 function pricingOptions(plan: RentalFlowPlan) {
@@ -546,7 +566,7 @@ export const POST: APIRoute = async ({ request }) => {
 
     const before = settings.defaultBufferBeforeHours || 0;
     const after = settings.defaultBufferAfterHours || 0;
-    const blockingItems = await loadBlockingItems(start, end, before, after);
+    const blockingItems = await loadBlockingItems(start, end, before, after, assetIds);
     for (const asset of selectedAssets) {
       if (!asset._id || !isAssetAvailable(asset._id, start, end, before, after, blockingItems)) {
         return json({ error: `${asset.title || 'Un équipement'} n’est plus disponible pour cette période.` }, 409);
