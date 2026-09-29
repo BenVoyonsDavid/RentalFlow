@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { items } from '@wix/data';
 import { Page, WixDesignSystemProvider } from '@wix/design-system';
 import '@wix/design-system/styles.global.css';
+import { COLLECTIONS } from '../../../../lib/collection-ids';
 import { calculateRentalPrice, getBlockedRange, rangesOverlap } from '../../../../lib/rental-pricing';
 import {
   calculateDeposit,
@@ -13,16 +14,16 @@ import {
   type PaymentMode,
 } from '../../../../lib/reservation-finance';
 
-const ASSETS = '@pilotedavid1/rental-flow/assets';
-const CUSTOMERS = '@pilotedavid1/rental-flow/customers';
-const RESERVATIONS = '@pilotedavid1/rental-flow/reservations';
-const RESERVATION_ITEMS = '@pilotedavid1/rental-flow/reservation-items';
-const DOCUMENTS = '@pilotedavid1/rental-flow/documents';
-const PAYMENTS = '@pilotedavid1/rental-flow/payments';
-const INSPECTIONS = '@pilotedavid1/rental-flow/inspections';
-const ACTIVITY = '@pilotedavid1/rental-flow/activity-log';
-const SETTINGS = '@pilotedavid1/rental-flow/app-settings';
-const TEMPLATES = '@pilotedavid1/rental-flow/document-templates';
+const ASSETS = COLLECTIONS.assets;
+const CUSTOMERS = COLLECTIONS.customers;
+const RESERVATIONS = COLLECTIONS.reservations;
+const RESERVATION_ITEMS = COLLECTIONS.reservationItems;
+const DOCUMENTS = COLLECTIONS.documents;
+const PAYMENTS = COLLECTIONS.payments;
+const INSPECTIONS = COLLECTIONS.inspections;
+const ACTIVITY = COLLECTIONS.activityLog;
+const SETTINGS = COLLECTIONS.appSettings;
+const TEMPLATES = COLLECTIONS.documentTemplates;
 
 type ViewMode = 'MONTH' | 'LIST' | 'AVAILABILITY';
 type DetailTab = 'DETAILS' | 'EQUIPMENT' | 'PAYMENTS' | 'DOCUMENTS' | 'INSPECTION' | 'NOTES' | 'HISTORY';
