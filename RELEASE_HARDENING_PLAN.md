@@ -21,8 +21,11 @@ This branch groups the App Market hardening work into one update.
    - Plan lookup failures fail closed to no access; confirmed Wix free/basic packages map to Basic.
    - Remaining legacy dashboard actions should continue to be migrated from UI-only controls to backend-enforced commands in future releases.
 
-3. **Wix payment synchronization — implemented for v1**
+3. **Wix payment synchronization and compensation — implemented for v1**
    - Payment Links are created for eligible plans.
+   - If payment finalization fails after Wix creates a link, RentalFlow deactivates it and then attempts deletion so an orphaned link cannot continue accepting new payments.
+   - Local payment rows found for a compensated link are marked `CANCELLED`.
+   - Activity-log failures are non-blocking after the payment record is safely persisted.
    - Pending Wix payments are automatically reconciled when RentalFlow Dashboard loads.
    - Confirmed payments update the local payment record and reservation balance.
    - A real-time `Payment Link Payment Created` event extension remains a post-v1 optimization.
