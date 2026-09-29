@@ -10,9 +10,9 @@ import { assetLimits, hasFeature, planLabels, type RentalFlowPlan } from '../../
 import { useRentalFlowPlan } from '../../../../lib/use-plan';
 import PaymentSettingsPanel from './payment-settings-panel';
 import { COLLECTIONS } from '../../../../lib/collection-ids';
+import { loadDefaultAppSettings, saveDefaultAppSettings } from '../../../../lib/app-settings-store';
 import type { AppSettings, DepositType, DocumentTemplate, DocumentType } from '../../../../domain/types';
 
-const SETTINGS = COLLECTIONS.appSettings;
 const TEMPLATES = COLLECTIONS.documentTemplates;
 
 type SettingsTab = 'APPEARANCE' | 'GENERAL' | 'TAXES_PAYMENTS' | 'TEMPLATES' | 'PLANS';
@@ -118,11 +118,10 @@ const SettingsV2Page: FC = () => {
   const load = useCallback(async () => {
     setLoading(true); setError('');
     try {
-      const [settingsResult, templateResult] = await Promise.all([
-        items.query(SETTINGS).eq('settingsKey', 'default').limit(1).find(),
+      const [saved, templateResult] = await Promise.all([
+        loadDefaultAppSettings(),
         items.query(TEMPLATES).limit(100).find(),
       ]);
-      const saved = settingsResult.items[0] as AppSettings | undefined;
       setSettings({ ...defaultSettings, ...(saved || {}) });
       setTemplates(templateResult.items as DocumentTemplate[]);
     } catch (e) {
@@ -152,8 +151,7 @@ const SettingsV2Page: FC = () => {
       paymentProvider: 'WIX',
       active: true,
     };
-    if (nextSettings._id) return await items.update(SETTINGS, payload) as AppSettings;
-    return await items.insert(SETTINGS, payload) as AppSettings;
+    return await saveDefaultAppSettings(payload);
   };
 
   const saveSettings = async () => {
