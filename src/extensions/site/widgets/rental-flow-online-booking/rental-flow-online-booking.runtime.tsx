@@ -42,6 +42,7 @@ type PublicCatalogItem = {
   trackInventory?: boolean;
   stockQuantity?: number | null;
   compatibilityMode?: 'ALL' | 'CATEGORIES' | 'TAGS' | 'ASSETS';
+  applicableCategoryIdsJson?: string;
   applicableCategoriesJson?: string;
   applicableTagsJson?: string;
   applicableAssetIdsJson?: string;
@@ -66,6 +67,8 @@ function compatibleCatalogItems(instance: any): PublicCatalogItem[] {
   const assets = selectedAssets(instance).map((asset: any) => ({
     _id: asset.id,
     productType: asset.productType || '',
+    categoryId: asset.categoryId || '',
+    categoryName: asset.categoryName || '',
     catalogTagsJson: asset.catalogTagsJson || '[]',
   }));
   if (!assets.length) return [];
