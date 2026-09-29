@@ -41,7 +41,10 @@ export async function loadCurrentPlan(
     const response = await getInstance();
     const resolved = planFromAppInstanceResponse(response);
 
-    if (resolved === 'NO_PLAN' && isWixDevelopmentRequest(request)) {
+    if (
+      isWixDevelopmentRequest(request)
+      && (resolved === 'NO_PLAN' || resolved === 'BASIC')
+    ) {
       return 'TRIAL';
     }
 
