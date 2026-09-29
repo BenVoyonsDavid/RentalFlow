@@ -6,40 +6,10 @@ import '@wix/design-system/styles.global.css';
 import { assetLimitForPlan, canCreateAsset, hasFeature, planLabels, requiredPlan } from '../../../../lib/plans';
 import { useRentalFlowPlan } from '../../../../lib/use-plan';
 import { COLLECTIONS } from '../../../../lib/collection-ids';
+import type { Asset, AssetStatus, Category } from '../../../../domain/types';
 
 const COLLECTION = COLLECTIONS.assets;
 const CATEGORIES = COLLECTIONS.categories;
-
-type AssetStatus = 'AVAILABLE' | 'RESERVED' | 'RENTED' | 'MAINTENANCE' | 'INACTIVE';
-
-type Asset = {
-  _id?: string;
-  title?: string;
-  assetNumber?: string;
-  productType?: string;
-  categoryId?: string;
-  categoryName?: string;
-  catalogTagsJson?: string;
-  status?: AssetStatus;
-  dailyRateCents?: number;
-  weeklyRateCents?: number;
-  monthlyRateCents?: number;
-  discountAfterDays?: number;
-  discountPercent?: number;
-  currency?: string;
-  serialNumber?: string;
-  image?: unknown;
-  notes?: string;
-  active?: boolean;
-};
-
-type Category = {
-  _id?: string;
-  name?: string;
-  active?: boolean;
-  forEquipment?: boolean;
-  sortOrder?: number;
-};
 
 type AssetForm = {
   title: string;
