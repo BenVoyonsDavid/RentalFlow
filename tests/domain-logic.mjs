@@ -24,6 +24,7 @@ async function bundle(source, output) {
 const finance = await bundle('src/lib/reservation-finance.ts', 'finance.mjs');
 const pricing = await bundle('src/lib/rental-pricing.ts', 'pricing.mjs');
 const availability = await bundle('src/lib/asset-availability.ts', 'asset-availability.mjs');
+const bookingCustomer = await bundle('src/lib/booking-customer.ts', 'booking-customer.mjs');
 const catalog = await bundle('src/lib/reservation-catalog.ts', 'catalog.mjs');
 const bookingCatalog = await bundle('src/lib/booking-catalog.ts', 'booking-catalog.mjs');
 const inventory = await bundle('src/lib/catalog-inventory.ts', 'catalog-inventory.mjs');
@@ -156,6 +157,35 @@ assert.equal(availability.isAssetAvailable(
     status: 'CONFIRMED',
   }],
 ), false);
+
+// Public customer input is normalized before persistence.
+const normalizedCustomer = bookingCustomer.normalizePublicCustomer({
+  name: '  Marie Tremblay  ',
+  email: ' MARIE@EXAMPLE.COM ',
+  phone: ' 418 555-1212 ',
+  addressLine1: ' 123 rue Test ',
+  postalCode: ' g1k 1a1 ',
+});
+assert.deepEqual(normalizedCustomer, {
+  name: 'Marie Tremblay',
+  email: 'marie@example.com',
+  phone: '418 555-1212',
+  addressLine1: '123 rue Test',
+  addressLine2: '',
+  city: '',
+  region: '',
+  postalCode: 'G1K 1A1',
+  country: 'Canada',
+});
+assert.doesNotThrow(() => bookingCustomer.validatePublicCustomer(normalizedCustomer));
+assert.throws(
+  () => bookingCustomer.validatePublicCustomer({ ...normalizedCustomer, name: '' }),
+  /CUSTOMER_NAME_REQUIRED/,
+);
+assert.throws(
+  () => bookingCustomer.validatePublicCustomer({ ...normalizedCustomer, email: 'invalid' }),
+  /CUSTOMER_EMAIL_INVALID/,
+);
 
 // Human-facing reference numbers use date + 50 bits of secure entropy.
 const deterministicReference = references.generateReferenceNumber(
@@ -323,4 +353,4 @@ assert.equal(compatibility.catalogItemAppliesToAsset({
   excludedAssetIdsJson: JSON.stringify(['asset-1']),
 }, asset), false);
 
-console.log('PASS: RentalFlow domain pricing, availability, finance, references, pagination, inventory and booking catalog rules.');
+console.log('PASS: RentalFlow domain pricing, availability, customers, finance, references, pagination, inventory and booking catalog rules.');
