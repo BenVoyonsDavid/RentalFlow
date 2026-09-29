@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { items } from '@wix/data';
 import { useRentalFlowI18n } from '../../../../intl';
 import { COLLECTIONS } from '../../../../lib/collection-ids';
+import type { AppSettings } from '../../../../domain/types';
 import {
   decodeStringList,
   maskedPaymentAccountId,
@@ -29,23 +30,7 @@ const primary: CSSProperties = {
   cursor: 'pointer', background: '#116dff', color: '#fff',
 };
 
-type AppSettingsRecord = Record<string, unknown> & {
-  _id?: string;
-  settingsKey?: string;
-  payflowProvider?: string;
-  payflowEnvironment?: string;
-  payflowAccountId?: string;
-  payflowAccountStatus?: string;
-  payflowDetailsSubmitted?: boolean;
-  payflowChargesEnabled?: boolean;
-  payflowPayoutsEnabled?: boolean;
-  payflowRequirementsCurrentlyDueJson?: string;
-  payflowRequirementsPastDueJson?: string;
-  payflowRequirementsPendingVerificationJson?: string;
-  payflowCountry?: string;
-  payflowDefaultCurrency?: string;
-  payflowLastSyncedAt?: Date | string | null;
-};
+type AppSettingsRecord = AppSettings & Record<string, unknown>;
 
 const emptyRecord: AppSettingsRecord = {
   settingsKey: 'default',
