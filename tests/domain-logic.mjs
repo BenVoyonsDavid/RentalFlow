@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 const temp = await mkdtemp(join(tmpdir(), 'rentalflow-domain-'));
 const root = resolve('.');
@@ -17,7 +18,7 @@ async function bundle(source, output) {
     platform: 'node',
     outfile,
   });
-  return import(outfile);
+  return import(pathToFileURL(outfile).href);
 }
 
 const finance = await bundle('src/lib/reservation-finance.ts', 'finance.mjs');
