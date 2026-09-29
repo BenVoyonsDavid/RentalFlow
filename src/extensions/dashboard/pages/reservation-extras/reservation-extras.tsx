@@ -14,6 +14,7 @@ import {
 } from '../../../../lib/reservation-catalog';
 import { useRentalFlowI18n } from '../../../../intl';
 import { COLLECTIONS } from '../../../../lib/collection-ids';
+import type { AppSettings, Asset, Payment, Reservation } from '../../../../domain/types';
 
 const ASSETS = COLLECTIONS.assets;
 const CATALOG = COLLECTIONS.catalogItems;
@@ -22,34 +23,6 @@ const RESERVATION_ITEMS = COLLECTIONS.reservationItems;
 const PAYMENTS = COLLECTIONS.payments;
 const SETTINGS = COLLECTIONS.appSettings;
 const ACTIVITY = COLLECTIONS.activityLog;
-
-type Reservation = {
-  _id?: string;
-  reservationNumber?: string;
-  customerName?: string;
-  startDateTime?: Date | string;
-  endDateTime?: Date | string;
-  status?: string;
-  currency?: string;
-  customerDiscountPercent?: number;
-  subtotalCents?: number;
-  discountCents?: number;
-  preTaxTotalCents?: number;
-  tax1Name?: string;
-  tax1Rate?: number;
-  tax1Cents?: number;
-  tax2Name?: string;
-  tax2Rate?: number;
-  tax2Cents?: number;
-  taxTotalCents?: number;
-  totalCents?: number;
-  depositAmountCents?: number;
-  amountDueNowCents?: number;
-  balanceDueCents?: number;
-  _createdDate?: Date | string;
-  _updatedDate?: Date | string;
-  [key: string]: unknown;
-};
 
 type ReservationItem = ReservationCatalogLine & {
   reservationId?: string;
@@ -64,32 +37,6 @@ type ReservationItem = ReservationCatalogLine & {
   bufferBeforeHours?: number;
   bufferAfterHours?: number;
   status?: string;
-};
-
-type Asset = {
-  _id?: string;
-  title?: string;
-  assetNumber?: string;
-  productType?: string;
-  catalogTagsJson?: string;
-};
-
-type Payment = {
-  reservationId?: string;
-  paymentType?: string;
-  status?: string;
-  amountCents?: number;
-};
-
-type AppSettings = {
-  settingsKey?: string;
-  currency?: string;
-  taxesEnabled?: boolean;
-  tax1Name?: string;
-  tax1Rate?: number;
-  tax2Name?: string;
-  tax2Rate?: number;
-  tax2Compound?: boolean;
 };
 
 const card: CSSProperties = {
