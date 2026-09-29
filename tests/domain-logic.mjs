@@ -27,6 +27,8 @@ const availability = await bundle('src/lib/asset-availability.ts', 'asset-availa
 const bookingCustomer = await bundle('src/lib/booking-customer.ts', 'booking-customer.mjs');
 const bookingPayment = await bundle('src/lib/booking-payment.ts', 'booking-payment.mjs');
 const publicBookingConfig = await bundle('src/lib/public-booking-config.ts', 'public-booking-config.mjs');
+const publicBookingView = await bundle('src/lib/public-booking-view.ts', 'public-booking-view.mjs');
+const publicBookingContract = await bundle('src/lib/public-booking-contract.ts', 'public-booking-contract.mjs');
 const catalog = await bundle('src/lib/reservation-catalog.ts', 'catalog.mjs');
 const bookingCatalog = await bundle('src/lib/booking-catalog.ts', 'booking-catalog.mjs');
 const inventory = await bundle('src/lib/catalog-inventory.ts', 'catalog-inventory.mjs');
@@ -254,6 +256,45 @@ assert.throws(
   /PAST_PERIOD/,
 );
 
+// Public booking controller contracts and response projection stay stable.
+const httpError = new publicBookingContract.PublicBookingHttpError(409, 'Conflit');
+assert.equal(httpError.status, 409);
+assert.equal(httpError.message, 'Conflit');
+
+const projectedBooking = publicBookingView.buildPublicBookingPayload({
+  settings: {
+    companyName: 'RentalFlow Demo',
+    currency: 'CAD',
+    taxesEnabled: true,
+    tax1Name: 'TPS',
+    tax1Rate: 5,
+    defaultDepositEnabled: true,
+    defaultDepositType: 'PERCENT',
+    defaultDepositValue: 25,
+  },
+  templates: [],
+  assets: [{
+    _id: 'asset-1',
+    title: 'Roulotte 1',
+    dailyRateCents: 10_000,
+    currency: 'CAD',
+  }],
+  catalog: [{
+    _id: 'extra-1',
+    name: 'Extra',
+    priceCents: 2_000,
+    currency: 'CAD',
+    active: true,
+  }],
+  plan: 'STARTER',
+});
+assert.equal(projectedBooking.company.name, 'RentalFlow Demo');
+assert.equal(projectedBooking.settings.currency, 'CAD');
+assert.equal(projectedBooking.settings.paymentsEnabled, true);
+assert.equal(projectedBooking.settings.depositEnabled, true);
+assert.equal(projectedBooking.assets[0].id, 'asset-1');
+assert.equal(projectedBooking.catalogItems[0].id, 'extra-1');
+
 // Human-facing reference numbers use date + 50 bits of secure entropy.
 const deterministicReference = references.generateReferenceNumber(
   'RF',
@@ -420,4 +461,4 @@ assert.equal(compatibility.catalogItemAppliesToAsset({
   excludedAssetIdsJson: JSON.stringify(['asset-1']),
 }, asset), false);
 
-console.log('PASS: RentalFlow domain pricing, availability, customers, payments, public booking config, finance, references, pagination, inventory and booking catalog rules.');
+console.log('PASS: RentalFlow domain pricing, availability, customers, payments, public booking controller, finance, references, pagination, inventory and booking catalog rules.');
