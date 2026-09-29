@@ -5,9 +5,10 @@ import { Page, WixDesignSystemProvider } from '@wix/design-system';
 import '@wix/design-system/styles.global.css';
 import { assetLimitForPlan, canCreateAsset, hasFeature, planLabels, requiredPlan } from '../../../../lib/plans';
 import { useRentalFlowPlan } from '../../../../lib/use-plan';
+import { COLLECTIONS } from '../../../../lib/collection-ids';
 
-const COLLECTION = '@pilotedavid1/rental-flow/assets';
-const CATEGORIES = '@pilotedavid1/rental-flow/categories';
+const COLLECTION = COLLECTIONS.assets;
+const CATEGORIES = COLLECTIONS.categories;
 
 type AssetStatus = 'AVAILABLE' | 'RESERVED' | 'RENTED' | 'MAINTENANCE' | 'INACTIVE';
 
