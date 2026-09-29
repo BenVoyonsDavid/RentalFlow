@@ -3,9 +3,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { items } from '@wix/data';
 import { Page, WixDesignSystemProvider } from '@wix/design-system';
 import '@wix/design-system/styles.global.css';
+import { COLLECTIONS } from '../../../../lib/collection-ids';
 
-const CUSTOMERS = '@pilotedavid1/rental-flow/customers';
-const RESERVATIONS = '@pilotedavid1/rental-flow/reservations';
+const CUSTOMERS = COLLECTIONS.customers;
+const RESERVATIONS = COLLECTIONS.reservations;
 
 type Customer = {
   _id?: string;
