@@ -4,6 +4,7 @@ import { items } from '@wix/data';
 import { Page, WixDesignSystemProvider } from '@wix/design-system';
 import '@wix/design-system/styles.global.css';
 import { COLLECTIONS } from '../../../../lib/collection-ids';
+import { generateReferenceNumber } from '../../../../lib/reference-number';
 import type {
   ActivityEntry,
   AppSettings,
@@ -101,11 +102,6 @@ function money(cents = 0, currency = 'CAD'): string {
 function numeric(value: string): number {
   const number = Number(value.replace(',', '.'));
   return Number.isFinite(number) && number >= 0 ? number : 0;
-}
-function generatedNumber(prefix: string): string {
-  const now = new Date();
-  const stamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
-  return `${prefix}-${stamp}-${Math.floor(1000 + Math.random() * 9000)}`;
 }
 function customerDisplayName(customer: Customer): string {
   return [customer.firstName, customer.lastName].filter(Boolean).join(' ').trim() || customer.companyName || 'Client sans nom';
@@ -330,7 +326,7 @@ const ReservationsV2Page: FC = () => {
       let customerNumber = selectedCustomer?.customerNumber || '';
       if (form.customerMode === 'NEW') {
         const created = await items.insert(CUSTOMERS, {
-          customerNumber: generatedNumber('C'), firstName: form.newFirstName.trim(), lastName: form.newLastName.trim(),
+          customerNumber: generateReferenceNumber('C'), firstName: form.newFirstName.trim(), lastName: form.newLastName.trim(),
           companyName: form.newCompanyName.trim(), email: form.customerEmail.trim().toLowerCase(), phone: form.customerPhone.trim(),
           addressLine1: form.customerAddressLine1.trim(), addressLine2: form.customerAddressLine2.trim(), city: form.customerCity.trim(),
           region: form.customerRegion.trim(), postalCode: form.customerPostalCode.trim().toUpperCase(), country: form.customerCountry.trim(),
@@ -340,7 +336,7 @@ const ReservationsV2Page: FC = () => {
         customerId = created._id; customerNumber = created.customerNumber || '';
       }
 
-      const number = generatedNumber('RF');
+      const number = generateReferenceNumber('RF');
       const quoteTemplate = activeTemplates.find((template) => template._id === form.quoteTemplateId);
       const contractTemplate = activeTemplates.find((template) => template._id === form.contractTemplateId);
       const invoiceTemplate = activeTemplates.find((template) => template._id === form.invoiceTemplateId);
@@ -441,7 +437,7 @@ const ReservationsV2Page: FC = () => {
       };
       const document = await items.insert(DOCUMENTS, {
         reservationId: selectedReservation._id, reservationNumber: selectedReservation.reservationNumber || '',
-        documentNumber: generatedNumber(prefix), documentType: type, status: 'DRAFT',
+        documentNumber: generateReferenceNumber(prefix), documentType: type, status: 'DRAFT',
         templateId: template._id || '', templateName: template.name || '', logoUrl: template.logoUrl || settings.logoUrl || '',
         titleText: template.titleText || documentLabels[type], introText: template.introText || '', termsText: template.termsText || '',
         footerText: template.footerText || '', requiredFieldsCsv: template.requiredFieldsCsv || '', snapshotJson: JSON.stringify(snapshot),
@@ -522,7 +518,7 @@ const ReservationsV2Page: FC = () => {
 
       const payment = await items.insert(PAYMENTS, {
         reservationId: selectedReservation._id, reservationNumber: selectedReservation.reservationNumber || '',
-        paymentNumber: generatedNumber('PAY'), paymentType: selectedReservation.paymentMode === 'DEPOSIT' && paidCents === 0 ? 'BOOKING_DEPOSIT' : 'PAYMENT',
+        paymentNumber: generateReferenceNumber('PAY'), paymentType: selectedReservation.paymentMode === 'DEPOSIT' && paidCents === 0 ? 'BOOKING_DEPOSIT' : 'PAYMENT',
         method: 'WIX', status: 'PENDING', amountCents: amount, currency: selectedReservation.currency || 'CAD',
         paymentDate: new Date(), reference: label, wixPaymentLinkId: linkId, wixPaymentUrl: checkoutUrl,
         wixCheckoutId: checkoutId, wixOnlinePayment: true, remainingBalanceCents: Math.max(0, liveBalance - amount),
@@ -574,7 +570,7 @@ const ReservationsV2Page: FC = () => {
       const damage = Math.round(numeric(inspectionForm.damageAmount) * 100);
       await items.insert(INSPECTIONS, {
         reservationId: selectedReservation._id, reservationNumber: selectedReservation.reservationNumber || '',
-        inspectionNumber: generatedNumber(inspectionForm.inspectionType === 'DEPARTURE' ? 'INS-D' : 'INS-R'),
+        inspectionNumber: generateReferenceNumber(inspectionForm.inspectionType === 'DEPARTURE' ? 'INS-D' : 'INS-R'),
         inspectionType: inspectionForm.inspectionType, status: 'COMPLETED', assetId: asset.assetId || '',
         assetNumber: asset.assetNumber || '', assetTitle: asset.assetTitle || '', condition: inspectionForm.condition,
         hasDamage: inspectionForm.hasDamage, damageDescription: inspectionForm.damageDescription.trim(),
@@ -584,7 +580,7 @@ const ReservationsV2Page: FC = () => {
       if (inspectionForm.hasDamage && damage > 0) {
         await items.insert(PAYMENTS, {
           reservationId: selectedReservation._id, reservationNumber: selectedReservation.reservationNumber || '',
-          paymentNumber: generatedNumber('DMG'), paymentType: 'DAMAGE_CHARGE', method: 'PENDING', status: 'PENDING',
+          paymentNumber: generateReferenceNumber('DMG'), paymentType: 'DAMAGE_CHARGE', method: 'PENDING', status: 'PENDING',
           amountCents: damage, currency: selectedReservation.currency || 'CAD', paymentDate: new Date(),
           reference: `Dommage ${asset.assetNumber || ''}`, wixOnlinePayment: false, remainingBalanceCents: damage,
           notes: inspectionForm.damageDescription.trim(),
