@@ -4,6 +4,7 @@ import { items } from '@wix/data';
 import { Page, WixDesignSystemProvider } from '@wix/design-system';
 import '@wix/design-system/styles.global.css';
 import { COLLECTIONS } from '../../../../lib/collection-ids';
+import { generateReferenceNumber } from '../../../../lib/reference-number';
 import type { Customer, Reservation } from '../../../../domain/types';
 
 const CUSTOMERS = COLLECTIONS.customers;
@@ -49,11 +50,6 @@ const input: CSSProperties = {
   borderRadius: 8, padding: '10px 12px', fontSize: 14, background: '#fff',
 };
 
-function customerNumber(): string {
-  const now = new Date();
-  const stamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
-  return `C-${stamp}-${Math.floor(1000 + Math.random() * 9000)}`;
-}
 function fullName(customer: Customer): string {
   const person = [customer.firstName, customer.lastName].filter(Boolean).join(' ').trim();
   return person || customer.companyName || 'Client sans nom';
@@ -174,7 +170,7 @@ const CustomersPage: FC = () => {
     setSaving(true);
     try {
       const data: Customer = {
-        customerNumber: editing?.customerNumber || customerNumber(),
+        customerNumber: editing?.customerNumber || generateReferenceNumber('C'),
         firstName: form.firstName.trim(), lastName: form.lastName.trim(), companyName: form.companyName.trim(),
         email, phone: form.phone.trim(), addressLine1: form.addressLine1.trim(), addressLine2: form.addressLine2.trim(),
         city: form.city.trim(), region: form.region.trim(), postalCode: form.postalCode.trim().toUpperCase(),
