@@ -4,6 +4,23 @@ import { items } from '@wix/data';
 import { Page, WixDesignSystemProvider } from '@wix/design-system';
 import '@wix/design-system/styles.global.css';
 import { COLLECTIONS } from '../../../../lib/collection-ids';
+import type {
+  ActivityEntry,
+  AppSettings,
+  Asset,
+  Customer,
+  DocumentTemplate,
+  DocumentType,
+  Inspection,
+  InspectionType,
+  Payment,
+  PaymentType,
+  RentalDocument,
+  Reservation,
+  ReservationItem,
+  ReservationStatus,
+  WorkflowStage,
+} from '../../../../domain/types';
 import { calculateRentalPrice, getBlockedRange, rangesOverlap } from '../../../../lib/rental-pricing';
 import {
   calculateDeposit,
@@ -27,94 +44,7 @@ const TEMPLATES = COLLECTIONS.documentTemplates;
 
 type ViewMode = 'MONTH' | 'LIST' | 'AVAILABILITY';
 type DetailTab = 'DETAILS' | 'EQUIPMENT' | 'PAYMENTS' | 'DOCUMENTS' | 'INSPECTION' | 'NOTES' | 'HISTORY';
-type ReservationStatus = 'CONFIRMED' | 'RENTED' | 'RETURNED' | 'CANCELLED' | 'COMPLETED' | 'ERROR';
-type WorkflowStage = 'RESERVATION' | 'QUOTE' | 'CONTRACT' | 'INVOICE' | 'PAYMENT' | 'READY' | 'RENTED' | 'RETURNED' | 'COMPLETED';
-type DocumentType = 'QUOTE' | 'CONTRACT' | 'INVOICE';
 type CustomerMode = 'EXISTING' | 'NEW';
-type PaymentType = 'PAYMENT' | 'BOOKING_DEPOSIT' | 'SECURITY_DEPOSIT' | 'REFUND' | 'DEPOSIT_REFUND' | 'DAMAGE_CHARGE';
-type InspectionType = 'DEPARTURE' | 'RETURN';
-
-type Asset = {
-  _id?: string; title?: string; assetNumber?: string; productType?: string; status?: string;
-  dailyRateCents?: number; weeklyRateCents?: number; monthlyRateCents?: number;
-  discountAfterDays?: number; discountPercent?: number; currency?: string; active?: boolean;
-};
-
-type Customer = {
-  _id?: string; customerNumber?: string; firstName?: string; lastName?: string; companyName?: string;
-  email?: string; phone?: string; addressLine1?: string; addressLine2?: string; city?: string;
-  region?: string; postalCode?: string; country?: string; discountPercent?: number; active?: boolean;
-};
-
-type AppSettings = {
-  _id?: string; settingsKey?: string; companyName?: string; logoUrl?: string; currency?: string;
-  defaultBufferBeforeHours?: number; defaultBufferAfterHours?: number; taxesEnabled?: boolean;
-  tax1Name?: string; tax1Rate?: number; tax2Name?: string; tax2Rate?: number; tax2Compound?: boolean;
-  defaultDepositEnabled?: boolean; defaultDepositType?: DepositType; defaultDepositValue?: number;
-  defaultQuoteTemplateId?: string; defaultContractTemplateId?: string; defaultInvoiceTemplateId?: string;
-};
-
-type DocumentTemplate = {
-  _id?: string; name?: string; documentType?: DocumentType; logoUrl?: string; titleText?: string;
-  introText?: string; termsText?: string; footerText?: string; requiredFieldsCsv?: string; active?: boolean;
-};
-
-type Reservation = {
-  _id?: string; reservationNumber?: string; customerId?: string; customerNumber?: string;
-  customerName?: string; customerEmail?: string; customerPhone?: string;
-  customerAddressLine1?: string; customerAddressLine2?: string; customerCity?: string; customerRegion?: string;
-  customerPostalCode?: string; customerCountry?: string;
-  startDateTime?: Date | string; endDateTime?: Date | string; bufferBeforeHours?: number; bufferAfterHours?: number;
-  status?: ReservationStatus; workflowStage?: WorkflowStage;
-  quoteTemplateId?: string; quoteTemplateName?: string; contractTemplateId?: string; contractTemplateName?: string;
-  invoiceTemplateId?: string; invoiceTemplateName?: string;
-  subtotalCents?: number; customerDiscountPercent?: number; discountCents?: number; preTaxTotalCents?: number;
-  tax1Name?: string; tax1Rate?: number; tax1Cents?: number; tax2Name?: string; tax2Rate?: number;
-  tax2Cents?: number; taxTotalCents?: number; totalCents?: number; currency?: string;
-  depositRequired?: boolean; depositType?: DepositType; depositValue?: number; depositAmountCents?: number;
-  amountDueNowCents?: number; balanceDueCents?: number; paymentMode?: PaymentMode;
-  checkoutDateTime?: Date | string; returnDateTime?: Date | string; closedDateTime?: Date | string;
-  notes?: string; _createdDate?: Date | string; _updatedDate?: Date | string;
-};
-
-type ReservationItem = {
-  _id?: string; reservationId?: string; reservationNumber?: string; assetId?: string; assetNumber?: string;
-  assetTitle?: string; startDateTime?: Date | string; endDateTime?: Date | string;
-  blockedStartDateTime?: Date | string; blockedEndDateTime?: Date | string; bufferBeforeHours?: number;
-  bufferAfterHours?: number; billableDays?: number; lineTotalCents?: number; pricingMode?: string;
-  currency?: string; status?: ReservationStatus;
-};
-
-type RentalDocument = {
-  _id?: string; reservationId?: string; reservationNumber?: string; documentNumber?: string;
-  documentType?: DocumentType; status?: string; templateId?: string; templateName?: string;
-  logoUrl?: string; titleText?: string; introText?: string; termsText?: string; footerText?: string;
-  requiredFieldsCsv?: string; snapshotJson?: string; subtotalCents?: number; discountCents?: number;
-  preTaxTotalCents?: number; tax1Name?: string; tax1Cents?: number; tax2Name?: string; tax2Cents?: number;
-  amountCents?: number; currency?: string; issuedDate?: Date | string; sentDate?: Date | string;
-  acceptedDate?: Date | string; signedDate?: Date | string; dueDate?: Date | string; signerName?: string;
-  pdfUrl?: string; notes?: string; _createdDate?: Date | string;
-};
-
-type Payment = {
-  _id?: string; reservationId?: string; reservationNumber?: string; paymentNumber?: string; paymentType?: PaymentType;
-  method?: string; status?: string; amountCents?: number; currency?: string; paymentDate?: Date | string;
-  reference?: string; wixPaymentLinkId?: string; wixPaymentUrl?: string; wixCheckoutId?: string;
-  wixOrderId?: string; wixTransactionId?: string; wixOnlinePayment?: boolean; remainingBalanceCents?: number;
-  notes?: string; _createdDate?: Date | string;
-};
-
-type Inspection = {
-  _id?: string; reservationId?: string; reservationNumber?: string; inspectionNumber?: string;
-  inspectionType?: InspectionType; status?: string; assetId?: string; assetNumber?: string; assetTitle?: string;
-  condition?: string; hasDamage?: boolean; damageDescription?: string; damageAmountCents?: number;
-  photoUrls?: string; signerName?: string; inspectionDate?: Date | string; notes?: string; _createdDate?: Date | string;
-};
-
-type ActivityEntry = {
-  _id?: string; reservationId?: string; reservationNumber?: string; actionType?: string;
-  description?: string; actor?: string; eventDate?: Date | string; _createdDate?: Date | string;
-};
 
 type ReservationForm = {
   customerMode: CustomerMode; customerId: string; newFirstName: string; newLastName: string; newCompanyName: string;
