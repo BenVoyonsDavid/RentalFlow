@@ -4,6 +4,7 @@ import { createServer } from 'node:http';
 import { mkdtemp, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import assert from 'node:assert/strict';
 const temp = await mkdtemp(join(tmpdir(), 'rf-design-'));
 const root = resolve('.');
@@ -12,7 +13,7 @@ const plugins = [{name:'test-wix',setup(b){b.onResolve({filter:/^@wix\/essential
 await build({stdin:{contents:`import Widget from './src/extensions/site/widgets/rental-flow-online-booking/rental-flow-online-booking.navigation.runtime';customElements.define('test-booking',Widget);`,resolveDir:root},bundle:true,format:'esm',outfile:join(temp,'widget.js'),plugins,define:{'import.meta.env.BASE_API_URL':'""'}});
 await build({stdin:{contents:`import React,{useState} from 'react';import {createRoot} from 'react-dom/client';import Appearance from './src/extensions/dashboard/pages/settings/booking-appearance';function App(){const [value,setValue]=useState();return <Appearance value={value} onChange={v=>{window.savedTheme=v;setValue(v)}}/>}createRoot(document.getElementById('appearance')).render(<App/>);`,resolveDir:root,loader:'tsx'},bundle:true,format:'esm',jsx:'automatic',outfile:join(temp,'appearance.js'),plugins});
 await build({entryPoints:['src/lib/booking-theme.ts'],bundle:true,format:'esm',outfile:join(temp,'theme.mjs')});
-const {normalizeBookingTheme,DEFAULT_BOOKING_THEME,bookingThemeVariables,contrastRatio,BOOKING_PALETTES,bookingImageUrl}=await import(join(temp,'theme.mjs'));
+const {normalizeBookingTheme,DEFAULT_BOOKING_THEME,bookingThemeVariables,contrastRatio,BOOKING_PALETTES,bookingImageUrl}=await import(pathToFileURL(join(temp,'theme.mjs')).href);
 assert.deepEqual(normalizeBookingTheme('{bad'),DEFAULT_BOOKING_THEME);
 assert.equal(normalizeBookingTheme({primary:'red;display:none'}).primary,DEFAULT_BOOKING_THEME.primary);
 assert.equal(bookingImageUrl('javascript:alert(1)'),'');
