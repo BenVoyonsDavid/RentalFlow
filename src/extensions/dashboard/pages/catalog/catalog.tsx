@@ -5,10 +5,11 @@ import { Page, WixDesignSystemProvider } from '@wix/design-system';
 import '@wix/design-system/styles.global.css';
 import { decodeCatalogList, encodeCatalogList, type CatalogCompatibilityMode } from '../../../../lib/catalog-compatibility';
 import { useRentalFlowI18n } from '../../../../intl';
+import { COLLECTIONS } from '../../../../lib/collection-ids';
 
-const CATALOG = '@pilotedavid1/rental-flow/catalog-items';
-const ASSETS = '@pilotedavid1/rental-flow/assets';
-const CATEGORIES = '@pilotedavid1/rental-flow/categories';
+const CATALOG = COLLECTIONS.catalogItems;
+const ASSETS = COLLECTIONS.assets;
+const CATEGORIES = COLLECTIONS.categories;
 
 type CatalogItemType = 'PRODUCT' | 'ADDON' | 'SERVICE';
 type PricingMode = 'FIXED' | 'PER_UNIT' | 'PER_DAY' | 'PER_RESERVATION';
