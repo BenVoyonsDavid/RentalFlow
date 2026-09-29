@@ -1,10 +1,11 @@
 import type { APIRoute } from 'astro';
 import { items } from '@wix/data';
 import { auth } from '@wix/essentials';
+import { COLLECTIONS } from '../../lib/collection-ids';
 
-const SETTINGS = '@pilotedavid1/rental-flow/app-settings';
-const ASSETS = '@pilotedavid1/rental-flow/assets';
-const DOCUMENT_TEMPLATES = '@pilotedavid1/rental-flow/document-templates';
+const SETTINGS = COLLECTIONS.appSettings;
+const ASSETS = COLLECTIONS.assets;
+const DOCUMENT_TEMPLATES = COLLECTIONS.documentTemplates;
 
 function errorDetails(error: unknown) {
   if (error instanceof Error) {
