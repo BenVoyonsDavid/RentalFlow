@@ -4,6 +4,7 @@ import { appInstances } from '@wix/app-management';
 import { items } from '@wix/data';
 import { auth } from '@wix/essentials';
 import { COLLECTIONS } from '../../lib/collection-ids';
+import { generateReferenceNumber } from '../../lib/reference-number';
 import { isAssetAvailable } from '../../lib/asset-availability';
 import { normalizePublicCustomer, validatePublicCustomer, type PublicCustomerInput } from '../../lib/booking-customer';
 import { acquireCatalogStockLocks, loadCatalogBlockingItems, releaseCatalogStockLocks } from '../../server/catalog-stock';
@@ -46,6 +47,7 @@ const CATALOG = COLLECTIONS.catalogItems;
 const DOCUMENT_TEMPLATES = COLLECTIONS.documentTemplates;
 const SETTINGS = COLLECTIONS.appSettings;
 const PAYMENTS = COLLECTIONS.payments;
+const ACTIVITY = COLLECTIONS.activityLog;
 
 const MAX_PUBLIC_ASSETS = 25;
 
@@ -118,13 +120,6 @@ async function elevatedFind(query: any): Promise<any> {
 async function elevatedInsert(collectionId: string, item: Record<string, unknown>): Promise<any> {
   const insert = auth.elevate(items.insert);
   return insert(collectionId, item);
-}
-
-async function elevatedUpdate(collectionId: string, item: Record<string, unknown>): Promise<any> {
-  const update = auth.elevate(items.update);
-  const itemId = item._id;
-  if (typeof itemId !== 'string' || !itemId) throw new Error('MISSING_ITEM_ID');
-  return update(collectionId, { ...item, _id: itemId });
 }
 
 async function elevatedRemove(collectionId: string, itemId: string): Promise<any> {
