@@ -1,7 +1,7 @@
 import type { APIRoute } from 'astro';
 import { items } from '@wix/data';
 import { auth } from '@wix/essentials';
-import type { Reservation, ReservationItem } from '../../domain/types';
+import type { CatalogStockLock, Reservation, ReservationItem } from '../../domain/types';
 import { activeCatalogReservedQuantity, availableCatalogStock } from '../../lib/catalog-inventory';
 import { COLLECTIONS } from '../../lib/collection-ids';
 import {
@@ -72,7 +72,7 @@ async function requireAppInstance(): Promise<void> {
 }
 
 export const POST: APIRoute = async ({ request }) => {
-  let locks = [];
+  let locks: CatalogStockLock[] = [];
 
   try {
     await requireAppInstance();
