@@ -23,7 +23,7 @@ function elevatedQuery(collectionId: string): any {
 }
 
 async function elevatedFind(query: any): Promise<any> {
-  return query.find();
+  return query.find({ consistentRead: true });
 }
 
 async function elevatedInsert(collectionId: string, item: Record<string, unknown>): Promise<any> {
