@@ -16,7 +16,7 @@ export type Asset = {
   categoryId?: string;
   categoryName?: string;
   catalogTagsJson?: string;
-  status?: AssetStatus | string;
+  status?: AssetStatus;
   dailyRateCents?: number;
   weeklyRateCents?: number;
   monthlyRateCents?: number;
@@ -138,7 +138,7 @@ export type Reservation = {
   endDateTime?: Date | string;
   bufferBeforeHours?: number;
   bufferAfterHours?: number;
-  status?: ReservationStatus | string;
+  status?: ReservationStatus;
   workflowStage?: WorkflowStage;
   quoteTemplateId?: string;
   quoteTemplateName?: string;
@@ -199,7 +199,7 @@ export type ReservationItem = {
   lineTotalCents?: number;
   pricingMode?: string;
   currency?: string;
-  status?: ReservationStatus | string;
+  status?: ReservationStatus;
   _createdDate?: Date | string;
   _updatedDate?: Date | string;
 };
@@ -246,7 +246,7 @@ export type Payment = {
   reservationId?: string;
   reservationNumber?: string;
   paymentNumber?: string;
-  paymentType?: PaymentType | string;
+  paymentType?: PaymentType;
   method?: string;
   status?: string;
   amountCents?: number;
