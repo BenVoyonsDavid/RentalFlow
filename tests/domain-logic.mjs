@@ -26,6 +26,7 @@ const pricing = await bundle('src/lib/rental-pricing.ts', 'pricing.mjs');
 const availability = await bundle('src/lib/asset-availability.ts', 'asset-availability.mjs');
 const bookingCustomer = await bundle('src/lib/booking-customer.ts', 'booking-customer.mjs');
 const bookingPayment = await bundle('src/lib/booking-payment.ts', 'booking-payment.mjs');
+const publicBookingConfig = await bundle('src/lib/public-booking-config.ts', 'public-booking-config.mjs');
 const catalog = await bundle('src/lib/reservation-catalog.ts', 'catalog.mjs');
 const bookingCatalog = await bundle('src/lib/booking-catalog.ts', 'booking-catalog.mjs');
 const inventory = await bundle('src/lib/catalog-inventory.ts', 'catalog-inventory.mjs');
@@ -211,6 +212,48 @@ assert.deepEqual(
   { checkoutUrl: 'https://example.test/checkout', checkoutId: 'checkout-1' },
 );
 
+// Public booking configuration preserves defaults, required fields and period validation.
+assert.equal(publicBookingConfig.defaultPublicBookingSettings.currency, 'CAD');
+assert.equal(publicBookingConfig.defaultPublicBookingSettings.tax1Name, 'TPS');
+
+assert.deepEqual(
+  publicBookingConfig.requiredFieldsForDefaults(
+    {
+      defaultQuoteTemplateId: 'quote-1',
+      defaultContractTemplateId: 'contract-1',
+    },
+    [
+      { _id: 'quote-1', active: true, requiredFieldsCsv: 'customerName, customerEmail' },
+      { _id: 'contract-1', active: true, requiredFieldsCsv: 'customerEmail, customerPhone' },
+    ],
+  ),
+  ['customerName', 'customerEmail', 'customerPhone'],
+);
+
+const validPeriod = publicBookingConfig.validateBookingPeriod(
+  '2026-10-01T10:00:00Z',
+  '2026-10-02T10:00:00Z',
+  new Date('2026-09-29T12:00:00Z').getTime(),
+);
+assert.equal(validPeriod.start.toISOString(), '2026-10-01T10:00:00.000Z');
+assert.equal(validPeriod.end.toISOString(), '2026-10-02T10:00:00.000Z');
+assert.throws(
+  () => publicBookingConfig.validateBookingPeriod(
+    '2026-10-02T10:00:00Z',
+    '2026-10-01T10:00:00Z',
+    new Date('2026-09-29T12:00:00Z').getTime(),
+  ),
+  /INVALID_PERIOD/,
+);
+assert.throws(
+  () => publicBookingConfig.validateBookingPeriod(
+    '2026-01-01T10:00:00Z',
+    '2026-01-02T10:00:00Z',
+    new Date('2026-09-29T12:00:00Z').getTime(),
+  ),
+  /PAST_PERIOD/,
+);
+
 // Human-facing reference numbers use date + 50 bits of secure entropy.
 const deterministicReference = references.generateReferenceNumber(
   'RF',
@@ -377,4 +420,4 @@ assert.equal(compatibility.catalogItemAppliesToAsset({
   excludedAssetIdsJson: JSON.stringify(['asset-1']),
 }, asset), false);
 
-console.log('PASS: RentalFlow domain pricing, availability, customers, payments, finance, references, pagination, inventory and booking catalog rules.');
+console.log('PASS: RentalFlow domain pricing, availability, customers, payments, public booking config, finance, references, pagination, inventory and booking catalog rules.');
