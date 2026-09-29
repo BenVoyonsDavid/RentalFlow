@@ -2,35 +2,11 @@
 import { items } from '@wix/data';
 import { auth } from '@wix/essentials';
 import { COLLECTIONS } from '../../lib/collection-ids';
+import type { Payment, Reservation } from '../../domain/types';
 
 const PAYMENTS = COLLECTIONS.payments;
 const RESERVATIONS = COLLECTIONS.reservations;
 const ACTIVITY = COLLECTIONS.activityLog;
-
-type LocalPayment = {
-  _id?: string;
-  reservationId?: string;
-  reservationNumber?: string;
-  paymentNumber?: string;
-  status?: string;
-  amountCents?: number;
-  currency?: string;
-  paymentDate?: Date | string;
-  wixPaymentLinkId?: string;
-  wixTransactionId?: string;
-  wixOnlinePayment?: boolean;
-  remainingBalanceCents?: number;
-  notes?: string;
-};
-
-type Reservation = {
-  _id?: string;
-  reservationNumber?: string;
-  totalCents?: number;
-  balanceDueCents?: number;
-  workflowStage?: string;
-  status?: string;
-};
 
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
@@ -79,7 +55,7 @@ async function syncReservationBalance(reservationId: string): Promise<number> {
   const reservation = reservationResult.items?.[0] as Reservation | undefined;
   if (!reservation?._id) return 0;
 
-  const paid = (paymentsResult.items as LocalPayment[])
+  const paid = (paymentsResult.items as Payment[])
     .filter((payment) => payment.status === 'PAID')
     .reduce((sum, payment) => sum + Math.max(0, payment.amountCents || 0), 0);
   const balanceDueCents = Math.max(0, (reservation.totalCents || 0) - paid);
@@ -102,7 +78,7 @@ async function reconcilePendingPayments(): Promise<{ checked: number; updated: n
       .eq('wixOnlinePayment', true)
       .limit(100)
   );
-  const pending = pendingResult.items as LocalPayment[];
+  const pending = pendingResult.items as Payment[];
   if (!pending.length) return { checked: 0, updated: 0 };
 
   const wixGetPaid = await import('@wix/get-paid') as any;
@@ -138,7 +114,7 @@ async function reconcilePendingPayments(): Promise<{ checked: number; updated: n
         amountCents,
         paymentDate: link?.lastPaymentDate ? new Date(link.lastPaymentDate) : payment.paymentDate || new Date(),
         wixTransactionId: transactionId,
-        notes: [payment.notes, 'Paiement confirmÃ© automatiquement depuis Wix Payment Links.'].filter(Boolean).join(' '),
+        notes: [payment.notes, 'Paiement confirmé automatiquement depuis Wix Payment Links.'].filter(Boolean).join(' '),
       });
 
       let balanceDueCents = payment.remainingBalanceCents || 0;
@@ -148,7 +124,7 @@ async function reconcilePendingPayments(): Promise<{ checked: number; updated: n
         reservationId: payment.reservationId || '',
         reservationNumber: payment.reservationNumber || '',
         actionType: 'ONLINE_PAYMENT_CONFIRMED',
-        description: `Paiement Wix ${payment.paymentNumber || ''} confirmÃ©${amountCents ? ` pour ${(amountCents / 100).toFixed(2)} ${payment.currency || ''}` : ''}.`,
+        description: `Paiement Wix ${payment.paymentNumber || ''} confirmé${amountCents ? ` pour ${(amountCents / 100).toFixed(2)} ${payment.currency || ''}` : ''}.`,
         actor: 'RentalFlow Payment Sync',
         eventDate: new Date(),
       });
@@ -161,7 +137,7 @@ async function reconcilePendingPayments(): Promise<{ checked: number; updated: n
           paymentDate: link?.lastPaymentDate ? new Date(link.lastPaymentDate) : payment.paymentDate || new Date(),
           wixTransactionId: transactionId,
           remainingBalanceCents: balanceDueCents,
-          notes: [payment.notes, 'Paiement confirmÃ© automatiquement depuis Wix Payment Links.'].filter(Boolean).join(' '),
+          notes: [payment.notes, 'Paiement confirmé automatiquement depuis Wix Payment Links.'].filter(Boolean).join(' '),
         });
       }
 
