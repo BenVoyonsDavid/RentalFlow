@@ -5,6 +5,7 @@ import type { AppSettings, Asset, DocumentTemplate } from '../domain/types';
 import type { BookingCatalogItem } from '../lib/booking-catalog';
 import { COLLECTIONS } from '../lib/collection-ids';
 import { defaultPublicBookingSettings } from '../lib/public-booking-config';
+import { collectAllPages } from '../lib/pagination';
 import {
   planFromAppInstanceResponse,
   type RentalFlowPlan,
@@ -76,24 +77,30 @@ export async function loadSettingsAndTemplates(): Promise<{
 }
 
 export async function loadActiveAssets(): Promise<Asset[]> {
-  const result = await elevatedFind(
-    elevatedQuery(ASSETS)
-      .ne('active', false)
-      .ne('status', 'INACTIVE')
-      .limit(1000),
-  );
+  return collectAllPages(async (offset, limit) => {
+    const result = await elevatedFind(
+      elevatedQuery(ASSETS)
+        .ne('active', false)
+        .ne('status', 'INACTIVE')
+        .skip(offset)
+        .limit(limit),
+    );
 
-  return (result.items || []) as Asset[];
+    return (result.items || []) as Asset[];
+  }, 1000);
 }
 
 export async function loadActiveCatalog(): Promise<BookingCatalogItem[]> {
-  const result = await elevatedFind(
-    elevatedQuery(CATALOG)
-      .ne('active', false)
-      .limit(1000),
-  );
+  const catalog = await collectAllPages(async (offset, limit) => {
+    const result = await elevatedFind(
+      elevatedQuery(CATALOG)
+        .ne('active', false)
+        .skip(offset)
+        .limit(limit),
+    );
 
-  return (result.items || []).filter(
-    (item: BookingCatalogItem) => item.active !== false,
-  ) as BookingCatalogItem[];
+    return (result.items || []) as BookingCatalogItem[];
+  }, 1000);
+
+  return catalog.filter((item) => item.active !== false);
 }
