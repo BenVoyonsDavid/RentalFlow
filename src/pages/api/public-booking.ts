@@ -6,10 +6,12 @@ import { auth } from '@wix/essentials';
 import { COLLECTIONS } from '../../lib/collection-ids';
 import { collectAllPages } from '../../lib/pagination';
 import { generateReferenceNumber } from '../../lib/reference-number';
+import { activeCatalogReservedQuantity, availableCatalogStock } from '../../lib/catalog-inventory';
 import type {
   AppSettings,
   Asset,
   BookingLock,
+  CatalogStockLock,
   DocumentTemplate,
   ReservationItem,
 } from '../../domain/types';
@@ -44,6 +46,7 @@ const SETTINGS = COLLECTIONS.appSettings;
 const PAYMENTS = COLLECTIONS.payments;
 const ACTIVITY = COLLECTIONS.activityLog;
 const BOOKING_LOCKS = COLLECTIONS.bookingLocks;
+const CATALOG_STOCK_LOCKS = COLLECTIONS.catalogStockLocks;
 
 const BOOKING_LOCK_TTL_MS = 2 * 60 * 1000;
 const MAX_PUBLIC_ASSETS = 25;
@@ -248,6 +251,32 @@ async function loadBlockingItems(
   return groups.flat();
 }
 
+async function loadCatalogBlockingItems(
+  start: Date,
+  end: Date,
+  catalogItemIds: string[] = [],
+): Promise<ReservationItem[]> {
+  const loadForCatalogItem = async (catalogItemId?: string): Promise<ReservationItem[]> => collectAllPages(
+    async (offset, limit) => {
+      let query = elevatedQuery(RESERVATION_ITEMS)
+        .lt('startDateTime', end)
+        .gt('endDateTime', start);
+
+      if (catalogItemId) query = query.eq('catalogItemId', catalogItemId);
+
+      const result = await elevatedFind(query.skip(offset).limit(limit));
+      return (result.items || []) as ReservationItem[];
+    },
+    1000,
+  );
+
+  const uniqueCatalogItemIds = [...new Set(catalogItemIds.filter(Boolean))];
+  if (!uniqueCatalogItemIds.length) return loadForCatalogItem();
+
+  const groups = await Promise.all(uniqueCatalogItemIds.map((catalogItemId) => loadForCatalogItem(catalogItemId)));
+  return groups.flat();
+}
+
 function pricingOptions(plan: RentalFlowPlan) {
   return {
     allowWeekly: hasFeature(plan, 'WEEKLY_PRICING'),
@@ -322,6 +351,46 @@ async function releaseBookingLocks(locks: BookingLock[]): Promise<void> {
   }
 }
 
+async function acquireCatalogStockLocks(catalogItemIds: string[]): Promise<CatalogStockLock[]> {
+  const acquired: CatalogStockLock[] = [];
+  const token = lockToken();
+  const expiresAt = new Date(Date.now() + BOOKING_LOCK_TTL_MS);
+
+  try {
+    for (const catalogItemId of [...new Set(catalogItemIds)].sort()) {
+      const existingResult = await elevatedFind(
+        elevatedQuery(CATALOG_STOCK_LOCKS).eq('catalogItemId', catalogItemId).limit(1),
+      );
+      const existing = existingResult.items?.[0] as CatalogStockLock | undefined;
+      if (existing?._id) {
+        const expiry = asDate(existing.expiresAt);
+        if (expiry.getTime() && expiry.getTime() <= Date.now()) {
+          await elevatedRemove(CATALOG_STOCK_LOCKS, existing._id);
+        }
+      }
+
+      try {
+        const created = await elevatedInsert(CATALOG_STOCK_LOCKS, { catalogItemId, lockToken: token, expiresAt });
+        acquired.push(created as CatalogStockLock);
+      } catch {
+        throw new Error('CATALOG_STOCK_BUSY');
+      }
+    }
+    return acquired;
+  } catch (error) {
+    for (const lock of acquired) {
+      if (lock._id) await elevatedRemove(CATALOG_STOCK_LOCKS, lock._id).catch(() => undefined);
+    }
+    throw error;
+  }
+}
+
+async function releaseCatalogStockLocks(locks: CatalogStockLock[]): Promise<void> {
+  for (const lock of locks) {
+    if (lock._id) await elevatedRemove(CATALOG_STOCK_LOCKS, lock._id).catch(() => undefined);
+  }
+}
+
 function publicAsset(
   asset: Asset,
   plan: RentalFlowPlan,
@@ -368,7 +437,7 @@ function publicAsset(
   };
 }
 
-function publicCatalogItem(item: CatalogItem, fallbackCurrency: string) {
+function publicCatalogItem(item: CatalogItem, fallbackCurrency: string, blockingItems: ReservationItem[] = []) {
   return {
     id: item._id || '',
     name: item.name || 'Extra',
@@ -382,7 +451,12 @@ function publicCatalogItem(item: CatalogItem, fallbackCurrency: string) {
     required: item.required === true,
     recommended: item.recommended === true,
     trackInventory: item.trackInventory === true,
-    stockQuantity: item.trackInventory ? Math.max(0, Math.floor(item.stockQuantity || 0)) : null,
+    stockQuantity: item.trackInventory
+      ? availableCatalogStock(
+          item.stockQuantity,
+          item._id ? activeCatalogReservedQuantity(blockingItems, item._id) : 0,
+        )
+      : null,
     compatibilityMode: item.compatibilityMode || 'ALL',
     applicableCategoryIdsJson: item.applicableCategoryIdsJson || '[]',
     applicableCategoriesJson: item.applicableCategoriesJson || '[]',
@@ -408,14 +482,11 @@ function parseCatalogSelections(raw: PublicCatalogSelection[] | undefined): Map<
   return result;
 }
 
-function resolveCatalogLines(
+function catalogItemsForReservation(
   activeCatalog: CatalogItem[],
   selectedAssets: Asset[],
   requested: Map<string, number>,
-  start: Date,
-  end: Date,
-  fallbackCurrency: string,
-): ReservationCatalogLine[] {
+): CatalogItem[] {
   const compatible = activeCatalog.filter((item) => item._id && catalogItemAppliesToAnyAsset(item, selectedAssets));
   const compatibleIds = new Set(compatible.map((item) => item._id).filter(Boolean) as string[]);
 
@@ -423,18 +494,31 @@ function resolveCatalogLines(
     if (!compatibleIds.has(requestedId)) throw new Error('INVALID_CATALOG_SELECTION');
   }
 
+  return compatible.filter((item) => item.required === true || (!!item._id && requested.has(item._id)));
+}
+
+function resolveCatalogLines(
+  selectedCatalogItems: CatalogItem[],
+  requested: Map<string, number>,
+  start: Date,
+  end: Date,
+  fallbackCurrency: string,
+  blockingItems: ReservationItem[] = [],
+): ReservationCatalogLine[] {
   const billableDays = catalogBillableDays(start, end);
-  return compatible
-    .filter((item) => item.required === true || (!!item._id && requested.has(item._id)))
-    .map((item) => {
-      const id = item._id || '';
-      const quantity = requested.get(id) || 1;
-      if (item.trackInventory === true) {
-        const stock = Math.max(0, Math.floor(item.stockQuantity || 0));
-        if (quantity > stock) throw new Error('CATALOG_OUT_OF_STOCK');
-      }
-      return catalogItemToReservationLine(item, quantity, billableDays, fallbackCurrency);
-    });
+
+  return selectedCatalogItems.map((item) => {
+    const id = item._id || '';
+    const quantity = requested.get(id) || 1;
+
+    if (item.trackInventory === true) {
+      const reserved = id ? activeCatalogReservedQuantity(blockingItems, id) : 0;
+      const available = availableCatalogStock(item.stockQuantity, reserved);
+      if (quantity > available) throw new Error('CATALOG_OUT_OF_STOCK');
+    }
+
+    return catalogItemToReservationLine(item, quantity, billableDays, fallbackCurrency);
+  });
 }
 
 export const GET: APIRoute = async ({ request }) => {
@@ -453,11 +537,15 @@ export const GET: APIRoute = async ({ request }) => {
     let start: Date | undefined;
     let end: Date | undefined;
     let blockingItems: ReservationItem[] = [];
+    let catalogBlockingItems: ReservationItem[] = [];
     if (startValue && endValue) {
       const period = validatePeriod(startValue, endValue);
       start = period.start;
       end = period.end;
-      blockingItems = await loadBlockingItems(start, end, settings.defaultBufferBeforeHours || 0, settings.defaultBufferAfterHours || 0);
+      [blockingItems, catalogBlockingItems] = await Promise.all([
+        loadBlockingItems(start, end, settings.defaultBufferBeforeHours || 0, settings.defaultBufferAfterHours || 0),
+        loadCatalogBlockingItems(start, end),
+      ]);
     }
 
     if (!hasAppAccess(plan)) return json({ error: 'Un abonnement RentalFlow actif est requis.' }, 402, request);
@@ -489,7 +577,7 @@ export const GET: APIRoute = async ({ request }) => {
         requiredFields: requiredFieldsForDefaults(settings, templates),
       },
       assets: assets.map((asset) => publicAsset(asset, plan, start, end, settings, blockingItems)),
-      catalogItems: catalog.map((item) => publicCatalogItem(item, currency)),
+      catalogItems: catalog.map((item) => publicCatalogItem(item, currency, catalogBlockingItems)),
     }, 200, request);
   } catch (error) {
     if (error instanceof Error && error.message === 'UNAUTHORIZED') return json({ error: 'Unauthorized' }, 401, request);
@@ -503,6 +591,7 @@ export const POST: APIRoute = async ({ request }) => {
   let createdReservation: any = null;
   const createdItems: any[] = [];
   let acquiredLocks: BookingLock[] = [];
+  let acquiredCatalogStockLocks: CatalogStockLock[] = [];
 
   try {
     await requireAppInstance();
@@ -574,14 +663,37 @@ export const POST: APIRoute = async ({ request }) => {
     const priceLines = selectedAssets.map((asset) => ({ asset, ...calculateRentalPrice(asset, start, end, pricingOptions(plan)) }));
     const currency = priceLines[0]?.asset.currency || settings.currency || 'CAD';
 
+    let selectedCatalogItems: CatalogItem[];
+    try {
+      selectedCatalogItems = catalogItemsForReservation(activeCatalog, selectedAssets, requestedCatalog);
+    } catch {
+      return json({ error: 'Un extra sélectionné n’est pas compatible avec cette réservation.' }, 400);
+    }
+
+    const stockTrackedCatalogIds = selectedCatalogItems
+      .filter((item) => item.trackInventory === true && item._id)
+      .map((item) => item._id as string);
+
+    acquiredCatalogStockLocks = await acquireCatalogStockLocks(stockTrackedCatalogIds);
+
     let catalogLines: ReservationCatalogLine[];
     try {
-      catalogLines = resolveCatalogLines(activeCatalog, selectedAssets, requestedCatalog, start, end, currency);
+      const catalogBlockingItems = stockTrackedCatalogIds.length
+        ? await loadCatalogBlockingItems(start, end, stockTrackedCatalogIds)
+        : [];
+      catalogLines = resolveCatalogLines(
+        selectedCatalogItems,
+        requestedCatalog,
+        start,
+        end,
+        currency,
+        catalogBlockingItems,
+      );
     } catch (error) {
       if (error instanceof Error && error.message === 'CATALOG_OUT_OF_STOCK') {
         return json({ error: 'Un extra sélectionné n’est plus disponible dans la quantité demandée.' }, 409);
       }
-      return json({ error: 'Un extra sélectionné n’est pas compatible avec cette réservation.' }, 400);
+      throw error;
     }
 
     const rentalFinanceLines: ReservationCatalogLine[] = priceLines.map((line) => ({
@@ -841,10 +953,12 @@ export const POST: APIRoute = async ({ request }) => {
 
     if (error instanceof Error && error.message === 'UNAUTHORIZED') return json({ error: 'Unauthorized' }, 401, request);
     if (error instanceof Error && error.message === 'BOOKING_BUSY') return json({ error: 'Cette disponibilité est en cours de réservation. Réessayez dans quelques secondes.' }, 409);
+    if (error instanceof Error && error.message === 'CATALOG_STOCK_BUSY') return json({ error: 'Le stock d’un extra est en cours de réservation. Réessayez dans quelques secondes.' }, 409);
     if (error instanceof Error && ['INVALID_PERIOD', 'PERIOD_TOO_LONG', 'PAST_PERIOD'].includes(error.message)) return json({ error: error.message }, 400, request);
     if (error instanceof Error && error.message.startsWith('PAYLINK')) return json({ error: 'La réservation n’a pas été confirmée parce que le paiement Wix n’a pas pu être préparé.' }, 502);
     return json({ error: 'Impossible de compléter la réservation en ligne.' }, 500);
   } finally {
+    await releaseCatalogStockLocks(acquiredCatalogStockLocks);
     await releaseBookingLocks(acquiredLocks);
   }
 };
