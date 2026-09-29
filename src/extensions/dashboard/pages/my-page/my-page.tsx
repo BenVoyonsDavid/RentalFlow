@@ -5,16 +5,10 @@ import { httpClient } from '@wix/essentials';
 import { Page, WixDesignSystemProvider } from '@wix/design-system';
 import '@wix/design-system/styles.global.css';
 import { COLLECTIONS } from '../../../../lib/collection-ids';
+import type { Asset, Reservation } from '../../../../domain/types';
 
 const ASSETS = COLLECTIONS.assets;
 const RESERVATIONS = COLLECTIONS.reservations;
-
-type AssetStatus = 'AVAILABLE' | 'RESERVED' | 'RENTED' | 'MAINTENANCE' | 'INACTIVE';
-type Asset = { status?: AssetStatus; active?: boolean };
-type Reservation = {
-  _id?: string; reservationNumber?: string; customerName?: string; startDateTime?: Date | string;
-  endDateTime?: Date | string; status?: string; workflowStage?: string; totalCents?: number; currency?: string;
-};
 
 const card: CSSProperties = { background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 20, boxShadow: '0 1px 3px rgba(0,0,0,.06)' };
 
