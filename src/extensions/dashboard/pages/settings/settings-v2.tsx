@@ -9,9 +9,10 @@ import '@wix/design-system/styles.global.css';
 import { assetLimits, hasFeature, planLabels, type RentalFlowPlan } from '../../../../lib/plans';
 import { useRentalFlowPlan } from '../../../../lib/use-plan';
 import PaymentSettingsPanel from './payment-settings-panel';
+import { COLLECTIONS } from '../../../../lib/collection-ids';
 
-const SETTINGS = '@pilotedavid1/rental-flow/app-settings';
-const TEMPLATES = '@pilotedavid1/rental-flow/document-templates';
+const SETTINGS = COLLECTIONS.appSettings;
+const TEMPLATES = COLLECTIONS.documentTemplates;
 
 type SettingsTab = 'APPEARANCE' | 'GENERAL' | 'TAXES_PAYMENTS' | 'TEMPLATES' | 'PLANS';
 type DocumentType = 'QUOTE' | 'CONTRACT' | 'INVOICE';
