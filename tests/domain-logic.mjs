@@ -25,6 +25,7 @@ const finance = await bundle('src/lib/reservation-finance.ts', 'finance.mjs');
 const pricing = await bundle('src/lib/rental-pricing.ts', 'pricing.mjs');
 const catalog = await bundle('src/lib/reservation-catalog.ts', 'catalog.mjs');
 const compatibility = await bundle('src/lib/catalog-compatibility.ts', 'compatibility.mjs');
+const pagination = await bundle('src/lib/pagination.ts', 'pagination.mjs');
 
 // Taxes and deposits stay in integer cents.
 assert.deepEqual(finance.calculateTaxes(10_000, {
@@ -109,6 +110,16 @@ assert.equal(
   true,
 );
 
+// Pagination must not truncate availability checks at 1000 rows.
+const pagedSource = Array.from({ length: 2505 }, (_, index) => ({ id: index + 1 }));
+const pageOffsets = [];
+const pagedItems = await pagination.collectAllPages(async (offset, limit) => {
+  pageOffsets.push(offset);
+  return pagedSource.slice(offset, offset + limit);
+}, 1000);
+assert.equal(pagedItems.length, 2505);
+assert.deepEqual(pageOffsets, [0, 1000, 2000]);
+
 // Catalog pricing and compatibility.
 const perDayItem = {
   _id: 'extra-1',
@@ -139,4 +150,4 @@ assert.equal(compatibility.catalogItemAppliesToAsset({
   excludedAssetIdsJson: JSON.stringify(['asset-1']),
 }, asset), false);
 
-console.log('PASS: RentalFlow domain pricing, finance and catalog rules.');
+console.log('PASS: RentalFlow domain pricing, finance, pagination and catalog rules.');
