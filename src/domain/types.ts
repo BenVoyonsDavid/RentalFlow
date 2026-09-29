@@ -317,3 +317,12 @@ export type BookingLock = {
   _createdDate?: Date | string;
   _updatedDate?: Date | string;
 };
+
+export type CatalogStockLock = {
+  _id?: string;
+  catalogItemId?: string;
+  lockToken?: string;
+  expiresAt?: Date | string;
+  _createdDate?: Date | string;
+  _updatedDate?: Date | string;
+};
