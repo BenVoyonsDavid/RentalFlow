@@ -34,8 +34,12 @@ export type Asset = {
 export type Category = {
   _id?: string;
   name?: string;
+  key?: string;
+  description?: string;
   active?: boolean;
   forEquipment?: boolean;
+  forProducts?: boolean;
+  forExtras?: boolean;
   sortOrder?: number;
   _createdDate?: Date | string;
   _updatedDate?: Date | string;
