@@ -4,12 +4,12 @@ import { appInstances } from '@wix/app-management';
 import { items } from '@wix/data';
 import { auth } from '@wix/essentials';
 import { COLLECTIONS } from '../../lib/collection-ids';
-import { generateReferenceNumber } from '../../lib/reference-number';
 import { isAssetAvailable } from '../../lib/asset-availability';
 import { normalizePublicCustomer, validatePublicCustomer, type PublicCustomerInput } from '../../lib/booking-customer';
 import { acquireCatalogStockLocks, loadCatalogBlockingItems, releaseCatalogStockLocks } from '../../server/catalog-stock';
 import { acquireBookingLocks, loadBlockingItems, releaseBookingLocks } from '../../server/booking-availability';
 import { findOrCreatePublicCustomer } from '../../server/customer-service';
+import { createOnlineReservation, rollbackReservationCreation, type CreatedOnlineReservation } from '../../server/reservation-service';
 import type {
   AppSettings,
   Asset,
@@ -18,7 +18,7 @@ import type {
   DocumentTemplate,
   ReservationItem,
 } from '../../domain/types';
-import { calculateRentalPrice, getBlockedRange } from '../../lib/rental-pricing';
+import { calculateRentalPrice } from '../../lib/rental-pricing';
 import {
   calculateDeposit,
   parseRequiredFields,
@@ -43,12 +43,9 @@ import {
 
 const ASSETS = COLLECTIONS.assets;
 const CATALOG = COLLECTIONS.catalogItems;
-const RESERVATIONS = COLLECTIONS.reservations;
-const RESERVATION_ITEMS = COLLECTIONS.reservationItems;
 const DOCUMENT_TEMPLATES = COLLECTIONS.documentTemplates;
 const SETTINGS = COLLECTIONS.appSettings;
 const PAYMENTS = COLLECTIONS.payments;
-const ACTIVITY = COLLECTIONS.activityLog;
 
 const MAX_PUBLIC_ASSETS = 25;
 
@@ -321,8 +318,7 @@ export const GET: APIRoute = async ({ request }) => {
 };
 
 export const POST: APIRoute = async ({ request }) => {
-  let createdReservation: any = null;
-  const createdItems: any[] = [];
+  let createdBooking: CreatedOnlineReservation | null = null;
   let acquiredLocks: BookingLock[] = [];
   let acquiredCatalogStockLocks: CatalogStockLock[] = [];
 
@@ -444,113 +440,36 @@ export const POST: APIRoute = async ({ request }) => {
     const depositResult = calculateDeposit(finance.totalCents, paymentMode, depositType, depositValue);
 
     const bookingCustomer = await findOrCreatePublicCustomer(customer);
-    const customerId = bookingCustomer._id || '';
-    const customerNumber = bookingCustomer.customerNumber || '';
 
     const documentsEnabled = hasFeature(plan, 'DOCUMENTS');
     const quoteTemplate = documentsEnabled ? templates.find((template) => template._id === settings.defaultQuoteTemplateId && template.active !== false) : undefined;
     const contractTemplate = documentsEnabled ? templates.find((template) => template._id === settings.defaultContractTemplateId && template.active !== false) : undefined;
     const invoiceTemplate = documentsEnabled ? templates.find((template) => template._id === settings.defaultInvoiceTemplateId && template.active !== false) : undefined;
-    const reservationNumber = generateReferenceNumber('RF');
 
-    createdReservation = await elevatedInsert(RESERVATIONS, {
-      reservationNumber,
-      customerId,
-      customerNumber,
-      customerName: customer.name,
-      customerEmail: customer.email,
-      customerPhone: customer.phone,
-      customerAddressLine1: customer.addressLine1,
-      customerAddressLine2: customer.addressLine2,
-      customerCity: customer.city,
-      customerRegion: customer.region,
-      customerPostalCode: customer.postalCode,
-      customerCountry: customer.country,
-      startDateTime: start,
-      endDateTime: end,
-      bufferBeforeHours: before,
-      bufferAfterHours: after,
-      status: 'CONFIRMED',
-      workflowStage: paymentsEnabled ? 'PAYMENT' : 'RESERVATION',
-      quoteTemplateId: quoteTemplate?._id || '',
-      quoteTemplateName: quoteTemplate?.name || '',
-      contractTemplateId: contractTemplate?._id || '',
-      contractTemplateName: contractTemplate?.name || '',
-      invoiceTemplateId: invoiceTemplate?._id || '',
-      invoiceTemplateName: invoiceTemplate?.name || '',
-      subtotalCents: finance.subtotalCents,
-      customerDiscountPercent: 0,
-      discountCents: finance.discountCents,
-      preTaxTotalCents: finance.preTaxTotalCents,
-      tax1Name: settings.taxesEnabled === false ? '' : settings.tax1Name || '',
-      tax1Rate: settings.taxesEnabled === false ? 0 : settings.tax1Rate || 0,
-      tax1Cents: finance.tax1Cents,
-      tax2Name: settings.taxesEnabled === false ? '' : settings.tax2Name || '',
-      tax2Rate: settings.taxesEnabled === false ? 0 : settings.tax2Rate || 0,
-      tax2Cents: finance.tax2Cents,
-      taxTotalCents: finance.taxTotalCents,
-      totalCents: finance.totalCents,
-      currency,
-      depositRequired: paymentMode === 'DEPOSIT',
+    createdBooking = await createOnlineReservation({
+      customer,
+      bookingCustomer,
+      settings,
+      quoteTemplate,
+      contractTemplate,
+      invoiceTemplate,
+      start,
+      end,
+      beforeHours: before,
+      afterHours: after,
+      paymentsEnabled,
+      paymentMode,
       depositType,
       depositValue,
-      depositAmountCents: depositResult.depositAmountCents,
-      amountDueNowCents: depositResult.amountDueNowCents,
-      balanceDueCents: depositResult.balanceDueCents,
-      paymentMode,
+      deposit: depositResult,
+      finance,
+      currency,
       notes: clean(body.notes, 1000),
+      priceLines,
+      catalogLines,
     });
 
-    const blocked = getBlockedRange(start, end, before, after);
-    for (const line of priceLines) {
-      if (!line.asset._id) continue;
-      const createdItem = await elevatedInsert(RESERVATION_ITEMS, {
-        reservationId: createdReservation._id,
-        reservationNumber,
-        lineType: 'RENTAL',
-        assetId: line.asset._id,
-        assetNumber: line.asset.assetNumber || '',
-        assetTitle: line.asset.title || '',
-        itemName: line.asset.title || '',
-        quantity: 1,
-        taxable: true,
-        startDateTime: start,
-        endDateTime: end,
-        blockedStartDateTime: blocked.blockedStart,
-        blockedEndDateTime: blocked.blockedEnd,
-        bufferBeforeHours: before,
-        bufferAfterHours: after,
-        billableDays: line.billableDays,
-        lineTotalCents: line.totalCents,
-        pricingMode: line.pricingMode,
-        currency: line.asset.currency || currency,
-        status: 'CONFIRMED',
-      });
-      createdItems.push(createdItem);
-    }
-
-    for (const line of catalogLines) {
-      const createdItem = await elevatedInsert(RESERVATION_ITEMS, {
-        reservationId: createdReservation._id,
-        reservationNumber,
-        ...line,
-        startDateTime: start,
-        endDateTime: end,
-        status: 'CONFIRMED',
-      });
-      createdItems.push(createdItem);
-    }
-
-    await elevatedInsert(ACTIVITY, {
-      reservationId: createdReservation._id,
-      reservationNumber,
-      actionType: 'ONLINE_RESERVATION_CREATED',
-      description: catalogLines.length
-        ? `Réservation en ligne ${reservationNumber} créée par ${customer.name} avec ${catalogLines.length} extra(s).`
-        : `Réservation en ligne ${reservationNumber} créée par ${customer.name}.`,
-      actor: 'Client en ligne',
-      eventDate: new Date(),
-    });
+    const { reservation: createdReservation, reservationNumber } = createdBooking;
 
     const amount = depositResult.amountDueNowCents;
     if (!paymentsEnabled || amount <= 0) {
@@ -645,12 +564,9 @@ export const POST: APIRoute = async ({ request }) => {
   } catch (error) {
     console.error('RentalFlow public booking POST failed', error);
 
-    if (createdReservation?._id) {
+    if (createdBooking) {
       try {
-        await elevatedUpdate(RESERVATIONS, { ...createdReservation, status: 'CANCELLED' });
-        for (const item of createdItems) {
-          if (item?._id) await elevatedUpdate(RESERVATION_ITEMS, { ...item, status: 'CANCELLED' });
-        }
+        await rollbackReservationCreation(createdBooking);
       } catch (rollbackError) {
         console.error('RentalFlow public booking rollback failed', rollbackError);
       }
