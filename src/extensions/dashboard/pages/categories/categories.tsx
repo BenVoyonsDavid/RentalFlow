@@ -5,20 +5,9 @@ import { Page, WixDesignSystemProvider } from '@wix/design-system';
 import '@wix/design-system/styles.global.css';
 import { useRentalFlowI18n } from '../../../../intl';
 import { COLLECTIONS } from '../../../../lib/collection-ids';
+import type { Category } from '../../../../domain/types';
 
 const CATEGORIES = COLLECTIONS.categories;
-
-type Category = {
-  _id?: string;
-  name?: string;
-  key?: string;
-  description?: string;
-  forEquipment?: boolean;
-  forProducts?: boolean;
-  forExtras?: boolean;
-  active?: boolean;
-  sortOrder?: number;
-};
 
 type FormState = {
   name: string;
