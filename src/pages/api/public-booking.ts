@@ -6,7 +6,6 @@ import { auth } from '@wix/essentials';
 import { COLLECTIONS } from '../../lib/collection-ids';
 import { generateReferenceNumber } from '../../lib/reference-number';
 import { isAssetAvailable } from '../../lib/asset-availability';
-import { activeCatalogReservedQuantity, availableCatalogStock } from '../../lib/catalog-inventory';
 import { acquireCatalogStockLocks, loadCatalogBlockingItems, releaseCatalogStockLocks } from '../../server/catalog-stock';
 import { acquireBookingLocks, loadBlockingItems, releaseBookingLocks } from '../../server/booking-availability';
 import type {
@@ -27,16 +26,18 @@ import {
 } from '../../lib/reservation-finance';
 import { hasAppAccess, hasFeature, planFromAppInstanceResponse, type RentalFlowPlan } from '../../lib/plans';
 import {
-  catalogBillableDays,
-  catalogItemToReservationLine,
   computeReservationFinancials,
-  type CatalogReservationItem,
   type ReservationCatalogLine,
 } from '../../lib/reservation-catalog';
 import {
-  catalogItemAppliesToAnyAsset,
-  type CatalogCompatibilityRule,
-} from '../../lib/catalog-compatibility';
+  catalogItemsForReservation,
+  parseCatalogSelections,
+  publicCatalogItem,
+  resolveCatalogLines,
+  stockTrackedCatalogItemIds,
+  type BookingCatalogItem,
+  type PublicCatalogSelection,
+} from '../../lib/booking-catalog';
 
 const ASSETS = COLLECTIONS.assets;
 const CATALOG = COLLECTIONS.catalogItems;
@@ -49,12 +50,6 @@ const PAYMENTS = COLLECTIONS.payments;
 const ACTIVITY = COLLECTIONS.activityLog;
 
 const MAX_PUBLIC_ASSETS = 25;
-const MAX_PUBLIC_CATALOG_ITEMS = 50;
-const MAX_CATALOG_QUANTITY = 999;
-
-type CatalogItem = CatalogReservationItem & CatalogCompatibilityRule & {
-  image?: unknown;
-};
 
 type PublicCustomer = {
   name?: string;
@@ -66,11 +61,6 @@ type PublicCustomer = {
   region?: string;
   postalCode?: string;
   country?: string;
-};
-
-type PublicCatalogSelection = {
-  id?: string;
-  quantity?: number;
 };
 
 type BookingRequest = {
@@ -206,9 +196,9 @@ async function loadActiveAssets(): Promise<Asset[]> {
   return result.items as Asset[];
 }
 
-async function loadActiveCatalog(): Promise<CatalogItem[]> {
+async function loadActiveCatalog(): Promise<BookingCatalogItem[]> {
   const result = await elevatedFind(elevatedQuery(CATALOG).ne('active', false).limit(1000));
-  return (result.items || []).filter((item: CatalogItem) => item.active !== false) as CatalogItem[];
+  return (result.items || []).filter((item: BookingCatalogItem) => item.active !== false) as BookingCatalogItem[];
 }
 
 function pricingOptions(plan: RentalFlowPlan) {
@@ -273,90 +263,6 @@ function publicAsset(
     lineTotalCents,
     pricingMode,
   };
-}
-
-function publicCatalogItem(item: CatalogItem, fallbackCurrency: string, blockingItems: ReservationItem[] = []) {
-  return {
-    id: item._id || '',
-    name: item.name || 'Extra',
-    description: item.description || '',
-    sku: item.sku || '',
-    itemType: item.itemType || 'ADDON',
-    priceCents: Math.max(0, Math.round(item.priceCents || 0)),
-    currency: item.currency || fallbackCurrency,
-    pricingMode: item.pricingMode || 'FIXED',
-    taxable: item.taxable !== false,
-    required: item.required === true,
-    recommended: item.recommended === true,
-    trackInventory: item.trackInventory === true,
-    stockQuantity: item.trackInventory
-      ? availableCatalogStock(
-          item.stockQuantity,
-          item._id ? activeCatalogReservedQuantity(blockingItems, item._id) : 0,
-        )
-      : null,
-    compatibilityMode: item.compatibilityMode || 'ALL',
-    applicableCategoryIdsJson: item.applicableCategoryIdsJson || '[]',
-    applicableCategoriesJson: item.applicableCategoriesJson || '[]',
-    applicableTagsJson: item.applicableTagsJson || '[]',
-    applicableAssetIdsJson: item.applicableAssetIdsJson || '[]',
-    excludedAssetIdsJson: item.excludedAssetIdsJson || '[]',
-  };
-}
-
-function parseCatalogSelections(raw: PublicCatalogSelection[] | undefined): Map<string, number> {
-  if (!Array.isArray(raw) || raw.length > MAX_PUBLIC_CATALOG_ITEMS) {
-    if (Array.isArray(raw) && raw.length > MAX_PUBLIC_CATALOG_ITEMS) throw new Error('INVALID_CATALOG_SELECTION');
-    return new Map();
-  }
-
-  const result = new Map<string, number>();
-  for (const entry of raw) {
-    const id = clean(entry?.id, 80);
-    if (!id) continue;
-    const quantity = Math.min(MAX_CATALOG_QUANTITY, Math.max(1, Math.floor(Number(entry?.quantity) || 1)));
-    result.set(id, Math.max(result.get(id) || 0, quantity));
-  }
-  return result;
-}
-
-function catalogItemsForReservation(
-  activeCatalog: CatalogItem[],
-  selectedAssets: Asset[],
-  requested: Map<string, number>,
-): CatalogItem[] {
-  const compatible = activeCatalog.filter((item) => item._id && catalogItemAppliesToAnyAsset(item, selectedAssets));
-  const compatibleIds = new Set(compatible.map((item) => item._id).filter(Boolean) as string[]);
-
-  for (const requestedId of requested.keys()) {
-    if (!compatibleIds.has(requestedId)) throw new Error('INVALID_CATALOG_SELECTION');
-  }
-
-  return compatible.filter((item) => item.required === true || (!!item._id && requested.has(item._id)));
-}
-
-function resolveCatalogLines(
-  selectedCatalogItems: CatalogItem[],
-  requested: Map<string, number>,
-  start: Date,
-  end: Date,
-  fallbackCurrency: string,
-  blockingItems: ReservationItem[] = [],
-): ReservationCatalogLine[] {
-  const billableDays = catalogBillableDays(start, end);
-
-  return selectedCatalogItems.map((item) => {
-    const id = item._id || '';
-    const quantity = requested.get(id) || 1;
-
-    if (item.trackInventory === true) {
-      const reserved = id ? activeCatalogReservedQuantity(blockingItems, id) : 0;
-      const available = availableCatalogStock(item.stockQuantity, reserved);
-      if (quantity > available) throw new Error('CATALOG_OUT_OF_STOCK');
-    }
-
-    return catalogItemToReservationLine(item, quantity, billableDays, fallbackCurrency);
-  });
 }
 
 export const GET: APIRoute = async ({ request }) => {
@@ -501,16 +407,14 @@ export const POST: APIRoute = async ({ request }) => {
     const priceLines = selectedAssets.map((asset) => ({ asset, ...calculateRentalPrice(asset, start, end, pricingOptions(plan)) }));
     const currency = priceLines[0]?.asset.currency || settings.currency || 'CAD';
 
-    let selectedCatalogItems: CatalogItem[];
+    let selectedCatalogItems: BookingCatalogItem[];
     try {
       selectedCatalogItems = catalogItemsForReservation(activeCatalog, selectedAssets, requestedCatalog);
     } catch {
       return json({ error: 'Un extra sélectionné n’est pas compatible avec cette réservation.' }, 400);
     }
 
-    const stockTrackedCatalogIds = selectedCatalogItems
-      .filter((item) => item.trackInventory === true && item._id)
-      .map((item) => item._id as string);
+    const stockTrackedCatalogIds = stockTrackedCatalogItemIds(selectedCatalogItems);
 
     acquiredCatalogStockLocks = await acquireCatalogStockLocks(stockTrackedCatalogIds);
 
