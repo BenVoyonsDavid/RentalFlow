@@ -55,6 +55,14 @@ export default {
       fields: [{ path: 'catalogItemId', order: 'ASC' }],
       unique: false,
     },
+    {
+      fields: [
+        { path: 'catalogItemId', order: 'ASC' },
+        { path: 'startDateTime', order: 'ASC' },
+        { path: 'endDateTime', order: 'ASC' },
+      ],
+      unique: false,
+    },
   ],
   initialData: [],
 } satisfies DataCollection;
