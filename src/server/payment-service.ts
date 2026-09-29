@@ -37,6 +37,11 @@ async function elevatedInsert(collectionId: string, item: Record<string, unknown
   return insert(collectionId, item);
 }
 
+function elevatedQuery(collectionId: string): any {
+  const query = auth.elevate(items.query);
+  return query(collectionId);
+}
+
 async function elevatedFind(query: any): Promise<any> {
   return query.find({ consistentRead: true });
 }
@@ -52,7 +57,7 @@ async function cancelLocalPaymentByLinkId(paymentLinkId: string, reason: string)
   if (!paymentLinkId) return;
 
   const result = await elevatedFind(
-    items.query(PAYMENTS)
+    elevatedQuery(PAYMENTS)
       .eq('wixPaymentLinkId', paymentLinkId)
       .limit(5),
   );
@@ -192,6 +197,8 @@ export async function createOnlinePayment(
       balanceDueCents,
     };
   } catch (error) {
+    console.error('RentalFlow Wix payment creation failed.', error);
+
     if (paymentLinkId) {
       const reason = 'Lien Wix annulé automatiquement après échec de finalisation de la réservation.';
       try {
