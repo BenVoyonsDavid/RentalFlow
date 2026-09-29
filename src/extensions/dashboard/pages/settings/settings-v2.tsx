@@ -10,55 +10,12 @@ import { assetLimits, hasFeature, planLabels, type RentalFlowPlan } from '../../
 import { useRentalFlowPlan } from '../../../../lib/use-plan';
 import PaymentSettingsPanel from './payment-settings-panel';
 import { COLLECTIONS } from '../../../../lib/collection-ids';
+import type { AppSettings, DepositType, DocumentTemplate, DocumentType } from '../../../../domain/types';
 
 const SETTINGS = COLLECTIONS.appSettings;
 const TEMPLATES = COLLECTIONS.documentTemplates;
 
 type SettingsTab = 'APPEARANCE' | 'GENERAL' | 'TAXES_PAYMENTS' | 'TEMPLATES' | 'PLANS';
-type DocumentType = 'QUOTE' | 'CONTRACT' | 'INVOICE';
-type DepositType = 'PERCENT' | 'FIXED';
-
-type AppSettings = {
-  _id?: string;
-  settingsKey?: string;
-  companyName?: string;
-  logoUrl?: string;
-  bookingThemeJson?: string;
-  bookingHeroTitle?: string;
-  bookingHeroSubtitle?: string;
-  bookingHeroBackgroundUrl?: string;
-  currency?: string;
-  defaultBufferBeforeHours?: number;
-  defaultBufferAfterHours?: number;
-  taxesEnabled?: boolean;
-  tax1Name?: string;
-  tax1Rate?: number;
-  tax2Name?: string;
-  tax2Rate?: number;
-  tax2Compound?: boolean;
-  defaultDepositEnabled?: boolean;
-  defaultDepositType?: DepositType;
-  defaultDepositValue?: number;
-  defaultQuoteTemplateId?: string;
-  defaultContractTemplateId?: string;
-  defaultInvoiceTemplateId?: string;
-  paymentProvider?: string;
-  active?: boolean;
-};
-
-type DocumentTemplate = {
-  _id?: string;
-  name?: string;
-  documentType?: DocumentType;
-  logoUrl?: string;
-  titleText?: string;
-  introText?: string;
-  termsText?: string;
-  footerText?: string;
-  requiredFieldsCsv?: string;
-  active?: boolean;
-};
-
 type TemplateForm = {
   name: string;
   documentType: DocumentType;
