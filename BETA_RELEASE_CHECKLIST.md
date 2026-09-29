@@ -27,7 +27,7 @@ Valider les quatre plans configurés dans Wix :
 Tests obligatoires :
 - Vérifier la détection de chacun des quatre forfaits sur une installation réelle.
 - Tester une mise à niveau et une rétrogradation.
-- Basic : le 6e équipement actif doit être refusé.
+- Basic : le 6e équipement actif doit être refusé par le backend, même si l’écriture ne vient pas du contrôle visuel du formulaire.
 - Starter : le 26e équipement actif doit être refusé.
 - Business : le 101e équipement actif doit être refusé.
 - Pro : vérifier qu'aucune limite d'inventaire n'est appliquée.
@@ -110,7 +110,7 @@ Tests obligatoires :
 ## 5. Performance, intégrité et sécurité
 
 - Vérifier la création des nouveaux index des collections.
-- Vérifier les index uniques `assetNumber`, `customerNumber`, `reservationNumber` et `paymentNumber` avec des données existantes avant la release Major.
+- Vérifier les index uniques `assetNumber`, `customerNumber`, `reservationNumber`, `paymentNumber` et `asset-capacity-locks.lockKey` avec des données existantes avant la release Major.
 - Confirmer qu'aucune donnée existante en double n'empêche la création d'un index unique.
 - Vérifier les requêtes de disponibilité avec plus de 1 000 réservations historiques.
 - Vérifier les erreurs réseau et les collections vides.
