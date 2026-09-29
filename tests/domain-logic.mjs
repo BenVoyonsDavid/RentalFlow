@@ -25,6 +25,7 @@ const finance = await bundle('src/lib/reservation-finance.ts', 'finance.mjs');
 const pricing = await bundle('src/lib/rental-pricing.ts', 'pricing.mjs');
 const availability = await bundle('src/lib/asset-availability.ts', 'asset-availability.mjs');
 const catalog = await bundle('src/lib/reservation-catalog.ts', 'catalog.mjs');
+const bookingCatalog = await bundle('src/lib/booking-catalog.ts', 'booking-catalog.mjs');
 const inventory = await bundle('src/lib/catalog-inventory.ts', 'catalog-inventory.mjs');
 const compatibility = await bundle('src/lib/catalog-compatibility.ts', 'compatibility.mjs');
 const pagination = await bundle('src/lib/pagination.ts', 'pagination.mjs');
@@ -193,6 +194,105 @@ assert.equal(inventory.activeCatalogReservedQuantity(inventoryLines, 'extra-1', 
 assert.equal(inventory.availableCatalogStock(10, 5), 5);
 assert.equal(inventory.availableCatalogStock(3, 5), 0);
 
+// Booking catalog selection, compatibility and stock validation.
+const parsedSelections = bookingCatalog.parseCatalogSelections([
+  { id: ' extra-1 ', quantity: 2 },
+  { id: 'extra-1', quantity: 5 },
+  { id: 'extra-2', quantity: 5000 },
+]);
+assert.equal(parsedSelections.get('extra-1'), 5);
+assert.equal(parsedSelections.get('extra-2'), 999);
+
+const bookingAssets = [{
+  _id: 'asset-1',
+  productType: 'Roulotte',
+  categoryId: 'cat-rv',
+  categoryName: 'Roulottes',
+  catalogTagsJson: '[]',
+}];
+
+const bookingCatalogItems = [
+  {
+    _id: 'required-extra',
+    name: 'Obligatoire',
+    itemType: 'ADDON',
+    required: true,
+    compatibilityMode: 'ALL',
+    priceCents: 1000,
+  },
+  {
+    _id: 'selected-extra',
+    name: 'Sélectionné',
+    itemType: 'ADDON',
+    compatibilityMode: 'CATEGORIES',
+    applicableCategoryIdsJson: '["cat-rv"]',
+    priceCents: 2000,
+    trackInventory: true,
+    stockQuantity: 4,
+  },
+  {
+    _id: 'wrong-category',
+    name: 'Incompatible',
+    itemType: 'ADDON',
+    compatibilityMode: 'CATEGORIES',
+    applicableCategoryIdsJson: '["cat-other"]',
+    priceCents: 3000,
+  },
+];
+
+const selectedBookingCatalog = bookingCatalog.catalogItemsForReservation(
+  bookingCatalogItems,
+  bookingAssets,
+  new Map([['selected-extra', 2]]),
+);
+assert.deepEqual(
+  selectedBookingCatalog.map((item) => item._id),
+  ['required-extra', 'selected-extra'],
+);
+assert.deepEqual(
+  bookingCatalog.stockTrackedCatalogItemIds(selectedBookingCatalog),
+  ['selected-extra'],
+);
+
+assert.throws(
+  () => bookingCatalog.catalogItemsForReservation(
+    bookingCatalogItems,
+    bookingAssets,
+    new Map([['wrong-category', 1]]),
+  ),
+  /INVALID_CATALOG_SELECTION/,
+);
+
+const bookingLines = bookingCatalog.resolveCatalogLines(
+  selectedBookingCatalog,
+  new Map([['selected-extra', 2]]),
+  new Date('2026-10-01T09:00:00Z'),
+  new Date('2026-10-02T09:00:00Z'),
+  'CAD',
+  [{ catalogItemId: 'selected-extra', quantity: 1, status: 'CONFIRMED' }],
+);
+assert.equal(bookingLines.find((line) => line.catalogItemId === 'selected-extra')?.quantity, 2);
+
+assert.throws(
+  () => bookingCatalog.resolveCatalogLines(
+    selectedBookingCatalog,
+    new Map([['selected-extra', 4]]),
+    new Date('2026-10-01T09:00:00Z'),
+    new Date('2026-10-02T09:00:00Z'),
+    'CAD',
+    [{ catalogItemId: 'selected-extra', quantity: 1, status: 'CONFIRMED' }],
+  ),
+  /CATALOG_OUT_OF_STOCK/,
+);
+
+const publicExtra = bookingCatalog.publicCatalogItem(
+  bookingCatalogItems[1],
+  'CAD',
+  [{ catalogItemId: 'selected-extra', quantity: 3, status: 'CONFIRMED' }],
+);
+assert.equal(publicExtra.stockQuantity, 1);
+assert.equal(publicExtra.applicableCategoryIdsJson, '["cat-rv"]');
+
 // Catalog pricing and compatibility.
 const perDayItem = {
   _id: 'extra-1',
@@ -223,4 +323,4 @@ assert.equal(compatibility.catalogItemAppliesToAsset({
   excludedAssetIdsJson: JSON.stringify(['asset-1']),
 }, asset), false);
 
-console.log('PASS: RentalFlow domain pricing, availability, finance, references, pagination, inventory and catalog rules.');
+console.log('PASS: RentalFlow domain pricing, availability, finance, references, pagination, inventory and booking catalog rules.');
