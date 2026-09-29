@@ -7,6 +7,7 @@ export const COLLECTIONS = {
   activityLog: '@pilotedavid1/rental-flow/activity-log',
   appSettings: '@pilotedavid1/rental-flow/app-settings',
   assets: '@pilotedavid1/rental-flow/assets',
+  assetCapacityLocks: '@pilotedavid1/rental-flow/asset-capacity-locks',
   bookingLocks: '@pilotedavid1/rental-flow/booking-locks',
   catalogItems: '@pilotedavid1/rental-flow/catalog-items',
   catalogStockLocks: '@pilotedavid1/rental-flow/catalog-stock-locks',
