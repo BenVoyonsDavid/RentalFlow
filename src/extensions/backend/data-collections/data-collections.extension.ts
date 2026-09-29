@@ -10,6 +10,7 @@ import activityLogCollection from './activity-log';
 import appSettingsCollection from './app-settings';
 import documentTemplatesCollection from './document-templates';
 import bookingLocksCollection from './booking-locks';
+import assetCapacityLocksCollection from './asset-capacity-locks';
 import catalogStockLocksCollection from './catalog-stock-locks';
 import catalogItemsCollection from './catalog-items';
 import categoriesCollection from './categories';
@@ -30,6 +31,7 @@ export default extensions.dataCollections({
     appSettingsCollection,
     documentTemplatesCollection,
     bookingLocksCollection,
+    assetCapacityLocksCollection,
     catalogStockLocksCollection,
     catalogItemsCollection,
     categoriesCollection,
