@@ -4,29 +4,10 @@ import { items } from '@wix/data';
 import { Page, WixDesignSystemProvider } from '@wix/design-system';
 import '@wix/design-system/styles.global.css';
 import { COLLECTIONS } from '../../../../lib/collection-ids';
+import type { Reservation, ReservationItem } from '../../../../domain/types';
 
 const RESERVATIONS = COLLECTIONS.reservations;
 const RESERVATION_ITEMS = COLLECTIONS.reservationItems;
-
-type Reservation = {
-  _id?: string;
-  reservationNumber?: string;
-  customerName?: string;
-  startDateTime?: Date | string;
-  endDateTime?: Date | string;
-  bufferBeforeHours?: number;
-  bufferAfterHours?: number;
-  status?: string;
-  workflowStage?: string;
-  totalCents?: number;
-  currency?: string;
-};
-
-type ReservationItem = {
-  reservationId?: string;
-  assetTitle?: string;
-  assetNumber?: string;
-};
 
 const card: CSSProperties = {
   background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12,
