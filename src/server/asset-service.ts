@@ -113,7 +113,6 @@ async function activeAssetCount(): Promise<number> {
   const candidates = await collectAllPages(async (offset, limit) => {
     const result = await elevatedFind(
       elevatedQuery(ASSETS)
-        .ne('status', 'INACTIVE')
         .skip(offset)
         .limit(limit),
     );
@@ -121,7 +120,9 @@ async function activeAssetCount(): Promise<number> {
     return (result.items || []) as Asset[];
   }, 1000);
 
-  return candidates.filter((asset) => asset.active !== false).length;
+  return candidates.filter(
+    (asset) => asset.active !== false && asset.status !== 'INACTIVE',
+  ).length;
 }
 
 async function acquireCapacityLock(): Promise<AssetCapacityLock> {
@@ -234,7 +235,7 @@ async function assertCapacityAvailable(plan: RentalFlowPlan): Promise<void> {
     const limit = assetLimitForPlan(plan);
     throw new AssetWriteError(
       409,
-      `Limite atteinte : le plan ${planLabels[plan]} permet ${limit ?? 'un nombre illimité d’} équipements actifs.`,
+      `Limite atteinte : le plan ${planLabels[plan]} permet ${limit ?? 'un nombre illimité de'} équipements actifs.`,
     );
   }
 }
