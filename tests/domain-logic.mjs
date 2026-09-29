@@ -25,6 +25,7 @@ const finance = await bundle('src/lib/reservation-finance.ts', 'finance.mjs');
 const pricing = await bundle('src/lib/rental-pricing.ts', 'pricing.mjs');
 const availability = await bundle('src/lib/asset-availability.ts', 'asset-availability.mjs');
 const bookingCustomer = await bundle('src/lib/booking-customer.ts', 'booking-customer.mjs');
+const bookingPayment = await bundle('src/lib/booking-payment.ts', 'booking-payment.mjs');
 const catalog = await bundle('src/lib/reservation-catalog.ts', 'catalog.mjs');
 const bookingCatalog = await bundle('src/lib/booking-catalog.ts', 'booking-catalog.mjs');
 const inventory = await bundle('src/lib/catalog-inventory.ts', 'catalog-inventory.mjs');
@@ -185,6 +186,29 @@ assert.throws(
 assert.throws(
   () => bookingCustomer.validatePublicCustomer({ ...normalizedCustomer, email: 'invalid' }),
   /CUSTOMER_EMAIL_INVALID/,
+);
+
+// Online payment helpers preserve labels, balances and Wix response shapes.
+assert.equal(bookingPayment.onlinePaymentLabel('DEPOSIT'), 'Dépôt de réservation');
+assert.equal(bookingPayment.onlinePaymentLabel('FULL'), 'Paiement de location');
+assert.equal(bookingPayment.onlinePaymentBalance(10_000, 2_500), 7_500);
+assert.equal(bookingPayment.onlinePaymentBalance(10_000, 12_000), 0);
+
+assert.equal(
+  bookingPayment.extractPaymentLinkId({ paymentLink: { _id: 'link-1' } }),
+  'link-1',
+);
+assert.equal(
+  bookingPayment.extractPaymentLinkUrl({
+    paymentLink: { links: [{ url: { url: 'https://example.test/pay' } }] },
+  }),
+  'https://example.test/pay',
+);
+assert.deepEqual(
+  bookingPayment.extractInitiatedCheckout({
+    ecomCheckout: { checkoutUrl: 'https://example.test/checkout', checkoutId: 'checkout-1' },
+  }),
+  { checkoutUrl: 'https://example.test/checkout', checkoutId: 'checkout-1' },
 );
 
 // Human-facing reference numbers use date + 50 bits of secure entropy.
@@ -353,4 +377,4 @@ assert.equal(compatibility.catalogItemAppliesToAsset({
   excludedAssetIdsJson: JSON.stringify(['asset-1']),
 }, asset), false);
 
-console.log('PASS: RentalFlow domain pricing, availability, customers, finance, references, pagination, inventory and booking catalog rules.');
+console.log('PASS: RentalFlow domain pricing, availability, customers, payments, finance, references, pagination, inventory and booking catalog rules.');
