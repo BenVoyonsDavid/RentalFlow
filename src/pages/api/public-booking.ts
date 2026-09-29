@@ -4,10 +4,11 @@ import { appInstances } from '@wix/app-management';
 import { items } from '@wix/data';
 import { auth } from '@wix/essentials';
 import { COLLECTIONS } from '../../lib/collection-ids';
-import { collectAllPages } from '../../lib/pagination';
 import { generateReferenceNumber } from '../../lib/reference-number';
+import { isAssetAvailable } from '../../lib/asset-availability';
 import { activeCatalogReservedQuantity, availableCatalogStock } from '../../lib/catalog-inventory';
 import { acquireCatalogStockLocks, loadCatalogBlockingItems, releaseCatalogStockLocks } from '../../server/catalog-stock';
+import { acquireBookingLocks, loadBlockingItems, releaseBookingLocks } from '../../server/booking-availability';
 import type {
   AppSettings,
   Asset,
@@ -16,7 +17,7 @@ import type {
   DocumentTemplate,
   ReservationItem,
 } from '../../domain/types';
-import { calculateRentalPrice, getBlockedRange, rangesOverlap } from '../../lib/rental-pricing';
+import { calculateRentalPrice, getBlockedRange } from '../../lib/rental-pricing';
 import {
   calculateDeposit,
   parseRequiredFields,
@@ -46,9 +47,7 @@ const DOCUMENT_TEMPLATES = COLLECTIONS.documentTemplates;
 const SETTINGS = COLLECTIONS.appSettings;
 const PAYMENTS = COLLECTIONS.payments;
 const ACTIVITY = COLLECTIONS.activityLog;
-const BOOKING_LOCKS = COLLECTIONS.bookingLocks;
 
-const BOOKING_LOCK_TTL_MS = 2 * 60 * 1000;
 const MAX_PUBLIC_ASSETS = 25;
 const MAX_PUBLIC_CATALOG_ITEMS = 50;
 const MAX_CATALOG_QUANTITY = 999;
@@ -127,17 +126,8 @@ export const OPTIONS: APIRoute = async ({ request }) => {
   return new Response(null, { status: 204, headers: corsHeaders(request) });
 };
 
-function asDate(value?: Date | string): Date {
-  if (value instanceof Date) return value;
-  return value ? new Date(value) : new Date(0);
-}
-
 function clean(value: unknown, max = 200): string {
   return String(value ?? '').trim().slice(0, max);
-}
-
-function lockToken(): string {
-  return globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
 function elevatedQuery(collectionId: string): any {
@@ -221,60 +211,12 @@ async function loadActiveCatalog(): Promise<CatalogItem[]> {
   return (result.items || []).filter((item: CatalogItem) => item.active !== false) as CatalogItem[];
 }
 
-async function loadBlockingItems(
-  start: Date,
-  end: Date,
-  before: number,
-  after: number,
-  assetIds: string[] = [],
-): Promise<ReservationItem[]> {
-  const requested = getBlockedRange(start, end, before, after);
-
-  const loadForAsset = async (assetId?: string): Promise<ReservationItem[]> => collectAllPages(
-    async (offset, limit) => {
-      let query = elevatedQuery(RESERVATION_ITEMS)
-        .lt('blockedStartDateTime', requested.blockedEnd)
-        .gt('blockedEndDateTime', requested.blockedStart);
-
-      if (assetId) query = query.eq('assetId', assetId);
-
-      const result = await elevatedFind(query.skip(offset).limit(limit));
-      return (result.items || []) as ReservationItem[];
-    },
-    1000,
-  );
-
-  const uniqueAssetIds = [...new Set(assetIds.filter(Boolean))];
-  if (!uniqueAssetIds.length) return loadForAsset();
-
-  const groups = await Promise.all(uniqueAssetIds.map((assetId) => loadForAsset(assetId)));
-  return groups.flat();
-}
-
 function pricingOptions(plan: RentalFlowPlan) {
   return {
     allowWeekly: hasFeature(plan, 'WEEKLY_PRICING'),
     allowMonthly: hasFeature(plan, 'MONTHLY_PRICING'),
     allowLongTermDiscount: hasFeature(plan, 'LONG_TERM_DISCOUNT'),
   };
-}
-
-function isAssetAvailable(
-  assetId: string,
-  start: Date,
-  end: Date,
-  before: number,
-  after: number,
-  blockingItems: ReservationItem[]
-): boolean {
-  const requested = getBlockedRange(start, end, before, after);
-  return !blockingItems.some((item) => {
-    if (item.assetId !== assetId || item.status === 'CANCELLED' || item.status === 'COMPLETED') return false;
-    const existingStart = asDate(item.blockedStartDateTime);
-    const existingEnd = asDate(item.blockedEndDateTime);
-    if (!existingStart.getTime() || !existingEnd.getTime()) return false;
-    return rangesOverlap(requested.blockedStart, requested.blockedEnd, existingStart, existingEnd);
-  });
 }
 
 function validatePeriod(startValue?: string, endValue?: string): { start: Date; end: Date } {
@@ -285,44 +227,6 @@ function validatePeriod(startValue?: string, endValue?: string): { start: Date; 
   if (end.getTime() - start.getTime() > maxDuration) throw new Error('PERIOD_TOO_LONG');
   if (end.getTime() < Date.now()) throw new Error('PAST_PERIOD');
   return { start, end };
-}
-
-async function acquireBookingLocks(assetIds: string[]): Promise<BookingLock[]> {
-  const acquired: BookingLock[] = [];
-  const token = lockToken();
-  const expiresAt = new Date(Date.now() + BOOKING_LOCK_TTL_MS);
-
-  try {
-    for (const assetId of [...assetIds].sort()) {
-      const existingResult = await elevatedFind(elevatedQuery(BOOKING_LOCKS).eq('assetId', assetId).limit(1));
-      const existing = existingResult.items?.[0] as BookingLock | undefined;
-      if (existing?._id) {
-        const expiry = asDate(existing.expiresAt);
-        if (expiry.getTime() && expiry.getTime() <= Date.now()) {
-          await elevatedRemove(BOOKING_LOCKS, existing._id);
-        }
-      }
-
-      try {
-        const created = await elevatedInsert(BOOKING_LOCKS, { assetId, lockToken: token, expiresAt });
-        acquired.push(created as BookingLock);
-      } catch {
-        throw new Error('BOOKING_BUSY');
-      }
-    }
-    return acquired;
-  } catch (error) {
-    for (const lock of acquired) {
-      if (lock._id) await elevatedRemove(BOOKING_LOCKS, lock._id).catch(() => undefined);
-    }
-    throw error;
-  }
-}
-
-async function releaseBookingLocks(locks: BookingLock[]): Promise<void> {
-  for (const lock of locks) {
-    if (lock._id) await elevatedRemove(BOOKING_LOCKS, lock._id).catch(() => undefined);
-  }
 }
 
 function publicAsset(
