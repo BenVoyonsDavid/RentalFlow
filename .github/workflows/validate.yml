@@ -30,6 +30,9 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      - name: Domain regression tests
+        run: npm run test:domain
+
       - name: Booking design regression tests
         run: npm run test:booking-design
 
