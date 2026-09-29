@@ -4,9 +4,10 @@ import { items } from '@wix/data';
 import { httpClient } from '@wix/essentials';
 import { Page, WixDesignSystemProvider } from '@wix/design-system';
 import '@wix/design-system/styles.global.css';
+import { COLLECTIONS } from '../../../../lib/collection-ids';
 
-const ASSETS = '@pilotedavid1/rental-flow/assets';
-const RESERVATIONS = '@pilotedavid1/rental-flow/reservations';
+const ASSETS = COLLECTIONS.assets;
+const RESERVATIONS = COLLECTIONS.reservations;
 
 type AssetStatus = 'AVAILABLE' | 'RESERVED' | 'RENTED' | 'MAINTENANCE' | 'INACTIVE';
 type Asset = { status?: AssetStatus; active?: boolean };
