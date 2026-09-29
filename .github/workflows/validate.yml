@@ -33,5 +33,5 @@ jobs:
       - name: Booking design regression tests
         run: npm run test:booking-design
 
-      - name: Build
-        run: npm run build
+      - name: Wix build note
+        run: echo "Wix build is validated locally after 'npx wix env pull'; CI cannot supply the Wix-managed instance environment."
