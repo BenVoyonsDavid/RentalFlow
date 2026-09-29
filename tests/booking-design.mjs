@@ -20,8 +20,12 @@ assert.equal(bookingImageUrl('javascript:alert(1)'),'');
 assert.equal(bookingImageUrl('wix:image://v1/abc.jpg/file.jpg#originWidth=1'),'https://static.wixstatic.com/media/abc.jpg');
 for(const {colors} of BOOKING_PALETTES){const v=bookingThemeVariables(colors);assert(contrastRatio(v['--rf-on-primary'],v['--rf'])>=4.5);assert(contrastRatio(v['--rf-text'],v['--rf-surface'])>=4.5);}
 const settings={currency:'CAD',taxesEnabled:true,tax1Name:'TPS',tax1Rate:5,tax2Name:'TVQ',tax2Rate:9.975,tax2Compound:false,paymentsEnabled:true,depositEnabled:true,depositType:'PERCENT',depositValue:25,requiredFields:[],theme:DEFAULT_BOOKING_THEME};
-const assets=[{id:'a1',title:'Caméra cinéma',productType:'Vidéo',dailyRateCents:12500,weeklyRateCents:60000,monthlyRateCents:180000,currency:'CAD',available:null,billableDays:2,lineTotalCents:25000,pricingMode:'DAILY'}, {id:'a2',title:'Éclairage studio',productType:'Accessoires',dailyRateCents:7500,currency:'CAD',available:null,billableDays:2,lineTotalCents:15000,pricingMode:'DAILY'}];
-const catalogItems=[{id:'extra',name:'Protection',priceCents:2000,currency:'CAD',pricingMode:'FIXED',itemType:'ADDON',required:true,taxable:true,compatibilityMode:'ALL'}];
+const assets=[{id:'a1',title:'Caméra cinéma',productType:'Vidéo',categoryId:'cat-video',categoryName:'Vidéo',catalogTagsJson:'["cinema"]',dailyRateCents:12500,weeklyRateCents:60000,monthlyRateCents:180000,currency:'CAD',available:null,billableDays:2,lineTotalCents:25000,pricingMode:'DAILY'}, {id:'a2',title:'Éclairage studio',productType:'Accessoires',categoryId:'cat-light',categoryName:'Éclairage',catalogTagsJson:'["studio"]',dailyRateCents:7500,currency:'CAD',available:null,billableDays:2,lineTotalCents:15000,pricingMode:'DAILY'}];
+const catalogItems=[
+ {id:'extra',name:'Protection',priceCents:2000,currency:'CAD',pricingMode:'FIXED',itemType:'ADDON',required:true,taxable:true,compatibilityMode:'ALL'},
+ {id:'video-extra',name:'Moniteur vidéo',priceCents:3000,currency:'CAD',pricingMode:'FIXED',itemType:'ADDON',required:false,taxable:true,compatibilityMode:'CATEGORIES',applicableCategoryIdsJson:'["cat-video"]'},
+ {id:'light-extra',name:'Diffuseur lumière',priceCents:1500,currency:'CAD',pricingMode:'FIXED',itemType:'ADDON',required:false,taxable:true,compatibilityMode:'CATEGORIES',applicableCategoryIdsJson:'["cat-light"]'}
+];
 let submitted,failSearch=false;
 const server=createServer(async(req,res)=>{res.setHeader('Content-Type','application/json');if(req.url==='/appearance.js'){res.setHeader('Content-Type','text/javascript');res.end(await readFile(join(temp,'appearance.js')));return;}if(req.url==='/appearance'){res.setHeader('Content-Type','text/html');res.end('<div id="appearance"></div><script type="module" src="/appearance.js"></script>');return;}if(req.url==='/widget.js'){res.setHeader('Content-Type','text/javascript');res.end(await readFile(join(temp,'widget.js')));return;}if(req.url.startsWith('/api/bi-event')){res.end('{}');return;}if(req.url.startsWith('/api/public-booking')){if(req.method==='POST'){let body='';for await(const chunk of req)body+=chunk;submitted=JSON.parse(body);res.end(JSON.stringify({reservationNumber:'TEST-001',totalCents:31043,amountDueNowCents:7761,balanceDueCents:23282,currency:'CAD',checkoutUrl:'https://example.com/pay'}));return;}if(failSearch&&req.url.includes('?')){res.statusCode=409;res.end(JSON.stringify({error:'INVALID_PERIOD'}));return;}res.end(JSON.stringify({company:{name:'Notes',logoUrl:''},settings,assets:assets.map(a=>({...a,available:req.url.includes('?')?true:null})),catalogItems}));return;}res.setHeader('Content-Type','text/html');res.end('<style>body{margin:0;padding:20px;background:#e8edf3}</style><test-booking></test-booking><script type="module" src="/widget.js"></script>');});
 await new Promise(r=>server.listen(0,'127.0.0.1',r));
@@ -35,6 +39,8 @@ try{
  assert((await page.locator('#start').inputValue()).endsWith('T09:00'));assert((await page.locator('#end').inputValue()).endsWith('T17:00'));
  await page.locator('#search').click();await page.locator('[data-asset="a1"]:enabled').waitFor();await page.locator('[data-asset="a1"]').click();
  await page.locator('[data-catalog-toggle="extra"]').waitFor();assert(await page.locator('[data-catalog-toggle="extra"]').isChecked());
+ await page.locator('[data-catalog-toggle="video-extra"]').waitFor();
+ assert.equal(await page.locator('[data-catalog-toggle="light-extra"]').count(),0);
  assert((await page.locator('.sumrow.total').textContent()).includes('310'));
  await page.locator('#continue').click();assert.equal(await page.locator('[name="customerName"]').evaluate(e=>e===e.getRootNode().activeElement),true);
  await page.locator('[name="customerName"]').fill('Marie Test');await page.locator('[name="customerEmail"]').fill('marie@example.com');
@@ -54,5 +60,5 @@ try{
  await page.getByRole('textbox',{name:'Buttons and selection HEX'}).fill('#123456');assert.equal(await page.evaluate(()=>JSON.parse(window.savedTheme).primary),'#123456');assert.equal(await page.locator('[data-booking-theme-preview]').evaluate(e=>getComputedStyle(e).getPropertyValue('--rf').trim()),'#123456');
  await page.getByRole('textbox',{name:'Buttons and selection HEX'}).fill('invalid');assert.equal(await page.evaluate(()=>JSON.parse(window.savedTheme).primary),'#123456');
  await page.getByRole('button',{name:'Reset default colors'}).click();assert.equal(await page.evaluate(()=>JSON.parse(window.savedTheme).primary),'#007f78');
- assert.deepEqual(errors,[]);console.log(`PASS: calendars, mandatory extras, deposits/offline booking, date invalidation, FR/EN, themes and responsive widths. Screenshots: ${temp}`);
+ assert.deepEqual(errors,[]);console.log(`PASS: calendars, category extras, mandatory extras, deposits/offline booking, date invalidation, FR/EN, themes and responsive widths. Screenshots: ${temp}`);
 } finally {await browser.close();await new Promise(r=>server.close(r));}
