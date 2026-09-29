@@ -1,12 +1,12 @@
 import type { CSSProperties, FC } from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { items } from '@wix/data';
+import { httpClient } from '@wix/essentials';
 import { Page, WixDesignSystemProvider } from '@wix/design-system';
 import '@wix/design-system/styles.global.css';
 import { catalogItemAppliesToAnyAsset } from '../../../../lib/catalog-compatibility';
 import {
   catalogBillableDays,
-  catalogItemToReservationLine,
   computeReservationFinancials,
   reservationLineType,
   type CatalogReservationItem,
@@ -213,38 +213,50 @@ const ReservationExtrasPage: FC = () => {
       }
 
       const requestedQuantity = Math.max(1, Math.floor(quantities[item._id] || 1));
-      const currentQuantity = existing?.quantity || 0;
-      const nextQuantity = existing ? currentQuantity + requestedQuantity : requestedQuantity;
-      if (item.trackInventory && typeof item.stockQuantity === 'number' && nextQuantity > item.stockQuantity) {
-        throw new Error(t('La quantité demandée dépasse le stock disponible.', 'Requested quantity exceeds available stock.'));
+      const baseApiUrl = new URL(import.meta.url).origin;
+      const response = await httpClient.fetchWithAuth(
+        `${baseApiUrl}/api/reservation-extra-stock`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            reservationId: selectedReservation._id,
+            catalogItemId: item._id,
+            quantityToAdd: requestedQuantity,
+          }),
+        },
+      );
+
+      const raw = await response.text();
+      let payload: { item?: ReservationItem; error?: string; availableQuantity?: number } = {};
+      try { payload = raw ? JSON.parse(raw) : {}; } catch { payload = {}; }
+
+      if (!response.ok || !payload.item) {
+        if (payload.error === 'CATALOG_OUT_OF_STOCK') {
+          throw new Error(t(
+            `Stock insuffisant. Quantité disponible : ${payload.availableQuantity ?? 0}.`,
+            `Not enough stock. Available quantity: ${payload.availableQuantity ?? 0}.`,
+          ));
+        }
+        if (payload.error === 'CATALOG_STOCK_BUSY') {
+          throw new Error(t(
+            'Le stock de cet article est en cours de modification. Réessayez dans quelques secondes.',
+            'This item stock is being updated. Try again in a few seconds.',
+          ));
+        }
+        if (payload.error === 'CATALOG_ITEM_ALREADY_PRESENT') {
+          throw new Error(t(
+            'Cet article est déjà présent sur la réservation.',
+            'This item is already on the reservation.',
+          ));
+        }
+        throw new Error(payload.error || t('Impossible d’ajouter cet article.', 'Unable to add this item.'));
       }
 
-      const lineSnapshot = catalogItemToReservationLine(item, nextQuantity, billableDays, selectedReservation.currency || settings.currency || 'CAD');
-      let nextLines: ReservationItem[];
-
-      if (existing?._id) {
-        const updatedLine = await items.update(RESERVATION_ITEMS, {
-          ...existing,
-          _id: existing._id,
-          ...lineSnapshot,
-          reservationId: selectedReservation._id,
-          reservationNumber: selectedReservation.reservationNumber || '',
-          startDateTime: selectedReservation.startDateTime,
-          endDateTime: selectedReservation.endDateTime,
-          status: selectedReservation.status || 'CONFIRMED',
-        }) as ReservationItem;
-        nextLines = linkedLines.map((line) => line._id === existing._id ? updatedLine : line);
-      } else {
-        const createdLine = await items.insert(RESERVATION_ITEMS, {
-          ...lineSnapshot,
-          reservationId: selectedReservation._id,
-          reservationNumber: selectedReservation.reservationNumber || '',
-          startDateTime: selectedReservation.startDateTime,
-          endDateTime: selectedReservation.endDateTime,
-          status: selectedReservation.status || 'CONFIRMED',
-        }) as ReservationItem;
-        nextLines = [...linkedLines, createdLine];
-      }
+      const savedLine = payload.item;
+      const nextLines = linkedLines.some((line) => line._id === savedLine._id)
+        ? linkedLines.map((line) => line._id === savedLine._id ? savedLine : line)
+        : [...linkedLines, savedLine];
 
       await recalculateReservation(selectedReservation, nextLines);
       await logActivity(selectedReservation, `${item.name || 'Article'} ${t('ajouté à la réservation', 'added to reservation')}.`);
