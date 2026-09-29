@@ -1,10 +1,11 @@
 ﻿import type { APIRoute } from 'astro';
 import { items } from '@wix/data';
 import { auth } from '@wix/essentials';
+import { COLLECTIONS } from '../../lib/collection-ids';
 
-const PAYMENTS = '@pilotedavid1/rental-flow/payments';
-const RESERVATIONS = '@pilotedavid1/rental-flow/reservations';
-const ACTIVITY = '@pilotedavid1/rental-flow/activity-log';
+const PAYMENTS = COLLECTIONS.payments;
+const RESERVATIONS = COLLECTIONS.reservations;
+const ACTIVITY = COLLECTIONS.activityLog;
 
 type LocalPayment = {
   _id?: string;
