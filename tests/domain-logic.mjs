@@ -26,6 +26,7 @@ const pricing = await bundle('src/lib/rental-pricing.ts', 'pricing.mjs');
 const catalog = await bundle('src/lib/reservation-catalog.ts', 'catalog.mjs');
 const compatibility = await bundle('src/lib/catalog-compatibility.ts', 'compatibility.mjs');
 const pagination = await bundle('src/lib/pagination.ts', 'pagination.mjs');
+const references = await bundle('src/lib/reference-number.ts', 'reference-number.mjs');
 
 // Taxes and deposits stay in integer cents.
 assert.deepEqual(finance.calculateTaxes(10_000, {
@@ -110,6 +111,20 @@ assert.equal(
   true,
 );
 
+// Human-facing reference numbers use date + 50 bits of secure entropy.
+const deterministicReference = references.generateReferenceNumber(
+  'RF',
+  new Date('2026-09-29T12:00:00Z'),
+  new Uint8Array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]),
+);
+assert.equal(deterministicReference, 'RF-20260929-ABCDEFGHJK');
+assert.match(references.generateReferenceNumber('INS-D'), /^INS-D-\d{8}-[A-Z2-9]{10}$/);
+
+const generatedReferences = new Set(
+  Array.from({ length: 5000 }, () => references.generateReferenceNumber('PAY')),
+);
+assert.equal(generatedReferences.size, 5000);
+
 // Pagination must not truncate availability checks at 1000 rows.
 const pagedSource = Array.from({ length: 2505 }, (_, index) => ({ id: index + 1 }));
 const pageOffsets = [];
@@ -150,4 +165,4 @@ assert.equal(compatibility.catalogItemAppliesToAsset({
   excludedAssetIdsJson: JSON.stringify(['asset-1']),
 }, asset), false);
 
-console.log('PASS: RentalFlow domain pricing, finance, pagination and catalog rules.');
+console.log('PASS: RentalFlow domain pricing, finance, references, pagination and catalog rules.');
