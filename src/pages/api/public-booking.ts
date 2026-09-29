@@ -6,8 +6,10 @@ import { auth } from '@wix/essentials';
 import { COLLECTIONS } from '../../lib/collection-ids';
 import { generateReferenceNumber } from '../../lib/reference-number';
 import { isAssetAvailable } from '../../lib/asset-availability';
+import { normalizePublicCustomer, validatePublicCustomer, type PublicCustomerInput } from '../../lib/booking-customer';
 import { acquireCatalogStockLocks, loadCatalogBlockingItems, releaseCatalogStockLocks } from '../../server/catalog-stock';
 import { acquireBookingLocks, loadBlockingItems, releaseBookingLocks } from '../../server/booking-availability';
+import { findOrCreatePublicCustomer } from '../../server/customer-service';
 import type {
   AppSettings,
   Asset,
@@ -41,7 +43,6 @@ import {
 
 const ASSETS = COLLECTIONS.assets;
 const CATALOG = COLLECTIONS.catalogItems;
-const CUSTOMERS = COLLECTIONS.customers;
 const RESERVATIONS = COLLECTIONS.reservations;
 const RESERVATION_ITEMS = COLLECTIONS.reservationItems;
 const DOCUMENT_TEMPLATES = COLLECTIONS.documentTemplates;
@@ -51,25 +52,13 @@ const ACTIVITY = COLLECTIONS.activityLog;
 
 const MAX_PUBLIC_ASSETS = 25;
 
-type PublicCustomer = {
-  name?: string;
-  email?: string;
-  phone?: string;
-  addressLine1?: string;
-  addressLine2?: string;
-  city?: string;
-  region?: string;
-  postalCode?: string;
-  country?: string;
-};
-
 type BookingRequest = {
   startDateTime?: string;
   endDateTime?: string;
   assetIds?: string[];
   catalogItems?: PublicCatalogSelection[];
   paymentMode?: 'FULL' | 'DEPOSIT';
-  customer?: PublicCustomer;
+  customer?: PublicCustomerInput;
   notes?: string;
 };
 
@@ -351,19 +340,15 @@ export const POST: APIRoute = async ({ request }) => {
       return json({ error: 'Sélection d’extras invalide.' }, 400);
     }
 
-    const customer = {
-      name: clean(body.customer?.name, 150),
-      email: clean(body.customer?.email, 200).toLowerCase(),
-      phone: clean(body.customer?.phone, 60),
-      addressLine1: clean(body.customer?.addressLine1, 200),
-      addressLine2: clean(body.customer?.addressLine2, 200),
-      city: clean(body.customer?.city, 120),
-      region: clean(body.customer?.region, 120),
-      postalCode: clean(body.customer?.postalCode, 30).toUpperCase(),
-      country: clean(body.customer?.country, 120) || 'Canada',
-    };
-    if (!customer.name) return json({ error: 'Le nom du client est obligatoire.' }, 400);
-    if (!customer.email || !customer.email.includes('@')) return json({ error: 'Un courriel valide est obligatoire.' }, 400);
+    const customer = normalizePublicCustomer(body.customer);
+    try {
+      validatePublicCustomer(customer);
+    } catch (error) {
+      if (error instanceof Error && error.message === 'CUSTOMER_NAME_REQUIRED') {
+        return json({ error: 'Le nom du client est obligatoire.' }, 400);
+      }
+      return json({ error: 'Un courriel valide est obligatoire.' }, 400);
+    }
 
     const [{ settings, templates }, activeAssets, activeCatalog, plan] = await Promise.all([
       loadSettingsAndTemplates(),
@@ -458,31 +443,9 @@ export const POST: APIRoute = async ({ request }) => {
     const depositValue = settings.defaultDepositValue || 0;
     const depositResult = calculateDeposit(finance.totalCents, paymentMode, depositType, depositValue);
 
-    const existingCustomerResult = await elevatedFind(elevatedQuery(CUSTOMERS).eq('email', customer.email).limit(1));
-    const existingCustomer = existingCustomerResult.items?.[0] as any | undefined;
-    let customerId = existingCustomer?._id || '';
-    let customerNumber = existingCustomer?.customerNumber || '';
-
-    if (!customerId) {
-      const createdCustomer = await elevatedInsert(CUSTOMERS, {
-        customerNumber: generateReferenceNumber('C'),
-        firstName: customer.name,
-        lastName: '',
-        companyName: '',
-        email: customer.email,
-        phone: customer.phone,
-        addressLine1: customer.addressLine1,
-        addressLine2: customer.addressLine2,
-        city: customer.city,
-        region: customer.region,
-        postalCode: customer.postalCode,
-        country: customer.country,
-        discountPercent: 0,
-        active: true,
-      });
-      customerId = createdCustomer._id || '';
-      customerNumber = createdCustomer.customerNumber || '';
-    }
+    const bookingCustomer = await findOrCreatePublicCustomer(customer);
+    const customerId = bookingCustomer._id || '';
+    const customerNumber = bookingCustomer.customerNumber || '';
 
     const documentsEnabled = hasFeature(plan, 'DOCUMENTS');
     const quoteTemplate = documentsEnabled ? templates.find((template) => template._id === settings.defaultQuoteTemplateId && template.active !== false) : undefined;
