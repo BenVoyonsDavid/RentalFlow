@@ -3,6 +3,7 @@ import type { APIRoute } from 'astro';
 import { appInstances } from '@wix/app-management';
 import { items } from '@wix/data';
 import { auth } from '@wix/essentials';
+import { COLLECTIONS } from '../../lib/collection-ids';
 import { calculateRentalPrice, getBlockedRange, rangesOverlap } from '../../lib/rental-pricing';
 import {
   calculateDeposit,
@@ -24,16 +25,16 @@ import {
   type CatalogCompatibilityRule,
 } from '../../lib/catalog-compatibility';
 
-const ASSETS = '@pilotedavid1/rental-flow/assets';
-const CATALOG = '@pilotedavid1/rental-flow/catalog-items';
-const CUSTOMERS = '@pilotedavid1/rental-flow/customers';
-const RESERVATIONS = '@pilotedavid1/rental-flow/reservations';
-const RESERVATION_ITEMS = '@pilotedavid1/rental-flow/reservation-items';
-const DOCUMENT_TEMPLATES = '@pilotedavid1/rental-flow/document-templates';
-const SETTINGS = '@pilotedavid1/rental-flow/app-settings';
-const PAYMENTS = '@pilotedavid1/rental-flow/payments';
-const ACTIVITY = '@pilotedavid1/rental-flow/activity-log';
-const BOOKING_LOCKS = '@pilotedavid1/rental-flow/booking-locks';
+const ASSETS = COLLECTIONS.assets;
+const CATALOG = COLLECTIONS.catalogItems;
+const CUSTOMERS = COLLECTIONS.customers;
+const RESERVATIONS = COLLECTIONS.reservations;
+const RESERVATION_ITEMS = COLLECTIONS.reservationItems;
+const DOCUMENT_TEMPLATES = COLLECTIONS.documentTemplates;
+const SETTINGS = COLLECTIONS.appSettings;
+const PAYMENTS = COLLECTIONS.payments;
+const ACTIVITY = COLLECTIONS.activityLog;
+const BOOKING_LOCKS = COLLECTIONS.bookingLocks;
 
 const BOOKING_LOCK_TTL_MS = 2 * 60 * 1000;
 const MAX_PUBLIC_ASSETS = 25;
