@@ -4,42 +4,10 @@ import { items } from '@wix/data';
 import { Page, WixDesignSystemProvider } from '@wix/design-system';
 import '@wix/design-system/styles.global.css';
 import { COLLECTIONS } from '../../../../lib/collection-ids';
+import type { Customer, Reservation } from '../../../../domain/types';
 
 const CUSTOMERS = COLLECTIONS.customers;
 const RESERVATIONS = COLLECTIONS.reservations;
-
-type Customer = {
-  _id?: string;
-  customerNumber?: string;
-  firstName?: string;
-  lastName?: string;
-  companyName?: string;
-  email?: string;
-  phone?: string;
-  addressLine1?: string;
-  addressLine2?: string;
-  city?: string;
-  region?: string;
-  postalCode?: string;
-  country?: string;
-  discountPercent?: number;
-  notes?: string;
-  active?: boolean;
-  _createdDate?: Date | string;
-  _updatedDate?: Date | string;
-};
-
-type Reservation = {
-  _id?: string;
-  reservationNumber?: string;
-  customerId?: string;
-  customerEmail?: string;
-  startDateTime?: Date | string;
-  endDateTime?: Date | string;
-  totalCents?: number;
-  currency?: string;
-  status?: string;
-};
 
 type CustomerForm = {
   firstName: string;
