@@ -1,23 +1,16 @@
 import { auth } from '@wix/essentials';
 
-export type RentalFlowTokenInfo = {
-  active?: boolean;
-  instanceId?: string;
-  subjectType?: string;
-  [key: string]: unknown;
-};
-
-export async function requireActiveAppInstance(): Promise<RentalFlowTokenInfo> {
+export async function requireActiveAppInstance() {
   const tokenInfo = await auth.getTokenInfo();
 
   if (!tokenInfo?.active || !tokenInfo.instanceId) {
     throw new Error('UNAUTHORIZED');
   }
 
-  return tokenInfo as RentalFlowTokenInfo;
+  return tokenInfo;
 }
 
-export async function requireDashboardUser(): Promise<RentalFlowTokenInfo> {
+export async function requireDashboardUser() {
   const tokenInfo = await requireActiveAppInstance();
 
   if (tokenInfo.subjectType !== 'USER') {
