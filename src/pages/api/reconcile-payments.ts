@@ -1,46 +1,20 @@
 ﻿import type { APIRoute } from 'astro';
 import { items } from '@wix/data';
 import { auth } from '@wix/essentials';
+import { requireDashboardUser } from '../../server/request-auth';
+import { COLLECTIONS } from '../../lib/collection-ids';
+import { collectAllPages } from '../../lib/pagination';
+import type { Payment, Reservation } from '../../domain/types';
 
-const PAYMENTS = '@pilotedavid1/rental-flow/payments';
-const RESERVATIONS = '@pilotedavid1/rental-flow/reservations';
-const ACTIVITY = '@pilotedavid1/rental-flow/activity-log';
-
-type LocalPayment = {
-  _id?: string;
-  reservationId?: string;
-  reservationNumber?: string;
-  paymentNumber?: string;
-  status?: string;
-  amountCents?: number;
-  currency?: string;
-  paymentDate?: Date | string;
-  wixPaymentLinkId?: string;
-  wixTransactionId?: string;
-  wixOnlinePayment?: boolean;
-  remainingBalanceCents?: number;
-  notes?: string;
-};
-
-type Reservation = {
-  _id?: string;
-  reservationNumber?: string;
-  totalCents?: number;
-  balanceDueCents?: number;
-  workflowStage?: string;
-  status?: string;
-};
+const PAYMENTS = COLLECTIONS.payments;
+const RESERVATIONS = COLLECTIONS.reservations;
+const ACTIVITY = COLLECTIONS.activityLog;
 
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
     status,
     headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },
   });
-}
-
-async function requireAppInstance(): Promise<void> {
-  const tokenInfo = await auth.getTokenInfo();
-  if (!tokenInfo?.instanceId) throw new Error('UNAUTHORIZED');
 }
 
 async function elevatedFind(query: any): Promise<any> {
@@ -70,15 +44,23 @@ function asCents(value: unknown): number {
 }
 
 async function syncReservationBalance(reservationId: string): Promise<number> {
-  const [reservationResult, paymentsResult] = await Promise.all([
+  const [reservationResult, payments] = await Promise.all([
     elevatedFind(items.query(RESERVATIONS).eq('_id', reservationId).limit(1)),
-    elevatedFind(items.query(PAYMENTS).eq('reservationId', reservationId).limit(100)),
+    collectAllPages(async (offset, limit) => {
+      const result = await elevatedFind(
+        items.query(PAYMENTS)
+          .eq('reservationId', reservationId)
+          .skip(offset)
+          .limit(limit),
+      );
+      return (result.items || []) as Payment[];
+    }, 100),
   ]);
 
   const reservation = reservationResult.items?.[0] as Reservation | undefined;
   if (!reservation?._id) return 0;
 
-  const paid = (paymentsResult.items as LocalPayment[])
+  const paid = payments
     .filter((payment) => payment.status === 'PAID')
     .reduce((sum, payment) => sum + Math.max(0, payment.amountCents || 0), 0);
   const balanceDueCents = Math.max(0, (reservation.totalCents || 0) - paid);
@@ -95,13 +77,16 @@ async function syncReservationBalance(reservationId: string): Promise<number> {
 }
 
 async function reconcilePendingPayments(): Promise<{ checked: number; updated: number }> {
-  const pendingResult = await elevatedFind(
-    items.query(PAYMENTS)
-      .eq('status', 'PENDING')
-      .eq('wixOnlinePayment', true)
-      .limit(100)
-  );
-  const pending = pendingResult.items as LocalPayment[];
+  const pending = await collectAllPages(async (offset, limit) => {
+    const result = await elevatedFind(
+      items.query(PAYMENTS)
+        .eq('status', 'PENDING')
+        .eq('wixOnlinePayment', true)
+        .skip(offset)
+        .limit(limit),
+    );
+    return (result.items || []) as Payment[];
+  }, 100);
   if (!pending.length) return { checked: 0, updated: 0 };
 
   const wixGetPaid = await import('@wix/get-paid') as any;
@@ -137,7 +122,7 @@ async function reconcilePendingPayments(): Promise<{ checked: number; updated: n
         amountCents,
         paymentDate: link?.lastPaymentDate ? new Date(link.lastPaymentDate) : payment.paymentDate || new Date(),
         wixTransactionId: transactionId,
-        notes: [payment.notes, 'Paiement confirmÃ© automatiquement depuis Wix Payment Links.'].filter(Boolean).join(' '),
+        notes: [payment.notes, 'Paiement confirmé automatiquement depuis Wix Payment Links.'].filter(Boolean).join(' '),
       });
 
       let balanceDueCents = payment.remainingBalanceCents || 0;
@@ -147,7 +132,7 @@ async function reconcilePendingPayments(): Promise<{ checked: number; updated: n
         reservationId: payment.reservationId || '',
         reservationNumber: payment.reservationNumber || '',
         actionType: 'ONLINE_PAYMENT_CONFIRMED',
-        description: `Paiement Wix ${payment.paymentNumber || ''} confirmÃ©${amountCents ? ` pour ${(amountCents / 100).toFixed(2)} ${payment.currency || ''}` : ''}.`,
+        description: `Paiement Wix ${payment.paymentNumber || ''} confirmé${amountCents ? ` pour ${(amountCents / 100).toFixed(2)} ${payment.currency || ''}` : ''}.`,
         actor: 'RentalFlow Payment Sync',
         eventDate: new Date(),
       });
@@ -160,7 +145,7 @@ async function reconcilePendingPayments(): Promise<{ checked: number; updated: n
           paymentDate: link?.lastPaymentDate ? new Date(link.lastPaymentDate) : payment.paymentDate || new Date(),
           wixTransactionId: transactionId,
           remainingBalanceCents: balanceDueCents,
-          notes: [payment.notes, 'Paiement confirmÃ© automatiquement depuis Wix Payment Links.'].filter(Boolean).join(' '),
+          notes: [payment.notes, 'Paiement confirmé automatiquement depuis Wix Payment Links.'].filter(Boolean).join(' '),
         });
       }
 
@@ -175,10 +160,11 @@ async function reconcilePendingPayments(): Promise<{ checked: number; updated: n
 
 export const POST: APIRoute = async () => {
   try {
-    await requireAppInstance();
+    await requireDashboardUser();
     return json(await reconcilePendingPayments());
   } catch (error) {
     if (error instanceof Error && error.message === 'UNAUTHORIZED') return json({ error: 'Unauthorized' }, 401);
+    if (error instanceof Error && error.message === 'FORBIDDEN') return json({ error: 'Forbidden' }, 403);
     console.error('RentalFlow payment reconciliation failed', error);
     return json({ error: 'Impossible de synchroniser les paiements Wix.' }, 500);
   }

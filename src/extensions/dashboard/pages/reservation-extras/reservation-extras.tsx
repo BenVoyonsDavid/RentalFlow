@@ -1,54 +1,27 @@
 import type { CSSProperties, FC } from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { items } from '@wix/data';
+import { httpClient } from '@wix/essentials';
 import { Page, WixDesignSystemProvider } from '@wix/design-system';
 import '@wix/design-system/styles.global.css';
 import { catalogItemAppliesToAnyAsset } from '../../../../lib/catalog-compatibility';
 import {
   catalogBillableDays,
-  catalogItemToReservationLine,
-  computeReservationFinancials,
   reservationLineType,
   type CatalogReservationItem,
   type ReservationCatalogLine,
 } from '../../../../lib/reservation-catalog';
 import { useRentalFlowI18n } from '../../../../intl';
+import { COLLECTIONS } from '../../../../lib/collection-ids';
+import { loadAllDashboardItems } from '../../../../lib/dashboard-data';
+import type { AppSettings, Asset, Payment, Reservation } from '../../../../domain/types';
 
-const ASSETS = '@pilotedavid1/rental-flow/assets';
-const CATALOG = '@pilotedavid1/rental-flow/catalog-items';
-const RESERVATIONS = '@pilotedavid1/rental-flow/reservations';
-const RESERVATION_ITEMS = '@pilotedavid1/rental-flow/reservation-items';
-const PAYMENTS = '@pilotedavid1/rental-flow/payments';
-const SETTINGS = '@pilotedavid1/rental-flow/app-settings';
-const ACTIVITY = '@pilotedavid1/rental-flow/activity-log';
-
-type Reservation = {
-  _id?: string;
-  reservationNumber?: string;
-  customerName?: string;
-  startDateTime?: Date | string;
-  endDateTime?: Date | string;
-  status?: string;
-  currency?: string;
-  customerDiscountPercent?: number;
-  subtotalCents?: number;
-  discountCents?: number;
-  preTaxTotalCents?: number;
-  tax1Name?: string;
-  tax1Rate?: number;
-  tax1Cents?: number;
-  tax2Name?: string;
-  tax2Rate?: number;
-  tax2Cents?: number;
-  taxTotalCents?: number;
-  totalCents?: number;
-  depositAmountCents?: number;
-  amountDueNowCents?: number;
-  balanceDueCents?: number;
-  _createdDate?: Date | string;
-  _updatedDate?: Date | string;
-  [key: string]: unknown;
-};
+const ASSETS = COLLECTIONS.assets;
+const CATALOG = COLLECTIONS.catalogItems;
+const RESERVATIONS = COLLECTIONS.reservations;
+const RESERVATION_ITEMS = COLLECTIONS.reservationItems;
+const PAYMENTS = COLLECTIONS.payments;
+const SETTINGS = COLLECTIONS.appSettings;
 
 type ReservationItem = ReservationCatalogLine & {
   reservationId?: string;
@@ -63,32 +36,6 @@ type ReservationItem = ReservationCatalogLine & {
   bufferBeforeHours?: number;
   bufferAfterHours?: number;
   status?: string;
-};
-
-type Asset = {
-  _id?: string;
-  title?: string;
-  assetNumber?: string;
-  productType?: string;
-  catalogTagsJson?: string;
-};
-
-type Payment = {
-  reservationId?: string;
-  paymentType?: string;
-  status?: string;
-  amountCents?: number;
-};
-
-type AppSettings = {
-  settingsKey?: string;
-  currency?: string;
-  taxesEnabled?: boolean;
-  tax1Name?: string;
-  tax1Rate?: number;
-  tax2Name?: string;
-  tax2Rate?: number;
-  tax2Compound?: boolean;
 };
 
 const card: CSSProperties = {
@@ -113,11 +60,6 @@ const input: CSSProperties = {
 function asDate(value?: Date | string): Date {
   if (value instanceof Date) return value;
   return value ? new Date(value) : new Date(0);
-}
-
-function reservationUpdatePayload(reservation: Reservation, changes: Partial<Reservation>) {
-  const { _createdDate, _updatedDate, ...rest } = reservation;
-  return { ...rest, _id: reservation._id, ...changes };
 }
 
 function netPaidCents(payments: Payment[], reservationId: string): number {
@@ -154,20 +96,31 @@ const ReservationExtrasPage: FC = () => {
     setLoading(true);
     setError('');
     try {
-      const [reservationResult, itemResult, catalogResult, assetResult, paymentResult, settingsResult] = await Promise.all([
-        items.query(RESERVATIONS).limit(1000).find(),
-        items.query(RESERVATION_ITEMS).limit(1000).find(),
-        items.query(CATALOG).limit(1000).find(),
-        items.query(ASSETS).limit(1000).find(),
-        items.query(PAYMENTS).limit(1000).find(),
+      const [
+        loadedReservations,
+        loadedReservationItems,
+        loadedCatalog,
+        loadedAssets,
+        loadedPayments,
+        settingsResult,
+      ] = await Promise.all([
+        loadAllDashboardItems<Reservation>(RESERVATIONS),
+        loadAllDashboardItems<ReservationItem>(RESERVATION_ITEMS),
+        loadAllDashboardItems<CatalogReservationItem>(CATALOG),
+        loadAllDashboardItems<Asset>(ASSETS),
+        loadAllDashboardItems<Payment>(PAYMENTS),
         items.query(SETTINGS).eq('settingsKey', 'default').limit(1).find(),
       ]);
-      setReservations(reservationResult.items as Reservation[]);
-      setReservationItems(itemResult.items as ReservationItem[]);
-      setCatalog(catalogResult.items as CatalogReservationItem[]);
-      setAssets(assetResult.items as Asset[]);
-      setPayments(paymentResult.items as Payment[]);
-      setSettings({ currency: 'CAD', taxesEnabled: true, ...((settingsResult.items[0] as AppSettings | undefined) || {}) });
+      setReservations(loadedReservations);
+      setReservationItems(loadedReservationItems);
+      setCatalog(loadedCatalog);
+      setAssets(loadedAssets);
+      setPayments(loadedPayments);
+      setSettings({
+        currency: 'CAD',
+        taxesEnabled: true,
+        ...((settingsResult.items[0] as AppSettings | undefined) || {}),
+      });
     } catch (e) {
       setError(e instanceof Error ? e.message : t('Impossible de charger les données.', 'Unable to load data.'));
     } finally {
@@ -187,7 +140,12 @@ const ReservationExtrasPage: FC = () => {
   );
 
   const linkedLines = useMemo(
-    () => reservationItems.filter((line) => line.reservationId === selectedReservationId),
+    () => reservationItems.filter(
+      (line) =>
+        line.reservationId === selectedReservationId
+        && line.status !== 'CANCELLED'
+        && line.status !== 'COMPLETED',
+    ),
     [reservationItems, selectedReservationId],
   );
   const rentalLines = useMemo(
@@ -218,93 +176,99 @@ const ReservationExtrasPage: FC = () => {
 
   const paidCents = selectedReservation?._id ? Math.max(0, netPaidCents(payments, selectedReservation._id)) : 0;
 
-  const recalculateReservation = async (reservation: Reservation, nextLines: ReservationItem[]) => {
-    if (!reservation._id) return reservation;
-    const finance = computeReservationFinancials(nextLines, reservation.customerDiscountPercent || 0, settings);
-    const totalCents = finance.totalCents;
-    const nextBalance = Math.max(0, totalCents - Math.max(0, netPaidCents(payments, reservation._id)));
-    const updated = await items.update(RESERVATIONS, reservationUpdatePayload(reservation, {
-      subtotalCents: finance.subtotalCents,
-      discountCents: finance.discountCents,
-      preTaxTotalCents: finance.preTaxTotalCents,
-      tax1Cents: finance.tax1Cents,
-      tax2Cents: finance.tax2Cents,
-      taxTotalCents: finance.taxTotalCents,
-      totalCents,
-      depositAmountCents: Math.min(reservation.depositAmountCents || 0, totalCents),
-      amountDueNowCents: Math.min(reservation.amountDueNowCents || 0, totalCents),
-      balanceDueCents: nextBalance,
-    })) as Reservation;
-    return updated;
-  };
-
-  const logActivity = async (reservation: Reservation, description: string) => {
-    if (!reservation._id) return;
-    try {
-      await items.insert(ACTIVITY, {
-        reservationId: reservation._id,
-        reservationNumber: reservation.reservationNumber || '',
-        actionType: 'CATALOG_ITEMS_UPDATED',
-        description,
-        actor: 'Utilisateur Wix',
-        eventDate: new Date(),
-      });
-    } catch {
-      // Logging must not block catalog changes.
-    }
-  };
-
   const addCatalogItem = async (item: CatalogReservationItem) => {
     if (!selectedReservation?._id || !item._id) return;
     if (selectedReservation.status === 'CANCELLED' || selectedReservation.status === 'COMPLETED') return;
-    setProcessing(true); setError(''); setSuccess('');
+
+    setProcessing(true);
+    setError('');
+    setSuccess('');
+
     try {
-      const existing = catalogLines.find((line) => line.catalogItemId === item._id);
-      if (existing && (item.pricingMode === 'FIXED' || item.pricingMode === 'PER_RESERVATION')) {
-        throw new Error(t('Cet article est déjà présent sur la réservation.', 'This item is already on the reservation.'));
+      const requestedQuantity = Math.max(
+        1,
+        Math.floor(quantities[item._id] || 1),
+      );
+
+      const response = await httpClient.fetchWithAuth(
+        `${import.meta.env.BASE_API_URL}/api/reservation-extra`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'ADD',
+            reservationId: selectedReservation._id,
+            catalogItemId: item._id,
+            quantityToAdd: requestedQuantity,
+          }),
+        },
+      );
+
+      const payload = await response.json().catch(() => ({})) as {
+        reservation?: Reservation;
+        item?: ReservationItem;
+        error?: string;
+        message?: string;
+        availableQuantity?: number;
+      };
+
+      if (!response.ok || !payload.reservation || !payload.item) {
+        if (payload.error === 'CATALOG_OUT_OF_STOCK') {
+          throw new Error(t(
+            `Stock insuffisant. Quantité disponible : ${payload.availableQuantity ?? 0}.`,
+            `Not enough stock. Available quantity: ${payload.availableQuantity ?? 0}.`,
+          ));
+        }
+
+        if (payload.error === 'CATALOG_STOCK_BUSY') {
+          throw new Error(t(
+            'Le stock de cet article est en cours de modification. Réessayez dans quelques secondes.',
+            'This item stock is being updated. Try again in a few seconds.',
+          ));
+        }
+
+        if (payload.error === 'RESERVATION_MUTATION_BUSY') {
+          throw new Error(t(
+            'Cette réservation est en cours de modification. Réessayez dans quelques secondes.',
+            'This reservation is being updated. Try again in a few seconds.',
+          ));
+        }
+
+        if (payload.error === 'CATALOG_ITEM_ALREADY_PRESENT') {
+          throw new Error(t(
+            'Cet article est déjà présent sur la réservation.',
+            'This item is already on the reservation.',
+          ));
+        }
+
+        throw new Error(
+          payload.message
+          || payload.error
+          || t(
+            'Impossible d’ajouter cet article.',
+            'Unable to add this item.',
+          ),
+        );
       }
 
-      const requestedQuantity = Math.max(1, Math.floor(quantities[item._id] || 1));
-      const currentQuantity = existing?.quantity || 0;
-      const nextQuantity = existing ? currentQuantity + requestedQuantity : requestedQuantity;
-      if (item.trackInventory && typeof item.stockQuantity === 'number' && nextQuantity > item.stockQuantity) {
-        throw new Error(t('La quantité demandée dépasse le stock disponible.', 'Requested quantity exceeds available stock.'));
-      }
-
-      const lineSnapshot = catalogItemToReservationLine(item, nextQuantity, billableDays, selectedReservation.currency || settings.currency || 'CAD');
-      let nextLines: ReservationItem[];
-
-      if (existing?._id) {
-        const updatedLine = await items.update(RESERVATION_ITEMS, {
-          ...existing,
-          _id: existing._id,
-          ...lineSnapshot,
-          reservationId: selectedReservation._id,
-          reservationNumber: selectedReservation.reservationNumber || '',
-          startDateTime: selectedReservation.startDateTime,
-          endDateTime: selectedReservation.endDateTime,
-          status: selectedReservation.status || 'CONFIRMED',
-        }) as ReservationItem;
-        nextLines = linkedLines.map((line) => line._id === existing._id ? updatedLine : line);
-      } else {
-        const createdLine = await items.insert(RESERVATION_ITEMS, {
-          ...lineSnapshot,
-          reservationId: selectedReservation._id,
-          reservationNumber: selectedReservation.reservationNumber || '',
-          startDateTime: selectedReservation.startDateTime,
-          endDateTime: selectedReservation.endDateTime,
-          status: selectedReservation.status || 'CONFIRMED',
-        }) as ReservationItem;
-        nextLines = [...linkedLines, createdLine];
-      }
-
-      await recalculateReservation(selectedReservation, nextLines);
-      await logActivity(selectedReservation, `${item.name || 'Article'} ${t('ajouté à la réservation', 'added to reservation')}.`);
-      setSuccess(`${item.name || t('Article', 'Item')} — ${t('ajouté', 'added')}.`);
-      setQuantities((current) => ({ ...current, [item._id!]: 1 }));
+      setSelectedReservationId(payload.reservation._id || selectedReservation._id);
+      setSuccess(
+        `${item.name || t('Article', 'Item')} — ${t('ajouté', 'added')}.`,
+      );
+      setQuantities((current) => ({
+        ...current,
+        [item._id!]: 1,
+      }));
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : t('Impossible d’ajouter cet article.', 'Unable to add this item.'));
+      setError(
+        e instanceof Error
+          ? e.message
+          : t(
+              'Impossible d’ajouter cet article.',
+              'Unable to add this item.',
+            ),
+      );
     } finally {
       setProcessing(false);
     }
@@ -312,17 +276,75 @@ const ReservationExtrasPage: FC = () => {
 
   const removeCatalogLine = async (line: ReservationItem) => {
     if (!selectedReservation?._id || !line._id) return;
-    if (!window.confirm(t(`Retirer ${line.itemName || 'cet article'} de la réservation ?`, `Remove ${line.itemName || 'this item'} from the reservation?`))) return;
-    setProcessing(true); setError(''); setSuccess('');
+    if (!window.confirm(t(
+      `Retirer ${line.itemName || 'cet article'} de la réservation ?`,
+      `Remove ${line.itemName || 'this item'} from the reservation?`,
+    ))) return;
+
+    setProcessing(true);
+    setError('');
+    setSuccess('');
+
     try {
-      await items.remove(RESERVATION_ITEMS, line._id);
-      const nextLines = linkedLines.filter((candidate) => candidate._id !== line._id);
-      await recalculateReservation(selectedReservation, nextLines);
-      await logActivity(selectedReservation, `${line.itemName || 'Article'} ${t('retiré de la réservation', 'removed from reservation')}.`);
-      setSuccess(`${line.itemName || t('Article', 'Item')} — ${t('retiré', 'removed')}.`);
+      const response = await httpClient.fetchWithAuth(
+        `${import.meta.env.BASE_API_URL}/api/reservation-extra`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'REMOVE',
+            reservationId: selectedReservation._id,
+            reservationItemId: line._id,
+          }),
+        },
+      );
+
+      const payload = await response.json().catch(() => ({})) as {
+        reservation?: Reservation;
+        removedItemId?: string;
+        error?: string;
+        message?: string;
+      };
+
+      if (!response.ok || !payload.reservation || !payload.removedItemId) {
+        if (payload.error === 'RESERVATION_MUTATION_BUSY') {
+          throw new Error(t(
+            'Cette réservation est en cours de modification. Réessayez dans quelques secondes.',
+            'This reservation is being updated. Try again in a few seconds.',
+          ));
+        }
+
+        if (payload.error === 'CATALOG_STOCK_BUSY') {
+          throw new Error(t(
+            'Le stock de cet article est en cours de modification. Réessayez dans quelques secondes.',
+            'This item stock is being updated. Try again in a few seconds.',
+          ));
+        }
+
+        throw new Error(
+          payload.message
+          || payload.error
+          || t(
+            'Impossible de retirer cet article.',
+            'Unable to remove this item.',
+          ),
+        );
+      }
+
+      setSelectedReservationId(payload.reservation._id || selectedReservation._id);
+      setSuccess(
+        `${line.itemName || t('Article', 'Item')} — ${t('retiré', 'removed')}.`,
+      );
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : t('Impossible de retirer cet article.', 'Unable to remove this item.'));
+      setError(
+        e instanceof Error
+          ? e.message
+          : t(
+              'Impossible de retirer cet article.',
+              'Unable to remove this item.',
+            ),
+      );
     } finally {
       setProcessing(false);
     }

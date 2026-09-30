@@ -1,55 +1,22 @@
+import BookingAppearance from './booking-appearance';
+import { bookingImageUrl, normalizeBookingTheme } from '../../../../lib/booking-theme';
 import type { CSSProperties, FC, FormEvent, ReactNode } from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { items } from '@wix/data';
+import { httpClient } from '@wix/essentials';
 import { Page, WixDesignSystemProvider } from '@wix/design-system';
 import '@wix/design-system/styles.global.css';
-import { getCurrentPlan, planLabels } from '../../../../lib/plans';
+import { assetLimits, hasFeature, planLabels, type RentalFlowPlan } from '../../../../lib/plans';
+import { useRentalFlowPlan } from '../../../../lib/use-plan';
 import PaymentSettingsPanel from './payment-settings-panel';
+import { COLLECTIONS } from '../../../../lib/collection-ids';
+import { loadAllDashboardItems } from '../../../../lib/dashboard-data';
+import { loadDefaultAppSettings, saveDefaultAppSettings } from '../../../../lib/app-settings-store';
+import type { AppSettings, DepositType, DocumentTemplate, DocumentType } from '../../../../domain/types';
 
-const SETTINGS = '@pilotedavid1/rental-flow/app-settings';
-const TEMPLATES = '@pilotedavid1/rental-flow/document-templates';
+const TEMPLATES = COLLECTIONS.documentTemplates;
 
-type SettingsTab = 'GENERAL' | 'TAXES_PAYMENTS' | 'TEMPLATES' | 'PLANS';
-type DocumentType = 'QUOTE' | 'CONTRACT' | 'INVOICE';
-type DepositType = 'PERCENT' | 'FIXED';
-
-type AppSettings = {
-  _id?: string;
-  settingsKey?: string;
-  companyName?: string;
-  logoUrl?: string;
-  currency?: string;
-  defaultBufferBeforeHours?: number;
-  defaultBufferAfterHours?: number;
-  taxesEnabled?: boolean;
-  tax1Name?: string;
-  tax1Rate?: number;
-  tax2Name?: string;
-  tax2Rate?: number;
-  tax2Compound?: boolean;
-  defaultDepositEnabled?: boolean;
-  defaultDepositType?: DepositType;
-  defaultDepositValue?: number;
-  defaultQuoteTemplateId?: string;
-  defaultContractTemplateId?: string;
-  defaultInvoiceTemplateId?: string;
-  paymentProvider?: string;
-  active?: boolean;
-};
-
-type DocumentTemplate = {
-  _id?: string;
-  name?: string;
-  documentType?: DocumentType;
-  logoUrl?: string;
-  titleText?: string;
-  introText?: string;
-  termsText?: string;
-  footerText?: string;
-  requiredFieldsCsv?: string;
-  active?: boolean;
-};
-
+type SettingsTab = 'APPEARANCE' | 'GENERAL' | 'TAXES_PAYMENTS' | 'TEMPLATES' | 'PLANS';
 type TemplateForm = {
   name: string;
   documentType: DocumentType;
@@ -85,6 +52,9 @@ const defaultSettings: AppSettings = {
   settingsKey: 'default',
   companyName: '',
   logoUrl: '',
+  bookingHeroTitle: '',
+  bookingHeroSubtitle: '',
+  bookingHeroBackgroundUrl: '',
   currency: 'CAD',
   defaultBufferBeforeHours: 0,
   defaultBufferAfterHours: 0,
@@ -131,12 +101,14 @@ function typeLabel(type?: DocumentType): string {
 }
 
 const SettingsV2Page: FC = () => {
-  const plan = getCurrentPlan();
+  const { plan, loading: planLoading } = useRentalFlowPlan();
   const [tab, setTab] = useState<SettingsTab>('GENERAL');
   const [settings, setSettings] = useState<AppSettings>(defaultSettings);
   const [templates, setTemplates] = useState<DocumentTemplate[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [uploadingHeroBackground, setUploadingHeroBackground] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [templateOpen, setTemplateOpen] = useState(false);
@@ -147,13 +119,12 @@ const SettingsV2Page: FC = () => {
   const load = useCallback(async () => {
     setLoading(true); setError('');
     try {
-      const [settingsResult, templateResult] = await Promise.all([
-        items.query(SETTINGS).eq('settingsKey', 'default').limit(1).find(),
-        items.query(TEMPLATES).limit(100).find(),
+      const [saved, loadedTemplates] = await Promise.all([
+        loadDefaultAppSettings(),
+        loadAllDashboardItems<DocumentTemplate>(TEMPLATES),
       ]);
-      const saved = settingsResult.items[0] as AppSettings | undefined;
       setSettings({ ...defaultSettings, ...(saved || {}) });
-      setTemplates(templateResult.items as DocumentTemplate[]);
+      setTemplates(loadedTemplates);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Impossible de charger les paramètres.');
     } finally {
@@ -168,27 +139,27 @@ const SettingsV2Page: FC = () => {
     [templates]
   );
 
+  const persistSettings = async (nextSettings: AppSettings): Promise<AppSettings> => {
+    const payload = {
+      ...nextSettings,
+      settingsKey: 'default',
+      bookingThemeJson: JSON.stringify(normalizeBookingTheme(nextSettings.bookingThemeJson)),
+      defaultBufferBeforeHours: numberValue(nextSettings.defaultBufferBeforeHours),
+      defaultBufferAfterHours: numberValue(nextSettings.defaultBufferAfterHours),
+      tax1Rate: numberValue(nextSettings.tax1Rate),
+      tax2Rate: numberValue(nextSettings.tax2Rate),
+      defaultDepositValue: numberValue(nextSettings.defaultDepositValue),
+      paymentProvider: 'WIX',
+      active: true,
+    };
+    return await saveDefaultAppSettings(payload);
+  };
+
   const saveSettings = async () => {
     setSaving(true); setError(''); setSuccess('');
     try {
-      const payload = {
-        ...settings,
-        settingsKey: 'default',
-        defaultBufferBeforeHours: numberValue(settings.defaultBufferBeforeHours),
-        defaultBufferAfterHours: numberValue(settings.defaultBufferAfterHours),
-        tax1Rate: numberValue(settings.tax1Rate),
-        tax2Rate: numberValue(settings.tax2Rate),
-        defaultDepositValue: numberValue(settings.defaultDepositValue),
-        paymentProvider: 'WIX',
-        active: true,
-      };
-      if (settings._id) {
-        const updated = await items.update(SETTINGS, payload) as AppSettings;
-        setSettings({ ...defaultSettings, ...updated });
-      } else {
-        const created = await items.insert(SETTINGS, payload) as AppSettings;
-        setSettings({ ...defaultSettings, ...created });
-      }
+      const saved = await persistSettings(settings);
+      setSettings({ ...defaultSettings, ...saved });
       setSuccess('Paramètres enregistrés. Les nouvelles réservations utiliseront ces valeurs par défaut.');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Impossible d’enregistrer les paramètres.');
@@ -196,6 +167,158 @@ const SettingsV2Page: FC = () => {
       setSaving(false);
     }
   };
+
+  const uploadLogo = async (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      setError('Le logo doit être une image.');
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setError('Le logo doit faire 10 Mo ou moins.');
+      return;
+    }
+
+    setUploadingLogo(true); setError(''); setSuccess('');
+    try {
+      const baseApiUrl = new URL(import.meta.url).origin;
+      const generateResponse = await httpClient.fetchWithAuth(
+        `${baseApiUrl}/api/rentalflow-logo-upload-url`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            mimeType: file.type,
+            fileName: file.name,
+            sizeInBytes: file.size,
+          }),
+        }
+      );
+      const generateRaw = await generateResponse.text();
+      let generated: { uploadUrl?: string; error?: string } = {};
+      try { generated = generateRaw ? JSON.parse(generateRaw) : {}; } catch { generated = {}; }
+      if (!generateResponse.ok) {
+        throw new Error(generated.error || `Impossible de préparer le téléversement du logo (HTTP ${generateResponse.status}).`);
+      }
+      if (!generated.uploadUrl) throw new Error('Wix n’a pas retourné d’URL de téléversement.');
+
+      const uploadResponse = await fetch(generated.uploadUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': file.type },
+        body: file,
+      });
+      const raw = await uploadResponse.text();
+      let uploadResult: any = {};
+      try { uploadResult = raw ? JSON.parse(raw) : {}; } catch { uploadResult = {}; }
+      if (!uploadResponse.ok) {
+        throw new Error(uploadResult?.message || uploadResult?.error || `Échec du téléversement du logo (HTTP ${uploadResponse.status}).`);
+      }
+
+      const logoUrl = uploadResult?.file?.url
+        || uploadResult?.file?.media?.image?.image?.url
+        || uploadResult?.file?.thumbnailUrl
+        || '';
+      if (!logoUrl) throw new Error('Le logo a été téléversé, mais Wix n’a pas retourné son URL.');
+
+      const saved = await persistSettings({ ...settings, logoUrl });
+      setSettings({ ...defaultSettings, ...saved });
+      setSuccess('Logo téléversé dans le Gestionnaire de médias Wix et enregistré.');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Impossible de téléverser le logo.');
+    } finally {
+      setUploadingLogo(false);
+    }
+  };
+
+  const removeLogo = async () => {
+    setUploadingLogo(true); setError(''); setSuccess('');
+    try {
+      const saved = await persistSettings({ ...settings, logoUrl: '' });
+      setSettings({ ...defaultSettings, ...saved });
+      setSuccess('Logo retiré des paramètres RentalFlow.');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Impossible de retirer le logo.');
+    } finally {
+      setUploadingLogo(false);
+    }
+  };
+
+  const logoPreviewUrl = bookingImageUrl(settings.logoUrl);
+
+  const uploadHeroBackground = async (file: File) => {
+    if (!['image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(file.type)) {
+      setError('L’arrière-plan doit être une image PNG, JPG, WebP ou GIF.');
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setError('L’image d’arrière-plan doit faire 10 Mo ou moins.');
+      return;
+    }
+
+    setUploadingHeroBackground(true); setError(''); setSuccess('');
+    try {
+      const baseApiUrl = new URL(import.meta.url).origin;
+      const generateResponse = await httpClient.fetchWithAuth(
+        `${baseApiUrl}/api/rentalflow-booking-header-upload-url`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            mimeType: file.type,
+            fileName: file.name,
+            sizeInBytes: file.size,
+          }),
+        }
+      );
+      const generateRaw = await generateResponse.text();
+      let generated: { uploadUrl?: string; error?: string } = {};
+      try { generated = generateRaw ? JSON.parse(generateRaw) : {}; } catch { generated = {}; }
+      if (!generateResponse.ok) {
+        throw new Error(generated.error || `Impossible de préparer le téléversement (HTTP ${generateResponse.status}).`);
+      }
+      if (!generated.uploadUrl) throw new Error('Wix n’a pas retourné d’URL de téléversement.');
+
+      const uploadResponse = await fetch(generated.uploadUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': file.type },
+        body: file,
+      });
+      const raw = await uploadResponse.text();
+      let uploadResult: any = {};
+      try { uploadResult = raw ? JSON.parse(raw) : {}; } catch { uploadResult = {}; }
+      if (!uploadResponse.ok) {
+        throw new Error(uploadResult?.message || uploadResult?.error || `Échec du téléversement (HTTP ${uploadResponse.status}).`);
+      }
+
+      const bookingHeroBackgroundUrl = uploadResult?.file?.url
+        || uploadResult?.file?.media?.image?.image?.url
+        || uploadResult?.file?.thumbnailUrl
+        || '';
+      if (!bookingHeroBackgroundUrl) throw new Error('L’image a été téléversée, mais Wix n’a pas retourné son URL.');
+
+      const saved = await persistSettings({ ...settings, bookingHeroBackgroundUrl });
+      setSettings({ ...defaultSettings, ...saved });
+      setSuccess('Arrière-plan du bandeau téléversé et enregistré.');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Impossible de téléverser l’arrière-plan.');
+    } finally {
+      setUploadingHeroBackground(false);
+    }
+  };
+
+  const removeHeroBackground = async () => {
+    setUploadingHeroBackground(true); setError(''); setSuccess('');
+    try {
+      const saved = await persistSettings({ ...settings, bookingHeroBackgroundUrl: '' });
+      setSettings({ ...defaultSettings, ...saved });
+      setSuccess('Arrière-plan personnalisé retiré. Le dégradé RentalFlow sera utilisé.');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Impossible de retirer l’arrière-plan.');
+    } finally {
+      setUploadingHeroBackground(false);
+    }
+  };
+
+  const heroBackgroundPreviewUrl = bookingImageUrl(settings.bookingHeroBackgroundUrl);
 
   const openNewTemplate = (documentType: DocumentType) => {
     const defaults: Record<DocumentType, Partial<TemplateForm>> = {
@@ -292,6 +415,7 @@ const SettingsV2Page: FC = () => {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 18, paddingBottom: 50 }}>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <TabButton active={tab === 'GENERAL'} onClick={() => setTab('GENERAL')}>Général</TabButton>
+              <TabButton active={tab === 'APPEARANCE'} onClick={() => setTab('APPEARANCE')}>Apparence</TabButton>
               <TabButton active={tab === 'TAXES_PAYMENTS'} onClick={() => setTab('TAXES_PAYMENTS')}>Taxes & paiements</TabButton>
               <TabButton active={tab === 'TEMPLATES'} onClick={() => setTab('TEMPLATES')}>Modèles de documents</TabButton>
               <TabButton active={tab === 'PLANS'} onClick={() => setTab('PLANS')}>Abonnement</TabButton>
@@ -301,17 +425,139 @@ const SettingsV2Page: FC = () => {
             {success && <div style={{ ...card, borderColor: '#86efac', background: '#f0fdf4', color: '#166534' }}>{success}</div>}
             {loading ? <div style={card}>Chargement…</div> : null}
 
+            {!loading && tab === 'APPEARANCE' && <div style={card}>
+              <BookingAppearance value={settings.bookingThemeJson} onChange={(bookingThemeJson) => setSettings({ ...settings, bookingThemeJson })} />
+
+              <div style={{ marginTop: 28, paddingTop: 24, borderTop: '1px solid #e5e7eb' }}>
+                <h3 style={{ marginTop: 0, marginBottom: 6 }}>En-tête de la réservation</h3>
+                <p style={{ marginTop: 0, color: '#64748b', fontSize: 13 }}>
+                  Personnalisez le grand titre, le sous-titre et l’image derrière l’en-tête. Laissez les textes vides pour utiliser les textes RentalFlow par défaut.
+                </p>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(260px,1fr))', gap: 16, marginTop: 18 }}>
+                  <Field label="Grand titre">
+                    <input
+                      style={input}
+                      maxLength={100}
+                      value={settings.bookingHeroTitle || ''}
+                      placeholder="Planifiez votre location"
+                      onChange={(e) => setSettings({ ...settings, bookingHeroTitle: e.target.value })}
+                    />
+                  </Field>
+                  <Field label="Sous-titre">
+                    <textarea
+                      style={{ ...input, minHeight: 82, resize: 'vertical' }}
+                      maxLength={240}
+                      value={settings.bookingHeroSubtitle || ''}
+                      placeholder="Choisissez vos dates et vos équipements pour créer votre réservation."
+                      onChange={(e) => setSettings({ ...settings, bookingHeroSubtitle: e.target.value })}
+                    />
+                  </Field>
+                </div>
+
+                <div style={{ marginTop: 18 }}>
+                  <Field label="Arrière-plan du grand titre">
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                      <label style={{ ...secondary, display: 'inline-flex', alignItems: 'center', opacity: uploadingHeroBackground ? .6 : 1, cursor: uploadingHeroBackground ? 'wait' : 'pointer' }}>
+                        {uploadingHeroBackground ? 'Téléversement…' : settings.bookingHeroBackgroundUrl ? 'Remplacer l’image' : 'Ajouter une image'}
+                        <input
+                          type="file"
+                          accept="image/png,image/jpeg,image/webp,image/gif"
+                          disabled={uploadingHeroBackground}
+                          style={{ display: 'none' }}
+                          onChange={(event) => {
+                            const selectedFile = event.currentTarget.files?.[0];
+                            event.currentTarget.value = '';
+                            if (selectedFile) void uploadHeroBackground(selectedFile);
+                          }}
+                        />
+                      </label>
+                      {settings.bookingHeroBackgroundUrl ? (
+                        <button
+                          type="button"
+                          disabled={uploadingHeroBackground}
+                          style={{ ...danger, opacity: uploadingHeroBackground ? .6 : 1 }}
+                          onClick={() => void removeHeroBackground()}
+                        >
+                          Supprimer l’image
+                        </button>
+                      ) : null}
+                    </div>
+                    <div style={{ color: '#64748b', fontSize: 12, marginTop: 7 }}>
+                      PNG, JPG, WebP ou GIF · maximum 10 Mo. Sans image, le dégradé de la palette reste affiché.
+                    </div>
+                  </Field>
+                </div>
+
+                {heroBackgroundPreviewUrl ? (
+                  <div style={{ marginTop: 14 }}>
+                    <div style={{ color: '#64748b', fontSize: 13, marginBottom: 8 }}>Aperçu de l’arrière-plan</div>
+                    <div style={{
+                      minHeight: 150,
+                      borderRadius: 14,
+                      overflow: 'hidden',
+                      padding: 22,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      justifyContent: 'flex-end',
+                      color: '#fff',
+                      backgroundImage: `linear-gradient(rgba(8,23,43,.28),rgba(8,23,43,.48)), url("${heroBackgroundPreviewUrl}")`,
+                      backgroundSize: 'cover',
+                      backgroundPosition: 'center',
+                    }}>
+                      <strong style={{ fontSize: 26 }}>{settings.bookingHeroTitle || 'Planifiez votre location'}</strong>
+                      <span style={{ marginTop: 6, opacity: .9 }}>{settings.bookingHeroSubtitle || 'Choisissez vos dates et vos équipements pour créer votre réservation.'}</span>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+
+              <SaveButton saving={saving} onClick={() => void saveSettings()} />
+            </div>}
+
             {!loading && tab === 'GENERAL' && (
               <div style={card}>
                 <h2 style={{ marginTop: 0 }}>Entreprise et opérations</h2>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(240px,1fr))', gap: 16 }}>
                   <Field label="Nom de l’entreprise"><input style={input} value={settings.companyName || ''} onChange={(e) => setSettings({ ...settings, companyName: e.target.value })} /></Field>
-                  <Field label="Logo (URL)"><input style={input} value={settings.logoUrl || ''} onChange={(e) => setSettings({ ...settings, logoUrl: e.target.value })} placeholder="https://…" /></Field>
+                  <Field label="Logo de l’entreprise">
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                      <label style={{ ...secondary, display: 'inline-flex', alignItems: 'center', opacity: uploadingLogo ? .6 : 1, cursor: uploadingLogo ? 'wait' : 'pointer' }}>
+                        {uploadingLogo ? 'Téléversement…' : settings.logoUrl ? 'Remplacer le logo' : 'Choisir un logo'}
+                        <input
+                          type="file"
+                          accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml"
+                          disabled={uploadingLogo}
+                          style={{ display: 'none' }}
+                          onChange={(event) => {
+                            const selectedFile = event.currentTarget.files?.[0];
+                            event.currentTarget.value = '';
+                            if (selectedFile) void uploadLogo(selectedFile);
+                          }}
+                        />
+                      </label>
+                      {settings.logoUrl ? <button type="button" disabled={uploadingLogo} style={{ ...danger, opacity: uploadingLogo ? .6 : 1 }} onClick={() => void removeLogo()}>Supprimer</button> : null}
+                    </div>
+                    <div style={{ color: '#64748b', fontSize: 12, marginTop: 7 }}>PNG, JPG, WebP, GIF ou SVG · maximum 10 Mo. Le fichier est enregistré dans le Gestionnaire de médias Wix.</div>
+                  </Field>
                   <Field label="Devise par défaut"><select style={input} value={settings.currency || 'CAD'} onChange={(e) => setSettings({ ...settings, currency: e.target.value })}><option value="CAD">CAD</option><option value="USD">USD</option><option value="EUR">EUR</option></select></Field>
                   <Field label="Buffer avant par défaut (heures)"><input type="number" min="0" step="0.5" style={input} value={settings.defaultBufferBeforeHours ?? 0} onChange={(e) => setSettings({ ...settings, defaultBufferBeforeHours: numberValue(e.target.value) })} /></Field>
                   <Field label="Buffer après par défaut (heures)"><input type="number" min="0" step="0.5" style={input} value={settings.defaultBufferAfterHours ?? 0} onChange={(e) => setSettings({ ...settings, defaultBufferAfterHours: numberValue(e.target.value) })} /></Field>
                 </div>
-                {settings.logoUrl ? <div style={{ marginTop: 18 }}><div style={{ color: '#64748b', fontSize: 13, marginBottom: 8 }}>Aperçu du logo</div><img src={settings.logoUrl} alt="Logo" style={{ maxWidth: 220, maxHeight: 100, objectFit: 'contain', border: '1px solid #e5e7eb', borderRadius: 8, padding: 8 }} /></div> : null}
+                {logoPreviewUrl ? (
+                  <div style={{ marginTop: 18 }}>
+                    <div style={{ color: '#64748b', fontSize: 13, marginBottom: 8 }}>Aperçu du logo</div>
+                    <div style={{ display: 'inline-flex', minWidth: 120, minHeight: 70, alignItems: 'center', justifyContent: 'center', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, padding: 10 }}>
+                      <img src={logoPreviewUrl} alt="Logo de l’entreprise" style={{ maxWidth: 220, maxHeight: 100, objectFit: 'contain', display: 'block' }} />
+                    </div>
+                  </div>
+                ) : settings.logoUrl ? (
+                  <div style={{ marginTop: 18, padding: 12, borderRadius: 8, background: '#fff7ed', color: '#9a3412' }}>
+                    Le logo enregistré n’est pas une adresse d’image valide. Choisissez un nouveau logo pour le remplacer.
+                  </div>
+                ) : (
+                  <div style={{ marginTop: 18, color: '#64748b', fontSize: 13 }}>Aucun logo configuré.</div>
+                )}
                 <SaveButton saving={saving} onClick={() => void saveSettings()} />
               </div>
             )}
@@ -382,21 +628,64 @@ const SettingsV2Page: FC = () => {
               </div>
             )}
 
-            {!loading && tab === 'PLANS' && (
-              <div style={card}>
-                <h2 style={{ marginTop: 0 }}>Abonnement</h2>
-                <div style={{ fontSize: 18 }}>Plan actuel : <strong>{planLabels[plan]}</strong></div>
-                <p style={{ color: '#64748b' }}>Pour la bêta privée, toutes les fonctions sont ouvertes afin de tester le flux complet. Avant l’App Market public, RentalFlow lira le vrai forfait Wix installé.</p>
-                <div style={{ overflowX: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 720 }}><thead><tr style={{ textAlign: 'left', color: '#64748b' }}><th style={{ padding: 10 }}>Fonction</th><th>Gratuit</th><th>Starter</th><th>Business</th><th>Pro</th></tr></thead><tbody>
-                  <PlanRow label="Réservations, buffers, calendrier mensuel" values={[true,true,true,true]} />
-                  <PlanRow label="Tarifs hebdomadaires + documents" values={[false,true,true,true]} />
-                  <PlanRow label="Paiements Wix et dépôt" values={[false,true,true,true]} />
-                  <PlanRow label="Tarifs mensuels + rabais + inspections" values={[false,false,true,true]} />
-                  <PlanRow label="Modèles avancés / historique complet" values={[false,false,true,true]} />
-                  <PlanRow label="Inventaire illimité / automatisations avancées" values={[false,false,false,true]} />
-                </tbody></table></div>
-              </div>
-            )}
+            {!loading && tab === 'PLANS' && (() => {
+              const plans: RentalFlowPlan[] = ['STARTER', 'BUSINESS', 'PRO'];
+              const featureValues = (feature: Parameters<typeof hasFeature>[1]) => plans.map((candidate) => hasFeature(candidate, feature));
+              const statusMessage = plan === 'TRIAL'
+                ? 'Votre essai Wix est actif : toutes les fonctions Pro sont temporairement déverrouillées.'
+                : plan === 'NO_PLAN'
+                  ? 'Aucun abonnement RentalFlow actif. À la fin de l’essai, un forfait Starter, Business ou Pro est requis.'
+                  : `Le forfait Wix ${planLabels[plan]} est actif sur ce site.`;
+              return (
+                <div style={card}>
+                  <h2 style={{ marginTop: 0 }}>Abonnement</h2>
+                  <div style={{ fontSize: 18 }}>
+                    Statut Wix actuel : <strong>{planLoading ? 'Vérification…' : planLabels[plan]}</strong>
+                  </div>
+                  <div style={{
+                    marginTop: 12,
+                    padding: 12,
+                    borderRadius: 9,
+                    background: plan === 'NO_PLAN' ? '#fef2f2' : plan === 'TRIAL' ? '#eff6ff' : '#f0fdf4',
+                    color: plan === 'NO_PLAN' ? '#991b1b' : plan === 'TRIAL' ? '#1e40af' : '#166534',
+                  }}>
+                    {planLoading ? 'RentalFlow vérifie le forfait installé auprès de Wix…' : statusMessage}
+                  </div>
+                  <p style={{ color: '#64748b' }}>
+                    RentalFlow est une application Premium : il n’y a pas de forfait gratuit permanent. Wix gère la période d’essai et le forfait payé. Pendant l’essai, RentalFlow donne accès aux fonctions Pro; ensuite les fonctions correspondent au Product ID Wix installé : starter, business ou pro.
+                  </p>
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 700 }}>
+                      <thead>
+                        <tr style={{ textAlign: 'left', color: '#64748b' }}>
+                          <th style={{ padding: 10 }}>Fonction</th>
+                          <th>Starter</th>
+                          <th>Business</th>
+                          <th>Pro</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <PlanRow label="Réservations, clients, calendrier et buffers" values={[true, true, true]} />
+                        <PlanRow label="Catégories, catalogue et extras de réservation" values={[true, true, true]} />
+                        <PlanRow label="Réservation en ligne et tarif journalier" values={[true, true, true]} />
+                        <PlanTextRow label="Équipements actifs" values={plans.map((candidate) => assetLimits[candidate] === null ? 'Illimité' : String(assetLimits[candidate]))} />
+                        <PlanRow label="Tarifs hebdomadaires" values={featureValues('WEEKLY_PRICING')} />
+                        <PlanRow label="Documents (devis, contrats, factures)" values={featureValues('DOCUMENTS')} />
+                        <PlanRow label="Paiements Wix et dépôt" values={featureValues('PAYMENTS')} />
+                        <PlanRow label="Tarifs mensuels" values={featureValues('MONTHLY_PRICING')} />
+                        <PlanRow label="Rabais longue durée et rabais client" values={featureValues('LONG_TERM_DISCOUNT')} />
+                        <PlanRow label="Inspections départ / retour" values={featureValues('INSPECTIONS')} />
+                        <PlanRow label="Historique complet et vues calendrier avancées" values={featureValues('FULL_HISTORY')} />
+                        <PlanRow label="Inventaire illimité" values={featureValues('UNLIMITED_ASSETS')} />
+                      </tbody>
+                    </table>
+                  </div>
+                  <p style={{ color: '#64748b', fontSize: 13, marginBottom: 0 }}>
+                    Essai gratuit : mêmes fonctions que Pro jusqu’à la fin de la période configurée dans Wix.
+                  </p>
+                </div>
+              );
+            })()}
           </div>
         </Page.Content>
       </Page>
@@ -433,6 +722,7 @@ const Field: FC<{ label: string; children: ReactNode }> = ({ label, children }) 
 const TabButton: FC<{ active: boolean; onClick: () => void; children: string }> = ({ active, onClick, children }) => <button onClick={onClick} style={{ ...secondary, background: active ? '#116dff' : '#fff', color: active ? '#fff' : '#116dff' }}>{children}</button>;
 const SaveButton: FC<{ saving: boolean; onClick: () => void }> = ({ saving, onClick }) => <div style={{ marginTop: 20, display: 'flex', justifyContent: 'flex-end' }}><button style={primary} disabled={saving} onClick={onClick}>{saving ? 'Enregistrement…' : 'Enregistrer les paramètres'}</button></div>;
 const PlanRow: FC<{ label: string; values: boolean[] }> = ({ label, values }) => <tr style={{ borderTop: '1px solid #e5e7eb' }}><td style={{ padding: 12, fontWeight: 600 }}>{label}</td>{values.map((value, index) => <td key={index} style={{ padding: 12 }}>{value ? '✓' : '—'}</td>)}</tr>;
+const PlanTextRow: FC<{ label: string; values: string[] }> = ({ label, values }) => <tr style={{ borderTop: '1px solid #e5e7eb' }}><td style={{ padding: 12, fontWeight: 600 }}>{label}</td>{values.map((value, index) => <td key={index} style={{ padding: 12 }}>{value}</td>)}</tr>;
 const TemplateSelect: FC<{ label: string; type: DocumentType; templates: DocumentTemplate[]; value: string; onChange: (value: string) => void }> = ({ label, type, templates, value, onChange }) => <Field label={label}><select style={input} value={value} onChange={(e) => onChange(e.target.value)}><option value="">Aucun par défaut</option>{templates.filter((template) => template.documentType === type).map((template) => <option key={template._id} value={template._id}>{template.name}</option>)}</select></Field>;
 
 export default SettingsV2Page;

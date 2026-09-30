@@ -1,44 +1,17 @@
 import type { CSSProperties, FC, FormEvent, ReactNode } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { items } from '@wix/data';
+import { httpClient } from '@wix/essentials';
 import { Page, WixDesignSystemProvider } from '@wix/design-system';
 import '@wix/design-system/styles.global.css';
 import { assetLimitForPlan, canCreateAsset, hasFeature, planLabels, requiredPlan } from '../../../../lib/plans';
 import { useRentalFlowPlan } from '../../../../lib/use-plan';
+import { COLLECTIONS } from '../../../../lib/collection-ids';
+import { loadAllDashboardItems } from '../../../../lib/dashboard-data';
+import type { Asset, AssetStatus, Category } from '../../../../domain/types';
 
-const COLLECTION = '@pilotedavid1/rental-flow/assets';
-const CATEGORIES = '@pilotedavid1/rental-flow/categories';
-
-type AssetStatus = 'AVAILABLE' | 'RESERVED' | 'RENTED' | 'MAINTENANCE' | 'INACTIVE';
-
-type Asset = {
-  _id?: string;
-  title?: string;
-  assetNumber?: string;
-  productType?: string;
-  categoryId?: string;
-  categoryName?: string;
-  catalogTagsJson?: string;
-  status?: AssetStatus;
-  dailyRateCents?: number;
-  weeklyRateCents?: number;
-  monthlyRateCents?: number;
-  discountAfterDays?: number;
-  discountPercent?: number;
-  currency?: string;
-  serialNumber?: string;
-  image?: unknown;
-  notes?: string;
-  active?: boolean;
-};
-
-type Category = {
-  _id?: string;
-  name?: string;
-  active?: boolean;
-  forEquipment?: boolean;
-  sortOrder?: number;
-};
+const COLLECTION = COLLECTIONS.assets;
+const CATEGORIES = COLLECTIONS.categories;
 
 type AssetForm = {
   title: string;
@@ -91,6 +64,27 @@ function rateToInput(cents?: number): string {
   return typeof cents === 'number' && cents > 0 ? (cents / 100).toFixed(2).replace('.', ',') : '';
 }
 
+async function persistAsset(assetId: string | undefined, asset: Asset): Promise<Asset> {
+  const response = await httpClient.fetchWithAuth(
+    new URL('/api/asset-write', import.meta.url).toString(),
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ assetId, asset }),
+    },
+  );
+
+  const raw = await response.text();
+  let payload: { asset?: Asset; error?: string } = {};
+  try { payload = raw ? JSON.parse(raw) : {}; } catch { payload = {}; }
+
+  if (!response.ok || !payload.asset) {
+    throw new Error(payload.error || 'Impossible d’enregistrer cet équipement.');
+  }
+
+  return payload.asset;
+}
+
 const EquipmentPage: FC = () => {
   const { plan, loading: planLoading } = useRentalFlowPlan();
   const weeklyEnabled = hasFeature(plan, 'WEEKLY_PRICING');
@@ -113,12 +107,12 @@ const EquipmentPage: FC = () => {
   const load = async () => {
     setLoading(true); setError('');
     try {
-      const [assetResult, categoryResult] = await Promise.all([
-        items.query(COLLECTION).limit(1000).find(),
-        items.query(CATEGORIES).limit(1000).find(),
+      const [loadedAssets, loadedCategories] = await Promise.all([
+        loadAllDashboardItems<Asset>(COLLECTION),
+        loadAllDashboardItems<Category>(CATEGORIES),
       ]);
-      setAssets(assetResult.items as Asset[]);
-      setCategories(categoryResult.items as Category[]);
+      setAssets(loadedAssets);
+      setCategories(loadedCategories);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Impossible de charger les équipements.');
     } finally { setLoading(false); }
@@ -183,13 +177,12 @@ const EquipmentPage: FC = () => {
       };
       if ((payload.discountPercent ?? 0) > 100) throw new Error('Le rabais ne peut pas dépasser 100 %.');
 
+      const saved = await persistAsset(editing?._id, payload);
       if (editing?._id) {
-        const updated = await items.update(COLLECTION, { _id: editing._id, ...payload, image: editing.image }) as Asset;
-        setAssets((current) => current.map((asset) => asset._id === editing._id ? updated : asset));
+        setAssets((current) => current.map((asset) => asset._id === editing._id ? saved : asset));
         setSuccess(`${title} a été modifié.`);
       } else {
-        const created = await items.insert(COLLECTION, payload) as Asset;
-        setAssets((current) => [...current, created]);
+        setAssets((current) => [...current, saved]);
         setSuccess(`${title} a été ajouté.`);
       }
       setOpen(false); setEditing(null); setForm(blankForm);
@@ -203,9 +196,11 @@ const EquipmentPage: FC = () => {
     if (!window.confirm(`Désactiver ${asset.title ?? asset.assetNumber ?? 'cet équipement'} ? Il restera dans l’historique.`)) return;
     setError(''); setSuccess('');
     try {
-      const updated = await items.update(COLLECTION, {
-        ...asset, _id: asset._id, status: 'INACTIVE', active: false,
-      }) as Asset;
+      const updated = await persistAsset(asset._id, {
+        ...asset,
+        status: 'INACTIVE',
+        active: false,
+      });
       setAssets((current) => current.map((item) => item._id === asset._id ? updated : item));
       setSuccess(`${asset.title ?? 'L’équipement'} a été désactivé.`);
     } catch (e) { setError(e instanceof Error ? e.message : 'Impossible de désactiver cet équipement.'); }

@@ -48,6 +48,11 @@ export default {
     itemRemove: 'CMS_EDITOR',
     itemUpdate: 'CMS_EDITOR',
   },
-  indexes: [],
+  indexes: [
+    {
+      fields: [{ path: 'documentNumber', order: 'ASC' }],
+      unique: true,
+    },
+  ],
   initialData: [],
 } satisfies DataCollection;

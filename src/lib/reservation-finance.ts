@@ -1,5 +1,6 @@
-export type DepositType = 'PERCENT' | 'FIXED';
-export type PaymentMode = 'NONE' | 'FULL' | 'DEPOSIT';
+import type { DepositType, PaymentMode } from '../domain/types';
+
+export type { DepositType, PaymentMode } from '../domain/types';
 
 export interface TaxSettings {
   taxesEnabled?: boolean;

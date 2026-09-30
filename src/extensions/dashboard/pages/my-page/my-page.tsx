@@ -1,19 +1,14 @@
 import type { CSSProperties, FC } from 'react';
 import { useEffect, useMemo, useState } from 'react';
-import { items } from '@wix/data';
 import { httpClient } from '@wix/essentials';
 import { Page, WixDesignSystemProvider } from '@wix/design-system';
 import '@wix/design-system/styles.global.css';
+import { COLLECTIONS } from '../../../../lib/collection-ids';
+import { loadAllDashboardItems } from '../../../../lib/dashboard-data';
+import type { Asset, Reservation } from '../../../../domain/types';
 
-const ASSETS = '@pilotedavid1/rental-flow/assets';
-const RESERVATIONS = '@pilotedavid1/rental-flow/reservations';
-
-type AssetStatus = 'AVAILABLE' | 'RESERVED' | 'RENTED' | 'MAINTENANCE' | 'INACTIVE';
-type Asset = { status?: AssetStatus; active?: boolean };
-type Reservation = {
-  _id?: string; reservationNumber?: string; customerName?: string; startDateTime?: Date | string;
-  endDateTime?: Date | string; status?: string; workflowStage?: string; totalCents?: number; currency?: string;
-};
+const ASSETS = COLLECTIONS.assets;
+const RESERVATIONS = COLLECTIONS.reservations;
 
 const card: CSSProperties = { background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 20, boxShadow: '0 1px 3px rgba(0,0,0,.06)' };
 
@@ -49,13 +44,13 @@ const DashboardPage: FC = () => {
           console.warn('RentalFlow payment reconciliation skipped.', paymentSyncError);
         }
 
-        const [assetResult, reservationResult] = await Promise.all([
-          items.query(ASSETS).limit(1000).find(),
-          items.query(RESERVATIONS).limit(1000).find(),
+        const [loadedAssets, loadedReservations] = await Promise.all([
+          loadAllDashboardItems<Asset>(ASSETS),
+          loadAllDashboardItems<Reservation>(RESERVATIONS),
         ]);
         if (active) {
-          setAssets(assetResult.items as Asset[]);
-          setReservations(reservationResult.items as Reservation[]);
+          setAssets(loadedAssets);
+          setReservations(loadedReservations);
         }
       } catch (e) {
         if (active) setError(e instanceof Error ? e.message : 'Impossible de charger les données RentalFlow.');

@@ -3,8 +3,9 @@ import { items } from '@wix/data';
 import DashboardPage from './my-page';
 import { withDashboardLocalization } from '../../../../intl/dashboard-page';
 import { sendRentalFlowBiEvent } from '../../../../lib/bi-events-client';
+import { COLLECTIONS } from '../../../../lib/collection-ids';
 
-const ASSETS = '@pilotedavid1/rental-flow/assets';
+const ASSETS = COLLECTIONS.assets;
 const LocalizedDashboardPage = withDashboardLocalization(DashboardPage);
 
 // APP_FINISHED_CONFIGURATION has an app-wide Wix side effect: after the app
@@ -22,9 +23,12 @@ export default function TrackedDashboardPage() {
 
     const reportSetupState = async () => {
       try {
-        const result = await items.query(ASSETS).limit(100).find();
-        const configured = result.items.some((item) => item.active !== false && item.status !== 'INACTIVE');
-        if (!configured) return;
+        const result = await items.query(ASSETS)
+          .ne('active', false)
+          .ne('status', 'INACTIVE')
+          .limit(1)
+          .find();
+        if (!result.items.length) return;
 
         await sendRentalFlowBiEvent({
           eventName: 'APP_SETUP_FINISHED',

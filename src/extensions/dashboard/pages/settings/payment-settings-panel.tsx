@@ -1,7 +1,8 @@
 import type { CSSProperties, FC } from 'react';
 import { useEffect, useMemo, useState } from 'react';
-import { items } from '@wix/data';
 import { useRentalFlowI18n } from '../../../../intl';
+import { loadDefaultAppSettings, saveDefaultAppSettings } from '../../../../lib/app-settings-store';
+import type { AppSettings } from '../../../../domain/types';
 import {
   decodeStringList,
   maskedPaymentAccountId,
@@ -12,8 +13,6 @@ import {
   type PaymentEnvironment,
   type PaymentProvider,
 } from '../../../../lib/payment-provider';
-
-const APP_SETTINGS = '@pilotedavid1/rental-flow/app-settings';
 
 const card: CSSProperties = {
   background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12,
@@ -28,23 +27,7 @@ const primary: CSSProperties = {
   cursor: 'pointer', background: '#116dff', color: '#fff',
 };
 
-type AppSettingsRecord = Record<string, unknown> & {
-  _id?: string;
-  settingsKey?: string;
-  payflowProvider?: string;
-  payflowEnvironment?: string;
-  payflowAccountId?: string;
-  payflowAccountStatus?: string;
-  payflowDetailsSubmitted?: boolean;
-  payflowChargesEnabled?: boolean;
-  payflowPayoutsEnabled?: boolean;
-  payflowRequirementsCurrentlyDueJson?: string;
-  payflowRequirementsPastDueJson?: string;
-  payflowRequirementsPendingVerificationJson?: string;
-  payflowCountry?: string;
-  payflowDefaultCurrency?: string;
-  payflowLastSyncedAt?: Date | string | null;
-};
+type AppSettingsRecord = AppSettings & Record<string, unknown>;
 
 const emptyRecord: AppSettingsRecord = {
   settingsKey: 'default',
@@ -73,8 +56,7 @@ const PaymentSettingsPanel: FC = () => {
     let active = true;
     const load = async () => {
       try {
-        const result = await items.query(APP_SETTINGS).eq('settingsKey', 'default').limit(1).find();
-        const existing = (result.items?.[0] as AppSettingsRecord | undefined) || emptyRecord;
+        const existing = (await loadDefaultAppSettings() as AppSettingsRecord | undefined) || emptyRecord;
         if (!active) return;
         setRecord(existing);
         setProvider(normalizePaymentProvider(existing.payflowProvider));
@@ -148,9 +130,7 @@ const PaymentSettingsPanel: FC = () => {
         payflowLastSyncedAt: clearProviderAccount ? null : record.payflowLastSyncedAt || null,
       };
 
-      let saved: AppSettingsRecord;
-      if (record._id) saved = await items.update(APP_SETTINGS, payload) as AppSettingsRecord;
-      else saved = await items.insert(APP_SETTINGS, payload) as AppSettingsRecord;
+      const saved = await saveDefaultAppSettings(payload) as AppSettingsRecord;
 
       setRecord(saved);
       setProvider(normalizePaymentProvider(saved.payflowProvider));
