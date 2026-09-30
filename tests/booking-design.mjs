@@ -19,6 +19,22 @@ const bookingPanelSource = await readFile(
 assert(!bookingApiSource.includes('rentalflow-network-ping'));
 assert(!bookingApiSource.includes('authPing'));
 assert(!bookingPanelSource.includes('public-booking-debug'));
+assert(bookingApiSource.includes('import.meta.env.BASE_API_URL'));
+const bookingExtensionSource = await readFile(
+  join(root, 'src/extensions/site/widgets/rental-flow-online-booking/rental-flow-online-booking.extension.ts'),
+  'utf8',
+);
+assert(bookingExtensionSource.includes("staticContainer: 'HOMEPAGE'"));
+assert(!bookingExtensionSource.includes('autoAdd:'));
+assert(bookingExtensionSource.includes('{{BASE_URL}}/public/rental-flow-online-booking-thumbnail.png'));
+for (const endpointPath of [
+  'src/pages/api/asset-write.ts',
+  'src/pages/api/reconcile-payments.ts',
+  'src/pages/api/reservation-extra-stock.ts',
+]) {
+  const source = await readFile(join(root, endpointPath), 'utf8');
+  assert(source.includes('requireDashboardUser'));
+}
 await assert.rejects(
   access(join(root, 'src/pages/api/public-booking-debug.ts')),
   (error) => error?.code === 'ENOENT',
