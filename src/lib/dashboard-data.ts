@@ -9,7 +9,7 @@ export type DashboardQueryRefiner = (
 export async function loadAllDashboardItems<T>(
   collectionId: string,
   refine?: DashboardQueryRefiner,
-  pageSize = 500,
+  pageSize = 1000,
 ): Promise<T[]> {
   const normalizedPageSize = Math.min(
     1000,
