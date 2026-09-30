@@ -11,14 +11,18 @@ import { requireActiveAppInstance } from '../../server/request-auth';
 
 function corsHeaders(request?: Request): Record<string, string> {
   const origin = String(request?.headers.get('origin') || '').trim();
+  const requestedHeaders = String(
+    request?.headers.get('access-control-request-headers') || '',
+  ).trim();
 
   return {
     'access-control-allow-origin': origin || '*',
     'access-control-allow-methods': 'GET,POST,OPTIONS',
-    'access-control-allow-headers': 'Authorization,Content-Type',
+    'access-control-allow-headers':
+      requestedHeaders || 'Authorization,Content-Type,X-Wix-Linguist',
     'access-control-allow-credentials': origin ? 'true' : 'false',
     'access-control-max-age': '600',
-    vary: 'Origin',
+    vary: 'Origin, Access-Control-Request-Headers',
   };
 }
 
