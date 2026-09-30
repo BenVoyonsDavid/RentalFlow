@@ -1,12 +1,8 @@
 import { httpClient } from '@wix/essentials';
 
 export function publicBookingApiUrl(params = ''): string {
-  const wixBaseApiUrl = String(import.meta.env.BASE_API_URL || '')
-    .trim()
-    .replace(/\/$/, '');
-  const moduleOrigin = new URL(import.meta.url).origin;
-  const baseUrl = wixBaseApiUrl || moduleOrigin;
-  const url = new URL(`${baseUrl}/api/public-booking`);
+  const baseApiUrl = new URL(import.meta.url).origin;
+  const url = new URL(`${baseApiUrl}/api/public-booking`);
 
   if (params) url.search = params;
   return url.toString();
@@ -20,7 +16,8 @@ export async function fetchPublicBookingJson(
 
   try {
     response = await httpClient.fetchWithAuth(url, options);
-  } catch {
+  } catch (error) {
+    console.error('RentalFlow booking request failed', { url, error });
     throw new Error(
       'Impossible de joindre le service de réservation. Réessayez dans quelques instants.',
     );
