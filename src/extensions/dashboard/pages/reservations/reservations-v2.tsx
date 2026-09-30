@@ -1,6 +1,7 @@
 import type { CSSProperties, FC, FormEvent, ReactNode } from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { items } from '@wix/data';
+import { httpClient } from '@wix/essentials';
 import { Page, WixDesignSystemProvider } from '@wix/design-system';
 import '@wix/design-system/styles.global.css';
 import { COLLECTIONS } from '../../../../lib/collection-ids';
@@ -323,70 +324,77 @@ const ReservationsV2Page: FC = () => {
     });
     if (missing.length) return setFormError(`Champs requis par les modèles sélectionnés : ${missing.join(', ')}.`);
 
-    const before = numeric(form.bufferBeforeHours); const after = numeric(form.bufferAfterHours);
+    const before = numeric(form.bufferBeforeHours);
+    const after = numeric(form.bufferAfterHours);
+
     setSaving(true);
     try {
-      const latest = (await items.query(RESERVATION_ITEMS).limit(1000).find()).items as ReservationItem[];
-      const blocked = getBlockedRange(formDates.start, formDates.end, before, after);
-      for (const assetId of selectedAssetIds) {
-        const conflict = latest.some((item) => item.assetId === assetId && item.status !== 'CANCELLED' && item.status !== 'COMPLETED' && rangesOverlap(blocked.blockedStart, blocked.blockedEnd, asDate(item.blockedStartDateTime), asDate(item.blockedEndDateTime)));
-        if (conflict) throw new Error(`${activeAssets.find((asset) => asset._id === assetId)?.title || 'Un équipement'} n’est plus disponible pour cette période.`);
+      const response = await httpClient.fetchWithAuth(
+        `${import.meta.env.BASE_API_URL}/api/dashboard-reservation`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            customer: {
+              mode: form.customerMode,
+              customerId: form.customerId,
+              firstName: form.newFirstName,
+              lastName: form.newLastName,
+              companyName: form.newCompanyName,
+              name: form.customerName,
+              email: form.customerEmail,
+              phone: form.customerPhone,
+              addressLine1: form.customerAddressLine1,
+              addressLine2: form.customerAddressLine2,
+              city: form.customerCity,
+              region: form.customerRegion,
+              postalCode: form.customerPostalCode,
+              country: form.customerCountry,
+            },
+            startDateTime: form.startDateTime,
+            endDateTime: form.endDateTime,
+            assetIds: selectedAssetIds,
+            bufferBeforeHours: before,
+            bufferAfterHours: after,
+            quoteTemplateId: form.quoteTemplateId,
+            contractTemplateId: form.contractTemplateId,
+            invoiceTemplateId: form.invoiceTemplateId,
+            paymentMode: paymentsEnabled ? form.paymentMode : 'NONE',
+            depositType: form.depositType,
+            depositValue: numeric(form.depositValue),
+            notes: form.notes,
+          }),
+        },
+      );
+
+      const payload = await response.json().catch(() => ({})) as {
+        error?: string;
+        reservationNumber?: string;
+        reservation?: Reservation;
+      };
+
+      if (!response.ok || !payload.reservation?._id) {
+        throw new Error(
+          payload.error || 'Impossible de créer la réservation.',
+        );
       }
 
-      let customerId = form.customerId;
-      let customerNumber = selectedCustomer?.customerNumber || '';
-      if (form.customerMode === 'NEW') {
-        const created = await items.insert(CUSTOMERS, {
-          customerNumber: generateReferenceNumber('C'), firstName: form.newFirstName.trim(), lastName: form.newLastName.trim(),
-          companyName: form.newCompanyName.trim(), email: form.customerEmail.trim().toLowerCase(), phone: form.customerPhone.trim(),
-          addressLine1: form.customerAddressLine1.trim(), addressLine2: form.customerAddressLine2.trim(), city: form.customerCity.trim(),
-          region: form.customerRegion.trim(), postalCode: form.customerPostalCode.trim().toUpperCase(), country: form.customerCountry.trim(),
-          discountPercent: 0, active: true,
-        }) as Customer;
-        if (!created._id) throw new Error('Impossible de créer le client.');
-        customerId = created._id; customerNumber = created.customerNumber || '';
-      }
+      const created = payload.reservation;
+      const number = payload.reservationNumber
+        || created.reservationNumber
+        || '';
 
-      const number = generateReferenceNumber('RF');
-      const quoteTemplate = documentsEnabled ? activeTemplates.find((template) => template._id === form.quoteTemplateId) : undefined;
-      const contractTemplate = documentsEnabled ? activeTemplates.find((template) => template._id === form.contractTemplateId) : undefined;
-      const invoiceTemplate = documentsEnabled ? activeTemplates.find((template) => template._id === form.invoiceTemplateId) : undefined;
-      const created = await items.insert(RESERVATIONS, {
-        reservationNumber: number, customerId, customerNumber,
-        customerName: form.customerName.trim(), customerEmail: form.customerEmail.trim(), customerPhone: form.customerPhone.trim(),
-        customerAddressLine1: form.customerAddressLine1.trim(), customerAddressLine2: form.customerAddressLine2.trim(),
-        customerCity: form.customerCity.trim(), customerRegion: form.customerRegion.trim(),
-        customerPostalCode: form.customerPostalCode.trim().toUpperCase(), customerCountry: form.customerCountry.trim(),
-        startDateTime: formDates.start, endDateTime: formDates.end, bufferBeforeHours: before, bufferAfterHours: after,
-        status: 'CONFIRMED', workflowStage: 'RESERVATION',
-        quoteTemplateId: quoteTemplate?._id || '', quoteTemplateName: quoteTemplate?.name || '',
-        contractTemplateId: contractTemplate?._id || '', contractTemplateName: contractTemplate?.name || '',
-        invoiceTemplateId: invoiceTemplate?._id || '', invoiceTemplateName: invoiceTemplate?.name || '',
-        subtotalCents, customerDiscountPercent: discountPercent, discountCents,
-        preTaxTotalCents: taxPreview.preTaxTotalCents,
-        tax1Name: settings.taxesEnabled === false ? '' : settings.tax1Name || '', tax1Rate: settings.taxesEnabled === false ? 0 : settings.tax1Rate || 0, tax1Cents: taxPreview.tax1Cents,
-        tax2Name: settings.taxesEnabled === false ? '' : settings.tax2Name || '', tax2Rate: settings.taxesEnabled === false ? 0 : settings.tax2Rate || 0, tax2Cents: taxPreview.tax2Cents,
-        taxTotalCents: taxPreview.taxTotalCents, totalCents: taxPreview.totalCents, currency,
-        depositRequired: paymentsEnabled && depositEnabledForPlan && form.paymentMode === 'DEPOSIT', depositType: form.depositType, depositValue: numeric(form.depositValue),
-        depositAmountCents: depositPreview.depositAmountCents, amountDueNowCents: depositPreview.amountDueNowCents,
-        balanceDueCents: depositPreview.balanceDueCents, paymentMode: paymentsEnabled ? form.paymentMode : 'NONE', notes: form.notes.trim(),
-      }) as Reservation;
-      if (!created._id) throw new Error('Wix n’a pas retourné l’identifiant de la réservation.');
-
-      for (const line of pricingLines) {
-        if (!line.asset._id) continue;
-        await items.insert(RESERVATION_ITEMS, {
-          reservationId: created._id, reservationNumber: number, assetId: line.asset._id,
-          assetNumber: line.asset.assetNumber || '', assetTitle: line.asset.title || '',
-          startDateTime: formDates.start, endDateTime: formDates.end,
-          blockedStartDateTime: blocked.blockedStart, blockedEndDateTime: blocked.blockedEnd,
-          bufferBeforeHours: before, bufferAfterHours: after, billableDays: line.billableDays,
-          lineTotalCents: line.totalCents, pricingMode: line.pricingMode, currency: line.asset.currency || currency, status: 'CONFIRMED',
-        });
-      }
-      await logActivity(created, 'RESERVATION_CREATED', `Réservation ${number} créée.`);
-      setFormOpen(false); setForm(null); setSuccess(`Réservation ${number} créée.`); await load();
-      setSelectedReservation(created); setNotesDraft(created.notes || ''); setDetailTab('DETAILS');
+      setFormOpen(false);
+      setForm(null);
+      setSuccess(
+        number
+          ? `Réservation ${number} créée.`
+          : 'Réservation créée.',
+      );
+      await load();
+      setSelectedReservation(created);
+      setNotesDraft(created.notes || '');
+      setDetailTab('DETAILS');
     } catch (e) {
       setFormError(e instanceof Error ? e.message : 'Impossible de créer la réservation.');
     } finally { setSaving(false); }
