@@ -1,6 +1,7 @@
 import type { APIRoute } from 'astro';
 import { auth } from '@wix/essentials';
 import { files } from '@wix/media';
+import { requireDashboardUser } from '../../server/request-auth';
 
 const ALLOWED_MIME_TYPES = new Set([
   'image/png',
@@ -19,10 +20,7 @@ function json(body: unknown, status = 200): Response {
 
 export const POST: APIRoute = async ({ request }) => {
   try {
-    const tokenInfo = await auth.getTokenInfo();
-    if (!tokenInfo.active || tokenInfo.subjectType !== 'USER') {
-      return json({ error: 'Accès refusé. Cette action doit être effectuée depuis le tableau de bord Wix.' }, 403);
-    }
+    await requireDashboardUser();
 
     const body = await request.json().catch(() => null) as {
       mimeType?: unknown;
@@ -58,6 +56,9 @@ export const POST: APIRoute = async ({ request }) => {
 
     return json({ uploadUrl: generated.uploadUrl });
   } catch (error) {
+    if (error instanceof Error && (error.message === 'UNAUTHORIZED' || error.message === 'FORBIDDEN')) {
+      return json({ error: 'Accès refusé. Cette action doit être effectuée depuis le tableau de bord Wix.' }, 403);
+    }
     const message = error instanceof Error ? error.message : 'Impossible de préparer le téléversement du logo.';
     return json({ error: message }, 500);
   }
