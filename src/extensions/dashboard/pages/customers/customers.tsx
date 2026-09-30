@@ -201,20 +201,51 @@ const CustomersPage: FC = () => {
 
   const removeCustomer = async (customer: Customer) => {
     if (!customer._id) return;
-    const linked = linkedReservations(customer);
-    if (linked.length > 0) {
-      const deactivate = window.confirm(
-        `${fullName(customer)} possède ${linked.length} réservation(s). La fiche ne peut pas être supprimée sans perdre le lien historique.\n\nVoulez-vous désactiver ce client plutôt ?`
-      );
-      if (deactivate && customer.active !== false) await toggleActive(customer, false);
-      return;
-    }
-    if (!window.confirm(`Supprimer définitivement la fiche de ${fullName(customer)} ? Cette action est irréversible.`)) return;
-    setError(''); setSuccess('');
+
+    setError('');
+    setSuccess('');
+
     try {
+      const byId = await items.query(RESERVATIONS)
+        .eq('customerId', customer._id)
+        .limit(1)
+        .find();
+
+      let hasLinkedReservation = byId.items.length > 0;
+      const email = customer.email?.trim().toLowerCase();
+
+      if (!hasLinkedReservation && email) {
+        const byEmail = await items.query(RESERVATIONS)
+          .eq('customerEmail', email)
+          .limit(1)
+          .find();
+        hasLinkedReservation = byEmail.items.length > 0;
+      }
+
+      if (hasLinkedReservation) {
+        const linked = linkedReservations(customer);
+        const countLabel = linked.length > 0
+          ? `${linked.length} réservation(s) chargée(s)`
+          : 'un historique de réservation';
+
+        const deactivate = window.confirm(
+          `${fullName(customer)} possède ${countLabel}. La fiche ne peut pas être supprimée sans perdre le lien historique.\n\nVoulez-vous désactiver ce client plutôt ?`,
+        );
+
+        if (deactivate && customer.active !== false) {
+          await toggleActive(customer, false);
+        }
+        return;
+      }
+
+      if (!window.confirm(`Supprimer définitivement la fiche de ${fullName(customer)} ? Cette action est irréversible.`)) {
+        return;
+      }
+
       await items.remove(CUSTOMERS, customer._id);
       setSuccess(`${fullName(customer)} a été supprimé définitivement.`);
-      setDetailCustomer(null); await load();
+      setDetailCustomer(null);
+      await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Impossible de supprimer le client.');
     }
