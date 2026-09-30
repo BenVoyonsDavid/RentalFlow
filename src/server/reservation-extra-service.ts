@@ -34,7 +34,6 @@ import {
   releaseCatalogStockLocks,
 } from './catalog-stock';
 import {
-  loadActiveAssets,
   loadSettingsAndTemplates,
 } from './public-booking-context';
 import {
@@ -43,6 +42,7 @@ import {
 } from './reservation-mutation-lock';
 
 const ACTIVITY = COLLECTIONS.activityLog;
+const ASSETS = COLLECTIONS.assets;
 const CATALOG = COLLECTIONS.catalogItems;
 const PAYMENTS = COLLECTIONS.payments;
 const RESERVATIONS = COLLECTIONS.reservations;
@@ -235,15 +235,21 @@ async function loadReservationPayments(
   }, 1000);
 }
 
-async function loadCatalogItem(
+async function findCatalogItem(
   catalogItemId: string,
-): Promise<CatalogReservationItem> {
+): Promise<CatalogReservationItem | undefined> {
   const result = await elevatedFind(
     elevatedQuery(CATALOG)
       .eq('_id', catalogItemId)
       .limit(1),
   );
-  const item = result.items?.[0] as CatalogReservationItem | undefined;
+  return result.items?.[0] as CatalogReservationItem | undefined;
+}
+
+async function loadActiveCatalogItem(
+  catalogItemId: string,
+): Promise<CatalogReservationItem> {
+  const item = await findCatalogItem(catalogItemId);
 
   if (!item?._id || item.active === false) {
     throw new ReservationExtraHttpError(
@@ -254,6 +260,25 @@ async function loadCatalogItem(
   }
 
   return item;
+}
+
+async function loadAssetsByIds(
+  assetIds: string[],
+): Promise<Asset[]> {
+  const uniqueIds = [...new Set(assetIds.filter(Boolean))];
+  const results = await Promise.all(
+    uniqueIds.map((assetId) =>
+      elevatedFind(
+        elevatedQuery(ASSETS)
+          .eq('_id', assetId)
+          .limit(1),
+      ),
+    ),
+  );
+
+  return results
+    .map((result) => result.items?.[0] as Asset | undefined)
+    .filter((asset): asset is Asset => !!asset?._id);
 }
 
 async function rollbackLineMutation(
@@ -368,35 +393,18 @@ export async function mutateReservationExtra(
     const [
       allLines,
       payments,
-      activeAssets,
       { settings },
     ] = await Promise.all([
       loadReservationItems(reservationId),
       loadReservationPayments(reservationId),
-      loadActiveAssets(),
       loadSettingsAndTemplates(),
     ]);
 
     const activeLines = activeReservationLines(allLines);
-    const rentalAssetIds = new Set(
-      activeLines
-        .filter((line) => reservationLineType(line) === 'RENTAL')
-        .map((line) => line.assetId)
-        .filter(Boolean),
-    );
-    const rentalAssets = activeAssets.filter(
-      (asset: Asset) =>
-        !!asset._id
-        && rentalAssetIds.has(asset._id),
-    );
-
-    if (!rentalAssets.length) {
-      throw new ReservationExtraHttpError(
-        409,
-        'RESERVATION_HAS_NO_ACTIVE_ASSETS',
-        'Aucun équipement actif n’est lié à cette réservation.',
-      );
-    }
+    const rentalAssetIds = activeLines
+      .filter((line) => reservationLineType(line) === 'RENTAL')
+      .map((line) => line.assetId || '')
+      .filter(Boolean);
 
     let catalogItem: CatalogReservationItem;
     let nextLines: ReservationItem[];
@@ -414,7 +422,16 @@ export async function mutateReservationExtra(
         );
       }
 
-      catalogItem = await loadCatalogItem(catalogItemId);
+      catalogItem = await loadActiveCatalogItem(catalogItemId);
+      const rentalAssets = await loadAssetsByIds(rentalAssetIds);
+
+      if (!rentalAssets.length) {
+        throw new ReservationExtraHttpError(
+          409,
+          'RESERVATION_HAS_NO_ASSETS',
+          'Aucun équipement n’est lié à cette réservation.',
+        );
+      }
 
       if (
         !catalogItemAppliesToAnyAsset(
@@ -599,11 +616,11 @@ export async function mutateReservationExtra(
         );
       }
 
-      catalogItem = await loadCatalogItem(
+      const existingCatalogItem = await findCatalogItem(
         existing.catalogItemId,
       );
 
-      if (catalogItem.trackInventory === true) {
+      if (existingCatalogItem?.trackInventory === true) {
         stockLocks = await acquireCatalogStockLocks(
           [existing.catalogItemId],
         );
