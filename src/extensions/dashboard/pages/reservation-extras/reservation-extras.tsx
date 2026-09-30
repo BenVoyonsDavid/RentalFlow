@@ -14,6 +14,7 @@ import {
 } from '../../../../lib/reservation-catalog';
 import { useRentalFlowI18n } from '../../../../intl';
 import { COLLECTIONS } from '../../../../lib/collection-ids';
+import { loadAllDashboardItems } from '../../../../lib/dashboard-data';
 import type { AppSettings, Asset, Payment, Reservation } from '../../../../domain/types';
 
 const ASSETS = COLLECTIONS.assets;
@@ -102,20 +103,31 @@ const ReservationExtrasPage: FC = () => {
     setLoading(true);
     setError('');
     try {
-      const [reservationResult, itemResult, catalogResult, assetResult, paymentResult, settingsResult] = await Promise.all([
-        items.query(RESERVATIONS).limit(1000).find(),
-        items.query(RESERVATION_ITEMS).limit(1000).find(),
-        items.query(CATALOG).limit(1000).find(),
-        items.query(ASSETS).limit(1000).find(),
-        items.query(PAYMENTS).limit(1000).find(),
+      const [
+        loadedReservations,
+        loadedReservationItems,
+        loadedCatalog,
+        loadedAssets,
+        loadedPayments,
+        settingsResult,
+      ] = await Promise.all([
+        loadAllDashboardItems<Reservation>(RESERVATIONS),
+        loadAllDashboardItems<ReservationItem>(RESERVATION_ITEMS),
+        loadAllDashboardItems<CatalogReservationItem>(CATALOG),
+        loadAllDashboardItems<Asset>(ASSETS),
+        loadAllDashboardItems<Payment>(PAYMENTS),
         items.query(SETTINGS).eq('settingsKey', 'default').limit(1).find(),
       ]);
-      setReservations(reservationResult.items as Reservation[]);
-      setReservationItems(itemResult.items as ReservationItem[]);
-      setCatalog(catalogResult.items as CatalogReservationItem[]);
-      setAssets(assetResult.items as Asset[]);
-      setPayments(paymentResult.items as Payment[]);
-      setSettings({ currency: 'CAD', taxesEnabled: true, ...((settingsResult.items[0] as AppSettings | undefined) || {}) });
+      setReservations(loadedReservations);
+      setReservationItems(loadedReservationItems);
+      setCatalog(loadedCatalog);
+      setAssets(loadedAssets);
+      setPayments(loadedPayments);
+      setSettings({
+        currency: 'CAD',
+        taxesEnabled: true,
+        ...((settingsResult.items[0] as AppSettings | undefined) || {}),
+      });
     } catch (e) {
       setError(e instanceof Error ? e.message : t('Impossible de charger les données.', 'Unable to load data.'));
     } finally {
