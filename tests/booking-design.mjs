@@ -88,8 +88,8 @@ const calendarSource = await readFile(
   join(root, 'src/extensions/dashboard/pages/calendar/calendar.tsx'),
   'utf8',
 );
-assert(calendarSource.includes(".le('startDateTime', visibleEnd)"));
-assert(calendarSource.includes(".ge('endDateTime', visibleStart)"));
+assert(calendarSource.includes(".lt('startDateTime', beforeVisibleEnd)"));
+assert(calendarSource.includes(".gt('endDateTime', afterVisibleStart)"));
 await assert.rejects(
   access(join(root, 'src/pages/api/public-booking-debug.ts')),
   (error) => error?.code === 'ENOENT',
