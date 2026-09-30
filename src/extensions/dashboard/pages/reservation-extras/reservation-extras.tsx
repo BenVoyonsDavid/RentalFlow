@@ -7,7 +7,6 @@ import '@wix/design-system/styles.global.css';
 import { catalogItemAppliesToAnyAsset } from '../../../../lib/catalog-compatibility';
 import {
   catalogBillableDays,
-  computeReservationFinancials,
   reservationLineType,
   type CatalogReservationItem,
   type ReservationCatalogLine,
@@ -23,7 +22,6 @@ const RESERVATIONS = COLLECTIONS.reservations;
 const RESERVATION_ITEMS = COLLECTIONS.reservationItems;
 const PAYMENTS = COLLECTIONS.payments;
 const SETTINGS = COLLECTIONS.appSettings;
-const ACTIVITY = COLLECTIONS.activityLog;
 
 type ReservationItem = ReservationCatalogLine & {
   reservationId?: string;
@@ -62,11 +60,6 @@ const input: CSSProperties = {
 function asDate(value?: Date | string): Date {
   if (value instanceof Date) return value;
   return value ? new Date(value) : new Date(0);
-}
-
-function reservationUpdatePayload(reservation: Reservation, changes: Partial<Reservation>) {
-  const { _createdDate, _updatedDate, ...rest } = reservation;
-  return { ...rest, _id: reservation._id, ...changes };
 }
 
 function netPaidCents(payments: Payment[], reservationId: string): number {
@@ -147,7 +140,12 @@ const ReservationExtrasPage: FC = () => {
   );
 
   const linkedLines = useMemo(
-    () => reservationItems.filter((line) => line.reservationId === selectedReservationId),
+    () => reservationItems.filter(
+      (line) =>
+        line.reservationId === selectedReservationId
+        && line.status !== 'CANCELLED'
+        && line.status !== 'COMPLETED',
+    ),
     [reservationItems, selectedReservationId],
   );
   const rentalLines = useMemo(
@@ -178,60 +176,27 @@ const ReservationExtrasPage: FC = () => {
 
   const paidCents = selectedReservation?._id ? Math.max(0, netPaidCents(payments, selectedReservation._id)) : 0;
 
-  const recalculateReservation = async (reservation: Reservation, nextLines: ReservationItem[]) => {
-    if (!reservation._id) return reservation;
-    const finance = computeReservationFinancials(nextLines, reservation.customerDiscountPercent || 0, settings);
-    const totalCents = finance.totalCents;
-    const nextBalance = Math.max(0, totalCents - Math.max(0, netPaidCents(payments, reservation._id)));
-    const updated = await items.update(RESERVATIONS, reservationUpdatePayload(reservation, {
-      subtotalCents: finance.subtotalCents,
-      discountCents: finance.discountCents,
-      preTaxTotalCents: finance.preTaxTotalCents,
-      tax1Cents: finance.tax1Cents,
-      tax2Cents: finance.tax2Cents,
-      taxTotalCents: finance.taxTotalCents,
-      totalCents,
-      depositAmountCents: Math.min(reservation.depositAmountCents || 0, totalCents),
-      amountDueNowCents: Math.min(reservation.amountDueNowCents || 0, totalCents),
-      balanceDueCents: nextBalance,
-    })) as Reservation;
-    return updated;
-  };
-
-  const logActivity = async (reservation: Reservation, description: string) => {
-    if (!reservation._id) return;
-    try {
-      await items.insert(ACTIVITY, {
-        reservationId: reservation._id,
-        reservationNumber: reservation.reservationNumber || '',
-        actionType: 'CATALOG_ITEMS_UPDATED',
-        description,
-        actor: 'Utilisateur Wix',
-        eventDate: new Date(),
-      });
-    } catch {
-      // Logging must not block catalog changes.
-    }
-  };
-
   const addCatalogItem = async (item: CatalogReservationItem) => {
     if (!selectedReservation?._id || !item._id) return;
     if (selectedReservation.status === 'CANCELLED' || selectedReservation.status === 'COMPLETED') return;
-    setProcessing(true); setError(''); setSuccess('');
-    try {
-      const existing = catalogLines.find((line) => line.catalogItemId === item._id);
-      if (existing && (item.pricingMode === 'FIXED' || item.pricingMode === 'PER_RESERVATION')) {
-        throw new Error(t('Cet article est déjà présent sur la réservation.', 'This item is already on the reservation.'));
-      }
 
-      const requestedQuantity = Math.max(1, Math.floor(quantities[item._id] || 1));
-      const baseApiUrl = new URL(import.meta.url).origin;
+    setProcessing(true);
+    setError('');
+    setSuccess('');
+
+    try {
+      const requestedQuantity = Math.max(
+        1,
+        Math.floor(quantities[item._id] || 1),
+      );
+
       const response = await httpClient.fetchWithAuth(
-        `${baseApiUrl}/api/reservation-extra-stock`,
+        `${import.meta.env.BASE_API_URL}/api/reservation-extra`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
+            action: 'ADD',
             reservationId: selectedReservation._id,
             catalogItemId: item._id,
             quantityToAdd: requestedQuantity,
@@ -239,44 +204,71 @@ const ReservationExtrasPage: FC = () => {
         },
       );
 
-      const raw = await response.text();
-      let payload: { item?: ReservationItem; error?: string; availableQuantity?: number } = {};
-      try { payload = raw ? JSON.parse(raw) : {}; } catch { payload = {}; }
+      const payload = await response.json().catch(() => ({})) as {
+        reservation?: Reservation;
+        item?: ReservationItem;
+        error?: string;
+        message?: string;
+        availableQuantity?: number;
+      };
 
-      if (!response.ok || !payload.item) {
+      if (!response.ok || !payload.reservation || !payload.item) {
         if (payload.error === 'CATALOG_OUT_OF_STOCK') {
           throw new Error(t(
             `Stock insuffisant. Quantité disponible : ${payload.availableQuantity ?? 0}.`,
             `Not enough stock. Available quantity: ${payload.availableQuantity ?? 0}.`,
           ));
         }
+
         if (payload.error === 'CATALOG_STOCK_BUSY') {
           throw new Error(t(
             'Le stock de cet article est en cours de modification. Réessayez dans quelques secondes.',
             'This item stock is being updated. Try again in a few seconds.',
           ));
         }
+
+        if (payload.error === 'RESERVATION_MUTATION_BUSY') {
+          throw new Error(t(
+            'Cette réservation est en cours de modification. Réessayez dans quelques secondes.',
+            'This reservation is being updated. Try again in a few seconds.',
+          ));
+        }
+
         if (payload.error === 'CATALOG_ITEM_ALREADY_PRESENT') {
           throw new Error(t(
             'Cet article est déjà présent sur la réservation.',
             'This item is already on the reservation.',
           ));
         }
-        throw new Error(payload.error || t('Impossible d’ajouter cet article.', 'Unable to add this item.'));
+
+        throw new Error(
+          payload.message
+          || payload.error
+          || t(
+            'Impossible d’ajouter cet article.',
+            'Unable to add this item.',
+          ),
+        );
       }
 
-      const savedLine = payload.item;
-      const nextLines = linkedLines.some((line) => line._id === savedLine._id)
-        ? linkedLines.map((line) => line._id === savedLine._id ? savedLine : line)
-        : [...linkedLines, savedLine];
-
-      await recalculateReservation(selectedReservation, nextLines);
-      await logActivity(selectedReservation, `${item.name || 'Article'} ${t('ajouté à la réservation', 'added to reservation')}.`);
-      setSuccess(`${item.name || t('Article', 'Item')} — ${t('ajouté', 'added')}.`);
-      setQuantities((current) => ({ ...current, [item._id!]: 1 }));
+      setSelectedReservationId(payload.reservation._id || selectedReservation._id);
+      setSuccess(
+        `${item.name || t('Article', 'Item')} — ${t('ajouté', 'added')}.`,
+      );
+      setQuantities((current) => ({
+        ...current,
+        [item._id!]: 1,
+      }));
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : t('Impossible d’ajouter cet article.', 'Unable to add this item.'));
+      setError(
+        e instanceof Error
+          ? e.message
+          : t(
+              'Impossible d’ajouter cet article.',
+              'Unable to add this item.',
+            ),
+      );
     } finally {
       setProcessing(false);
     }
@@ -284,17 +276,75 @@ const ReservationExtrasPage: FC = () => {
 
   const removeCatalogLine = async (line: ReservationItem) => {
     if (!selectedReservation?._id || !line._id) return;
-    if (!window.confirm(t(`Retirer ${line.itemName || 'cet article'} de la réservation ?`, `Remove ${line.itemName || 'this item'} from the reservation?`))) return;
-    setProcessing(true); setError(''); setSuccess('');
+    if (!window.confirm(t(
+      `Retirer ${line.itemName || 'cet article'} de la réservation ?`,
+      `Remove ${line.itemName || 'this item'} from the reservation?`,
+    ))) return;
+
+    setProcessing(true);
+    setError('');
+    setSuccess('');
+
     try {
-      await items.remove(RESERVATION_ITEMS, line._id);
-      const nextLines = linkedLines.filter((candidate) => candidate._id !== line._id);
-      await recalculateReservation(selectedReservation, nextLines);
-      await logActivity(selectedReservation, `${line.itemName || 'Article'} ${t('retiré de la réservation', 'removed from reservation')}.`);
-      setSuccess(`${line.itemName || t('Article', 'Item')} — ${t('retiré', 'removed')}.`);
+      const response = await httpClient.fetchWithAuth(
+        `${import.meta.env.BASE_API_URL}/api/reservation-extra`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'REMOVE',
+            reservationId: selectedReservation._id,
+            reservationItemId: line._id,
+          }),
+        },
+      );
+
+      const payload = await response.json().catch(() => ({})) as {
+        reservation?: Reservation;
+        removedItemId?: string;
+        error?: string;
+        message?: string;
+      };
+
+      if (!response.ok || !payload.reservation || !payload.removedItemId) {
+        if (payload.error === 'RESERVATION_MUTATION_BUSY') {
+          throw new Error(t(
+            'Cette réservation est en cours de modification. Réessayez dans quelques secondes.',
+            'This reservation is being updated. Try again in a few seconds.',
+          ));
+        }
+
+        if (payload.error === 'CATALOG_STOCK_BUSY') {
+          throw new Error(t(
+            'Le stock de cet article est en cours de modification. Réessayez dans quelques secondes.',
+            'This item stock is being updated. Try again in a few seconds.',
+          ));
+        }
+
+        throw new Error(
+          payload.message
+          || payload.error
+          || t(
+            'Impossible de retirer cet article.',
+            'Unable to remove this item.',
+          ),
+        );
+      }
+
+      setSelectedReservationId(payload.reservation._id || selectedReservation._id);
+      setSuccess(
+        `${line.itemName || t('Article', 'Item')} — ${t('retiré', 'removed')}.`,
+      );
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : t('Impossible de retirer cet article.', 'Unable to remove this item.'));
+      setError(
+        e instanceof Error
+          ? e.message
+          : t(
+              'Impossible de retirer cet article.',
+              'Unable to remove this item.',
+            ),
+      );
     } finally {
       setProcessing(false);
     }
