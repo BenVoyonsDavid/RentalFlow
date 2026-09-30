@@ -165,7 +165,9 @@ const CustomersPage: FC = () => {
       return setFormError('Un client avec ce courriel existe déjà.');
     }
 
-    const discountPercent = customerDiscountEnabled ? Number(form.discountPercent.replace(',', '.')) : 0;
+    const discountPercent = customerDiscountEnabled
+      ? Number(form.discountPercent.replace(',', '.'))
+      : editing?.discountPercent || 0;
     if (!Number.isFinite(discountPercent) || discountPercent < 0 || discountPercent > 100) {
       return setFormError('Le rabais client doit être entre 0 et 100 %.');
     }
@@ -326,7 +328,7 @@ const CustomersPage: FC = () => {
                   <Field label="Entreprise"><input style={input} value={form.companyName} onChange={(e) => setForm({ ...form, companyName: e.target.value })} /></Field>
                   <Field label="Courriel"><input type="email" style={input} value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></Field>
                   <Field label="Téléphone"><input style={input} value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></Field>
-                  <Field label="Rabais permanent (%)"><input type="number" min="0" max="100" step="0.1" style={input} value={form.discountPercent} onChange={(e) => setForm({ ...form, discountPercent: e.target.value })} /></Field>
+                  <Field label="Rabais permanent (%)"><input type="number" min="0" max="100" step="0.1" style={input} value={form.discountPercent} disabled={!customerDiscountEnabled} onChange={(e) => setForm({ ...form, discountPercent: e.target.value })} /></Field>
                   <Field label="Adresse"><input style={input} value={form.addressLine1} onChange={(e) => setForm({ ...form, addressLine1: e.target.value })} /></Field>
                   <Field label="Adresse 2"><input style={input} value={form.addressLine2} onChange={(e) => setForm({ ...form, addressLine2: e.target.value })} /></Field>
                   <Field label="Ville"><input style={input} value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} /></Field>
