@@ -1,6 +1,7 @@
 ﻿import type { APIRoute } from 'astro';
 import { items } from '@wix/data';
 import { auth } from '@wix/essentials';
+import { requireDashboardUser } from '../../server/request-auth';
 import { COLLECTIONS } from '../../lib/collection-ids';
 import type { Payment, Reservation } from '../../domain/types';
 
@@ -13,11 +14,6 @@ function json(data: unknown, status = 200): Response {
     status,
     headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },
   });
-}
-
-async function requireAppInstance(): Promise<void> {
-  const tokenInfo = await auth.getTokenInfo();
-  if (!tokenInfo?.instanceId) throw new Error('UNAUTHORIZED');
 }
 
 async function elevatedFind(query: any): Promise<any> {
@@ -152,10 +148,11 @@ async function reconcilePendingPayments(): Promise<{ checked: number; updated: n
 
 export const POST: APIRoute = async () => {
   try {
-    await requireAppInstance();
+    await requireDashboardUser();
     return json(await reconcilePendingPayments());
   } catch (error) {
     if (error instanceof Error && error.message === 'UNAUTHORIZED') return json({ error: 'Unauthorized' }, 401);
+    if (error instanceof Error && error.message === 'FORBIDDEN') return json({ error: 'Forbidden' }, 403);
     console.error('RentalFlow payment reconciliation failed', error);
     return json({ error: 'Impossible de synchroniser les paiements Wix.' }, 500);
   }
