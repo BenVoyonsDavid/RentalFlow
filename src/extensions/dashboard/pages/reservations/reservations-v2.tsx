@@ -5,6 +5,7 @@ import { Page, WixDesignSystemProvider } from '@wix/design-system';
 import '@wix/design-system/styles.global.css';
 import { COLLECTIONS } from '../../../../lib/collection-ids';
 import { generateReferenceNumber } from '../../../../lib/reference-number';
+import { getCurrentPlan, hasFeature } from '../../../../lib/plans';
 import type {
   ActivityEntry,
   AppSettings,
@@ -133,6 +134,16 @@ function reservationPayload(reservation: Reservation, changes: Partial<Reservati
 }
 
 const ReservationsV2Page: FC = () => {
+  const plan = getCurrentPlan();
+  const weeklyEnabled = hasFeature(plan, 'WEEKLY_PRICING');
+  const monthlyEnabled = hasFeature(plan, 'MONTHLY_PRICING');
+  const longTermDiscountEnabled = hasFeature(plan, 'LONG_TERM_DISCOUNT');
+  const customerDiscountEnabled = hasFeature(plan, 'CUSTOMER_DISCOUNT');
+  const documentsEnabled = hasFeature(plan, 'DOCUMENTS');
+  const paymentsEnabled = hasFeature(plan, 'PAYMENTS');
+  const depositEnabledForPlan = hasFeature(plan, 'SECURITY_DEPOSIT');
+  const inspectionsEnabled = hasFeature(plan, 'INSPECTIONS');
+  const fullHistoryEnabled = hasFeature(plan, 'FULL_HISTORY');
   const [view, setView] = useState<ViewMode>('MONTH');
   const [assets, setAssets] = useState<Asset[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -192,7 +203,7 @@ const ReservationsV2Page: FC = () => {
 
   const activeAssets = useMemo(() => assets.filter((asset) => asset.active !== false && asset.status !== 'INACTIVE'), [assets]);
   const activeCustomers = useMemo(() => customers.filter((customer) => customer.active !== false).sort((a, b) => customerDisplayName(a).localeCompare(customerDisplayName(b), 'fr')), [customers]);
-  const activeTemplates = useMemo(() => templates.filter((template) => template.active !== false), [templates]);
+  const activeTemplates = useMemo(() => documentsEnabled ? templates.filter((template) => template.active !== false) : [], [documentsEnabled, templates]);
   const sortedReservations = useMemo(() => [...reservations].filter((r) => r.status !== 'ERROR').sort((a, b) => asDate(a.startDateTime).getTime() - asDate(b.startDateTime).getTime()), [reservations]);
 
   const logActivity = async (reservation: Reservation, actionType: string, description: string) => {
@@ -221,7 +232,7 @@ const ReservationsV2Page: FC = () => {
   }, [reservationItems]);
 
   const openNewReservation = () => {
-    const depositEnabled = settings.defaultDepositEnabled === true;
+    const depositEnabled = paymentsEnabled && depositEnabledForPlan && settings.defaultDepositEnabled === true;
     setForm({
       customerMode: 'EXISTING', customerId: '', newFirstName: '', newLastName: '', newCompanyName: '',
       customerName: '', customerEmail: '', customerPhone: '', customerAddressLine1: '', customerAddressLine2: '',
@@ -279,18 +290,18 @@ const ReservationsV2Page: FC = () => {
       const asset = activeAssets.find((candidate) => candidate._id === id);
       if (!asset) return [];
       try {
-        return [{ asset, ...calculateRentalPrice(asset, formDates.start!, formDates.end!, { allowWeekly: true, allowMonthly: true, allowLongTermDiscount: true }) }];
+        return [{ asset, ...calculateRentalPrice(asset, formDates.start!, formDates.end!, { allowWeekly: weeklyEnabled, allowMonthly: monthlyEnabled, allowLongTermDiscount: longTermDiscountEnabled }) }];
       } catch { return []; }
     });
-  }, [activeAssets, formDates, selectedAssetIds]);
+  }, [activeAssets, formDates, longTermDiscountEnabled, monthlyEnabled, selectedAssetIds, weeklyEnabled]);
 
   const selectedCustomer = useMemo(() => form?.customerId ? activeCustomers.find((customer) => customer._id === form.customerId) : undefined, [activeCustomers, form?.customerId]);
   const subtotalCents = pricingLines.reduce((sum, line) => sum + line.totalCents, 0);
-  const discountPercent = form?.customerMode === 'EXISTING' ? selectedCustomer?.discountPercent || 0 : 0;
+  const discountPercent = customerDiscountEnabled && form?.customerMode === 'EXISTING' ? selectedCustomer?.discountPercent || 0 : 0;
   const discountCents = Math.round(subtotalCents * discountPercent / 100);
   const preTaxCents = Math.max(0, subtotalCents - discountCents);
   const taxPreview = calculateTaxes(preTaxCents, settings);
-  const depositPreview = form ? calculateDeposit(taxPreview.totalCents, form.paymentMode, form.depositType, numeric(form.depositValue)) : calculateDeposit(taxPreview.totalCents, 'NONE', 'PERCENT', 0);
+  const depositPreview = form ? calculateDeposit(taxPreview.totalCents, paymentsEnabled ? form.paymentMode : 'NONE', form.depositType, numeric(form.depositValue)) : calculateDeposit(taxPreview.totalCents, 'NONE', 'PERCENT', 0);
   const currency = pricingLines[0]?.asset.currency || settings.currency || 'CAD';
 
   const toggleAsset = (id: string) => setSelectedAssetIds((current) => current.includes(id) ? current.filter((value) => value !== id) : [...current, id]);
@@ -337,9 +348,9 @@ const ReservationsV2Page: FC = () => {
       }
 
       const number = generateReferenceNumber('RF');
-      const quoteTemplate = activeTemplates.find((template) => template._id === form.quoteTemplateId);
-      const contractTemplate = activeTemplates.find((template) => template._id === form.contractTemplateId);
-      const invoiceTemplate = activeTemplates.find((template) => template._id === form.invoiceTemplateId);
+      const quoteTemplate = documentsEnabled ? activeTemplates.find((template) => template._id === form.quoteTemplateId) : undefined;
+      const contractTemplate = documentsEnabled ? activeTemplates.find((template) => template._id === form.contractTemplateId) : undefined;
+      const invoiceTemplate = documentsEnabled ? activeTemplates.find((template) => template._id === form.invoiceTemplateId) : undefined;
       const created = await items.insert(RESERVATIONS, {
         reservationNumber: number, customerId, customerNumber,
         customerName: form.customerName.trim(), customerEmail: form.customerEmail.trim(), customerPhone: form.customerPhone.trim(),
@@ -356,9 +367,9 @@ const ReservationsV2Page: FC = () => {
         tax1Name: settings.taxesEnabled === false ? '' : settings.tax1Name || '', tax1Rate: settings.taxesEnabled === false ? 0 : settings.tax1Rate || 0, tax1Cents: taxPreview.tax1Cents,
         tax2Name: settings.taxesEnabled === false ? '' : settings.tax2Name || '', tax2Rate: settings.taxesEnabled === false ? 0 : settings.tax2Rate || 0, tax2Cents: taxPreview.tax2Cents,
         taxTotalCents: taxPreview.taxTotalCents, totalCents: taxPreview.totalCents, currency,
-        depositRequired: form.paymentMode === 'DEPOSIT', depositType: form.depositType, depositValue: numeric(form.depositValue),
+        depositRequired: paymentsEnabled && depositEnabledForPlan && form.paymentMode === 'DEPOSIT', depositType: form.depositType, depositValue: numeric(form.depositValue),
         depositAmountCents: depositPreview.depositAmountCents, amountDueNowCents: depositPreview.amountDueNowCents,
-        balanceDueCents: depositPreview.balanceDueCents, paymentMode: form.paymentMode, notes: form.notes.trim(),
+        balanceDueCents: depositPreview.balanceDueCents, paymentMode: paymentsEnabled ? form.paymentMode : 'NONE', notes: form.notes.trim(),
       }) as Reservation;
       if (!created._id) throw new Error('Wix n’a pas retourné l’identifiant de la réservation.');
 
@@ -414,7 +425,7 @@ const ReservationsV2Page: FC = () => {
   const linkedDocuments = selectedReservation ? documents.filter((row) => row.reservationId === selectedReservation._id) : [];
   const linkedPayments = selectedReservation ? payments.filter((row) => row.reservationId === selectedReservation._id) : [];
   const linkedInspections = selectedReservation ? inspections.filter((row) => row.reservationId === selectedReservation._id) : [];
-  const linkedActivity = selectedReservation ? activity.filter((row) => row.reservationId === selectedReservation._id).sort((a, b) => asDate(b.eventDate || b._createdDate).getTime() - asDate(a.eventDate || a._createdDate).getTime()) : [];
+  const linkedActivity = fullHistoryEnabled && selectedReservation ? activity.filter((row) => row.reservationId === selectedReservation._id).sort((a, b) => asDate(b.eventDate || b._createdDate).getTime() - asDate(a.eventDate || a._createdDate).getTime()) : [];
   const paidCents = linkedPayments.filter((payment) => payment.status === 'PAID' && (payment.paymentType === 'PAYMENT' || payment.paymentType === 'BOOKING_DEPOSIT')).reduce((sum, payment) => sum + (payment.amountCents || 0), 0);
   const liveBalance = selectedReservation ? Math.max(0, (selectedReservation.totalCents || 0) - paidCents) : 0;
   const initialDue = selectedReservation ? Math.min(liveBalance, selectedReservation.amountDueNowCents || liveBalance) : 0;
@@ -425,6 +436,7 @@ const ReservationsV2Page: FC = () => {
   };
 
   const createDocument = async (type: DocumentType) => {
+    if (!documentsEnabled) return setError('Les documents sont disponibles à partir du plan Starter.');
     if (!selectedReservation?._id) return;
     const template = templateForDocument(type, selectedReservation);
     if (!template) return setError(`Aucun modèle ${documentLabels[type].toLowerCase()} n’est sélectionné sur cette réservation.`);
@@ -454,6 +466,7 @@ const ReservationsV2Page: FC = () => {
   };
 
   const updateDocumentStatus = async (document: RentalDocument, action: 'ACCEPT' | 'SIGN' | 'ISSUE') => {
+    if (!documentsEnabled) return setError('Les documents sont disponibles à partir du plan Starter.');
     if (!document._id || !selectedReservation) return;
     setProcessing(true); setError('');
     try {
@@ -486,6 +499,7 @@ const ReservationsV2Page: FC = () => {
   };
 
   const createWixPaymentLink = async () => {
+    if (!paymentsEnabled) return setError('Les paiements Wix sont disponibles à partir du plan Starter.');
     if (!selectedReservation?._id || liveBalance <= 0) return;
     const amount = paidCents === 0 && initialDue > 0 ? initialDue : liveBalance;
     if (amount <= 0) return setError('Aucun montant à percevoir.');
@@ -534,6 +548,7 @@ const ReservationsV2Page: FC = () => {
   };
 
   const refreshWixPayment = async (payment: Payment) => {
+    if (!paymentsEnabled) return setError('Les paiements Wix sont disponibles à partir du plan Starter.');
     if (!payment._id || !payment.wixPaymentLinkId) return;
     setProcessing(true); setError('');
     try {
@@ -562,6 +577,7 @@ const ReservationsV2Page: FC = () => {
 
   const saveInspection = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (!inspectionsEnabled) return setError('Les inspections sont disponibles à partir du plan Business.');
     if (!selectedReservation?._id) return;
     const asset = linkedItems.find((item) => item.assetId === inspectionForm.assetId);
     if (!asset) return setError('Sélectionnez un équipement de la réservation.');
@@ -595,14 +611,14 @@ const ReservationsV2Page: FC = () => {
   const checkout = async () => {
     if (!selectedReservation) return;
     const hasDeparture = linkedInspections.some((inspection) => inspection.inspectionType === 'DEPARTURE' && inspection.status === 'COMPLETED');
-    if (!hasDeparture) return setError('Une inspection de départ complétée est requise avant de confirmer le départ.');
+    if (inspectionsEnabled && !hasDeparture) return setError('Une inspection de départ complétée est requise avant de confirmer le départ.');
     await updateReservation(selectedReservation, { status: 'RENTED', workflowStage: 'RENTED', checkoutDateTime: new Date() }, 'CHECKOUT', 'Départ confirmé; réservation en location.');
   };
 
   const returnRental = async () => {
     if (!selectedReservation) return;
     const hasReturn = linkedInspections.some((inspection) => inspection.inspectionType === 'RETURN' && inspection.status === 'COMPLETED');
-    if (!hasReturn) return setError('Une inspection de retour complétée est requise avant de confirmer le retour.');
+    if (inspectionsEnabled && !hasReturn) return setError('Une inspection de retour complétée est requise avant de confirmer le retour.');
     await updateReservation(selectedReservation, { status: 'RETURNED', workflowStage: 'RETURNED', returnDateTime: new Date() }, 'RETURN', 'Retour confirmé.');
   };
 
@@ -720,8 +736,8 @@ const ReservationsV2Page: FC = () => {
 
                 <h3 style={{ marginTop: 24 }}>Paiement</h3>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(230px,1fr))', gap: 12 }}>
-                  <Field label="Paiement à la réservation"><select style={input} value={form.paymentMode} onChange={(e) => setForm({ ...form, paymentMode: e.target.value as PaymentMode })}><option value="NONE">Aucun paiement maintenant</option><option value="FULL">Paiement complet</option><option value="DEPOSIT">Dépôt de réservation</option></select></Field>
-                  {form.paymentMode === 'DEPOSIT' ? <><Field label="Type de dépôt"><select style={input} value={form.depositType} onChange={(e) => setForm({ ...form, depositType: e.target.value as DepositType })}><option value="PERCENT">Pourcentage</option><option value="FIXED">Montant fixe</option></select></Field><Field label={form.depositType === 'PERCENT' ? 'Dépôt (%)' : 'Dépôt fixe'}><input type="number" min="0" step="0.01" style={input} value={form.depositValue} onChange={(e) => setForm({ ...form, depositValue: e.target.value })} /></Field></> : null}
+                  <Field label="Paiement à la réservation"><select style={input} value={paymentsEnabled ? form.paymentMode : 'NONE'} disabled={!paymentsEnabled} onChange={(e) => setForm({ ...form, paymentMode: e.target.value as PaymentMode })}><option value="NONE">Aucun paiement maintenant</option>{paymentsEnabled ? <><option value="FULL">Paiement complet</option>{depositEnabledForPlan ? <option value="DEPOSIT">Dépôt de réservation</option> : null}</> : null}</select></Field>
+                  {paymentsEnabled && depositEnabledForPlan && form.paymentMode === 'DEPOSIT' ? <><Field label="Type de dépôt"><select style={input} value={form.depositType} onChange={(e) => setForm({ ...form, depositType: e.target.value as DepositType })}><option value="PERCENT">Pourcentage</option><option value="FIXED">Montant fixe</option></select></Field><Field label={form.depositType === 'PERCENT' ? 'Dépôt (%)' : 'Dépôt fixe'}><input type="number" min="0" step="0.01" style={input} value={form.depositValue} onChange={(e) => setForm({ ...form, depositValue: e.target.value })} /></Field></> : null}
                 </div>
 
                 {pricingLines.length > 0 && <div style={{ ...card, background: '#f8fafc', marginTop: 18 }}><h3 style={{ marginTop: 0 }}>Résumé financier</h3>{pricingLines.map((line) => <div key={line.asset._id} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0' }}><span>{line.asset.title} · {line.billableDays} jour(s) · {line.pricingMode}</span><strong>{money(line.totalCents, currency)}</strong></div>)}<hr style={{ border: 0, borderTop: '1px solid #e5e7eb' }} /><FinanceRow label="Sous-total" value={money(subtotalCents, currency)} />{discountCents > 0 ? <FinanceRow label={`Rabais client (${discountPercent} %)`} value={`-${money(discountCents, currency)}`} /> : null}<FinanceRow label="Avant taxes" value={money(taxPreview.preTaxTotalCents, currency)} />{taxPreview.tax1Cents > 0 ? <FinanceRow label={`${settings.tax1Name || 'Taxe 1'} (${settings.tax1Rate || 0} %)`} value={money(taxPreview.tax1Cents, currency)} /> : null}{taxPreview.tax2Cents > 0 ? <FinanceRow label={`${settings.tax2Name || 'Taxe 2'} (${settings.tax2Rate || 0} %)`} value={money(taxPreview.tax2Cents, currency)} /> : null}<FinanceRow strong label="Total" value={money(taxPreview.totalCents, currency)} /><FinanceRow label="À payer maintenant" value={money(depositPreview.amountDueNowCents, currency)} /><FinanceRow label="Solde après ce paiement" value={money(depositPreview.balanceDueCents, currency)} /></div>}
