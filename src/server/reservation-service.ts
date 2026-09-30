@@ -209,16 +209,23 @@ export async function createOnlineReservation(
       createdItems.push(createdItem);
     }
 
-    await elevatedInsert(ACTIVITY, {
-      reservationId: reservation._id,
-      reservationNumber,
-      actionType: 'ONLINE_RESERVATION_CREATED',
-      description: input.catalogLines.length
-        ? `Réservation en ligne ${reservationNumber} créée par ${input.customer.name} avec ${input.catalogLines.length} extra(s).`
-        : `Réservation en ligne ${reservationNumber} créée par ${input.customer.name}.`,
-      actor: 'Client en ligne',
-      eventDate: new Date(),
-    });
+    try {
+      await elevatedInsert(ACTIVITY, {
+        reservationId: reservation._id,
+        reservationNumber,
+        actionType: 'ONLINE_RESERVATION_CREATED',
+        description: input.catalogLines.length
+          ? `Réservation en ligne ${reservationNumber} créée par ${input.customer.name} avec ${input.catalogLines.length} extra(s).`
+          : `Réservation en ligne ${reservationNumber} créée par ${input.customer.name}.`,
+        actor: 'Client en ligne',
+        eventDate: new Date(),
+      });
+    } catch (activityError) {
+      console.error(
+        `RentalFlow could not record activity for reservation ${reservationNumber}.`,
+        activityError,
+      );
+    }
 
     return {
       reservation,
