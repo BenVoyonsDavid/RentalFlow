@@ -1,120 +1,131 @@
-import { httpClient } from '@wix/essentials';
-import { bookingThemeVariables, bookingImageUrl, type BookingTheme } from '../../../../lib/booking-theme';
-import { resolveLocale, resolveLanguage } from '../../../../intl';
+import { bookingThemeVariables, bookingImageUrl } from '../../../../lib/booking-theme';
+import { resolveLanguage } from '../../../../intl';
 import designStyles from './booking-design.css?inline';
-
-type PublicAsset = {
-  id: string;
-  title: string;
-  imageUrl?: string;
-  productType: string;
-  categoryId?: string;
-  categoryName?: string;
-  catalogTagsJson?: string;
-  currency: string;
-  dailyRateCents: number;
-  weeklyRateCents: number;
-  monthlyRateCents: number;
-  available: boolean | null;
-  billableDays: number;
-  lineTotalCents: number;
-  pricingMode: string;
-};
-
-type BookingSettings = {
-  theme?: BookingTheme;
-  currency: string;
-  taxesEnabled: boolean;
-  tax1Name: string;
-  tax1Rate: number;
-  tax2Name: string;
-  tax2Rate: number;
-  tax2Compound: boolean;
-  paymentsEnabled: boolean;
-  depositEnabled: boolean;
-  depositType: 'PERCENT' | 'FIXED';
-  depositValue: number;
-  requiredFields: string[];
-};
-
-type BookingData = {
-  company: { name: string; logoUrl: string };
-  hero?: { title?: string; subtitle?: string; backgroundUrl?: string };
-  settings: BookingSettings;
-  assets: PublicAsset[];
-};
-
-type BookingResult = {
-  reservationNumber: string;
-  totalCents: number;
-  amountDueNowCents: number;
-  balanceDueCents: number;
-  currency: string;
-  checkoutUrl: string;
-};
-
-type CustomerDraft = {
-  customerName: string;
-  customerEmail: string;
-  customerPhone: string;
-  addressLine1: string;
-  addressLine2: string;
-  city: string;
-  region: string;
-  postalCode: string;
-  country: string;
-  notes: string;
-};
-
-const initialSettings: BookingSettings = {
-  currency: 'CAD',
-  taxesEnabled: true,
-  tax1Name: 'TPS',
-  tax1Rate: 5,
-  tax2Name: 'TVQ',
-  tax2Rate: 9.975,
-  tax2Compound: false,
-  paymentsEnabled: false,
-  depositEnabled: false,
-  depositType: 'PERCENT',
-  depositValue: 25,
-  requiredFields: [],
-};
-
-const blankCustomerDraft: CustomerDraft = {
-  customerName: '',
-  customerEmail: '',
-  customerPhone: '',
-  addressLine1: '',
-  addressLine2: '',
-  city: '',
-  region: 'QC',
-  postalCode: '',
-  country: 'Canada',
-  notes: '',
-};
+import { fetchPublicBookingJson, publicBookingApiUrl } from './booking-widget-api';
+import {
+  createBookingWidgetState,
+  type BookingData,
+  type BookingResult,
+  type CustomerDraft,
+  type PublicAsset,
+} from './booking-widget-state';
+import {
+  escapeBookingHtml,
+  renderBookingAssetCards,
+  renderBookingCalendar,
+} from './booking-widget-view';
 
 export class RentalFlowBookingElement extends HTMLElement {
   protected root: ShadowRoot;
-  protected data: BookingData = {
-    company: { name: 'Location en ligne', logoUrl: '' },
-    hero: { title: '', subtitle: '', backgroundUrl: '' },
-    settings: initialSettings,
-    assets: [],
-  };
-  protected selected = new Set<string>();
-  protected customerDraft: CustomerDraft = { ...blankCustomerDraft };
-  protected calendarMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
-  protected choosingEnd = false;
-  protected startValue = '';
-  protected endValue = '';
-  protected paymentMode: 'FULL' | 'DEPOSIT' = 'FULL';
-  protected loading = true;
-  protected searching = false;
-  protected submitting = false;
-  protected message = '';
-  protected error = '';
-  protected result: BookingResult | null = null;
+  protected readonly state = createBookingWidgetState();
+
+  protected get data(): BookingData {
+    return this.state.data;
+  }
+
+  protected set data(value: BookingData) {
+    this.state.data = value;
+  }
+
+  protected get selected(): Set<string> {
+    return this.state.selected;
+  }
+
+  protected get customerDraft(): CustomerDraft {
+    return this.state.customerDraft;
+  }
+
+  protected set customerDraft(value: CustomerDraft) {
+    this.state.customerDraft = value;
+  }
+
+  protected get calendarMonth(): Date {
+    return this.state.calendarMonth;
+  }
+
+  protected set calendarMonth(value: Date) {
+    this.state.calendarMonth = value;
+  }
+
+  protected get choosingEnd(): boolean {
+    return this.state.choosingEnd;
+  }
+
+  protected set choosingEnd(value: boolean) {
+    this.state.choosingEnd = value;
+  }
+
+  protected get startValue(): string {
+    return this.state.startValue;
+  }
+
+  protected set startValue(value: string) {
+    this.state.startValue = value;
+  }
+
+  protected get endValue(): string {
+    return this.state.endValue;
+  }
+
+  protected set endValue(value: string) {
+    this.state.endValue = value;
+  }
+
+  protected get paymentMode(): 'FULL' | 'DEPOSIT' {
+    return this.state.paymentMode;
+  }
+
+  protected set paymentMode(value: 'FULL' | 'DEPOSIT') {
+    this.state.paymentMode = value;
+  }
+
+  protected get loading(): boolean {
+    return this.state.loading;
+  }
+
+  protected set loading(value: boolean) {
+    this.state.loading = value;
+  }
+
+  protected get searching(): boolean {
+    return this.state.searching;
+  }
+
+  protected set searching(value: boolean) {
+    this.state.searching = value;
+  }
+
+  protected get submitting(): boolean {
+    return this.state.submitting;
+  }
+
+  protected set submitting(value: boolean) {
+    this.state.submitting = value;
+  }
+
+  protected get message(): string {
+    return this.state.message;
+  }
+
+  protected set message(value: string) {
+    this.state.message = value;
+  }
+
+  protected get error(): string {
+    return this.state.error;
+  }
+
+  protected set error(value: string) {
+    this.state.error = value;
+  }
+
+  protected get result(): BookingResult | null {
+    return this.state.result;
+  }
+
+  protected set result(value: BookingResult | null) {
+    this.state.result = value;
+  }
 
   constructor() {
     super();
@@ -127,52 +138,14 @@ export class RentalFlowBookingElement extends HTMLElement {
   }
 
   protected apiUrl(params = ''): string {
-    const url = new URL('/api/public-booking', import.meta.url);
-    if (params) url.search = params;
-    return url.toString();
+    return publicBookingApiUrl(params);
   }
 
-  protected async fetchJson(url: string, options?: RequestInit): Promise<any> {
-    let response: Response;
-    try {
-      response = await httpClient.fetchWithAuth(url, options);
-    } catch (error) {
-      const detail = error instanceof Error ? error.message : String(error || 'Failed to fetch');
-      const moduleOrigin = (() => {
-        try { return new URL(import.meta.url).origin; } catch { return ''; }
-      })();
-      const pageOrigin = typeof window !== 'undefined' ? window.location.origin : '';
-
-      let plainPing = 'not-run';
-      let authPing = 'not-run';
-      const pingUrl = moduleOrigin ? `${moduleOrigin}/api/rentalflow-network-ping` : '';
-      if (pingUrl) {
-        try {
-          const pingResponse = await fetch(pingUrl, { method: 'GET', mode: 'cors', cache: 'no-store' });
-          const body = (await pingResponse.text().catch(() => '')).replace(/\s+/g, ' ').trim().slice(0, 240);
-          plainPing = `HTTP ${pingResponse.status}${body ? ` [${body}]` : ''}`;
-        } catch (pingError) {
-          plainPing = pingError instanceof Error ? pingError.message : 'failed';
-        }
-        try {
-          const pingResponse = await httpClient.fetchWithAuth(pingUrl, { method: 'GET' });
-          const body = (await pingResponse.text().catch(() => '')).replace(/\s+/g, ' ').trim().slice(0, 240);
-          authPing = `HTTP ${pingResponse.status}${body ? ` [${body}]` : ''}`;
-        } catch (pingError) {
-          authPing = pingError instanceof Error ? pingError.message : 'failed';
-        }
-      }
-
-      throw new Error(
-        `${detail} · backend=${moduleOrigin || 'absent'} · page=${pageOrigin || 'absent'} · tried=${url} · ping=${plainPing} · authPing=${authPing}`
-      );
-    }
-
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      throw new Error(payload?.error || `Erreur ${response.status}`);
-    }
-    return payload;
+  protected async fetchJson(
+    url: string,
+    options?: RequestInit,
+  ): Promise<any> {
+    return fetchPublicBookingJson(url, options);
   }
 
   protected async loadCatalog() {
@@ -340,9 +313,7 @@ export class RentalFlowBookingElement extends HTMLElement {
   }
 
   protected escape(value: unknown): string {
-    return String(value ?? '').replace(/[&<>"']/g, (char) => ({
-      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
-    }[char] || char));
+    return escapeBookingHtml(value);
   }
 
   protected invalidateDates() {
@@ -354,21 +325,14 @@ export class RentalFlowBookingElement extends HTMLElement {
     this.render();
   }
 
-  protected calendar() {
-    const year = this.calendarMonth.getFullYear(), month = this.calendarMonth.getMonth();
-    const dateKey = (date: Date) => `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
-    const today = dateKey(new Date());
-    const first = (new Date(year, month, 1).getDay() + 6) % 7;
-    const count = new Date(year, month + 1, 0).getDate();
-    const locale = resolveLocale('site', 'auto');
-    const start = this.startValue.slice(0,10), end = this.endValue.slice(0,10);
-    const weekdays = Array.from({length:7}, (_,i) => `<span>${new Intl.DateTimeFormat(locale, {weekday:'narrow'}).format(new Date(2024,0,1+i))}</span>`).join('');
-    const days = Array.from({length:count}, (_,i) => {
-      const date = new Date(year,month,i+1), key = dateKey(date);
-      const edge = key === start || key === end;
-      return `<button type="button" data-day="${key}" class="day ${edge ? 'edge' : ''} ${start && end && key > start && key < end ? 'range' : ''}" aria-label="${this.escape(new Intl.DateTimeFormat(locale,{dateStyle:'full'}).format(date))}" aria-pressed="${edge}" ${key < today || this.searching || this.submitting ? 'disabled' : ''}>${i+1}</button>`;
-    }).join('');
-    return `<div class="calendar"><div class="month"><button type="button" data-month="-1" aria-label="Mois précédent">‹</button><strong>${this.escape(new Intl.DateTimeFormat(locale,{month:'long',year:'numeric'}).format(this.calendarMonth))}</strong><button type="button" data-month="1" aria-label="Mois suivant">›</button></div><div class="days">${weekdays}${'<span></span>'.repeat(first)}${days}</div><p class="muted calendar-hint">Sélectionnez le début, puis la fin.</p></div>`;
+  protected calendar(): string {
+    return renderBookingCalendar({
+      calendarMonth: this.calendarMonth,
+      startValue: this.startValue,
+      endValue: this.endValue,
+      searching: this.searching,
+      submitting: this.submitting,
+    });
   }
 
   protected render() {
@@ -393,25 +357,14 @@ export class RentalFlowBookingElement extends HTMLElement {
     const balance = Math.max(0, taxes.total - dueNow);
     const paymentsEnabled = this.data.settings.paymentsEnabled;
 
-    const assetCards = assets.map((asset) => {
-      const selected = this.selected.has(asset.id);
-      const availabilityClass = asset.available === false ? 'unavailable' : asset.available === true ? 'available' : '';
-      const price = searched && asset.available !== null
-        ? this.money(asset.lineTotalCents, asset.currency)
-        : asset.dailyRateCents > 0
-          ? `${this.money(asset.dailyRateCents, asset.currency)} / ${language === 'en' ? 'day' : 'jour'}`
-          : 'Tarif sur demande';
-      return `
-        <button class="asset ${availabilityClass} ${selected ? 'selected' : ''}" aria-pressed="${selected}" data-asset="${this.escape(asset.id)}" ${asset.available !== true || this.submitting ? 'disabled' : ''}>
-          <span class="asset-image">${bookingImageUrl(asset.imageUrl) ? `<img src="${this.escape(bookingImageUrl(asset.imageUrl))}" alt="" loading="lazy">` : '<span aria-hidden="true">◇</span>'}</span>
-          <span class="asset-main">
-            <strong translate="no">${this.escape(asset.title)}</strong>
-            <small translate="no">${this.escape(asset.productType || 'Équipement')}</small>
-            ${searched && asset.billableDays ? `<small>${asset.billableDays} ${language === 'en' ? 'day' : 'jour'}${asset.billableDays > 1 ? 's' : ''}</small>` : ''}
-          </span>
-          <span class="asset-price">${price}<small>${selected ? 'Sélectionné' : asset.available === true ? 'Disponible' : asset.available === false ? 'Indisponible' : 'Choisissez vos dates'}</small></span>
-        </button>`;
-    }).join('');
+    const assetCards = renderBookingAssetCards({
+      assets,
+      selected: this.selected,
+      searched,
+      submitting: this.submitting,
+      language,
+      money: (cents, currency) => this.money(cents, currency),
+    });
 
     const requiredAddress = this.isRequired('CUSTOMER_ADDRESS');
     const requiredPhone = this.isRequired('CUSTOMER_PHONE');
