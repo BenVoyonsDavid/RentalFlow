@@ -20,7 +20,11 @@ export const POST: APIRoute = async ({ request }) => {
   try {
     await requireDashboardUser();
 
-    const body = await request.json() as DashboardReservationRequest;
+    const body = await request.json().catch(() => null) as DashboardReservationRequest | null;
+    if (!body || typeof body !== 'object') {
+      return json({ error: 'Requête de réservation invalide.' }, 400);
+    }
+
     const result = await createDashboardReservation(request, body);
 
     return json(result, 201);
