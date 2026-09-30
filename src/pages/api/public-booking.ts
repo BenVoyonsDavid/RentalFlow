@@ -1,5 +1,4 @@
 import type { APIRoute } from 'astro';
-import { auth } from '@wix/essentials';
 import {
   PublicBookingHttpError,
   type BookingRequest,
@@ -8,6 +7,7 @@ import {
   loadPublicBooking,
   submitPublicBooking,
 } from '../../server/public-booking-service';
+import { requireActiveAppInstance } from '../../server/request-auth';
 
 function corsHeaders(request?: Request): Record<string, string> {
   const origin = String(request?.headers.get('origin') || '').trim();
@@ -35,11 +35,6 @@ function json(
       ...corsHeaders(request),
     },
   });
-}
-
-async function requireAppInstance(): Promise<void> {
-  const tokenInfo = await auth.getTokenInfo();
-  if (!tokenInfo?.instanceId) throw new Error('UNAUTHORIZED');
 }
 
 function knownErrorResponse(
@@ -92,7 +87,7 @@ export const OPTIONS: APIRoute = async ({ request }) =>
 
 export const GET: APIRoute = async ({ request }) => {
   try {
-    await requireAppInstance();
+    await requireActiveAppInstance();
     const payload = await loadPublicBooking(request);
     return json(payload, 200, request);
   } catch (error) {
@@ -108,7 +103,7 @@ export const GET: APIRoute = async ({ request }) => {
 
 export const POST: APIRoute = async ({ request }) => {
   try {
-    await requireAppInstance();
+    await requireActiveAppInstance();
     const body = await request.json() as BookingRequest;
     const payload = await submitPublicBooking(request, body);
     return json(payload, 201, request);
