@@ -52,10 +52,6 @@ export default {
       unique: false,
     },
     {
-      fields: [{ path: 'catalogItemId', order: 'ASC' }],
-      unique: false,
-    },
-    {
       fields: [
         { path: 'catalogItemId', order: 'ASC' },
         { path: 'startDateTime', order: 'ASC' },
