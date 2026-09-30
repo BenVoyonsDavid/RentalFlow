@@ -30,7 +30,7 @@ assert(bookingExtensionSource.includes('{{BASE_URL}}/public/rental-flow-online-b
 for (const endpointPath of [
   'src/pages/api/asset-write.ts',
   'src/pages/api/reconcile-payments.ts',
-  'src/pages/api/reservation-extra-stock.ts',
+  'src/pages/api/reservation-extra.ts',
 ]) {
   const source = await readFile(join(root, endpointPath), 'utf8');
   assert(source.includes('requireDashboardUser'));
@@ -61,6 +61,37 @@ assert(dashboardReservationServiceSource.includes('loadBlockingItems'));
 assert(dashboardReservationServiceSource.includes('bookingPricingOptions(plan)'));
 assert(dashboardReservationServiceSource.includes('computeReservationFinancials'));
 assert(dashboardReservationServiceSource.includes('createdCustomer'));
+
+const reservationExtrasSource = await readFile(
+  join(root, 'src/extensions/dashboard/pages/reservation-extras/reservation-extras.tsx'),
+  'utf8',
+);
+assert(reservationExtrasSource.includes('/api/reservation-extra'));
+assert(reservationExtrasSource.includes("action: 'ADD'"));
+assert(reservationExtrasSource.includes("action: 'REMOVE'"));
+assert(!reservationExtrasSource.includes('items.remove(RESERVATION_ITEMS'));
+assert(!reservationExtrasSource.includes('computeReservationFinancials'));
+
+const reservationExtraApiSource = await readFile(
+  join(root, 'src/pages/api/reservation-extra.ts'),
+  'utf8',
+);
+assert(reservationExtraApiSource.includes('requireDashboardUser'));
+assert(reservationExtraApiSource.includes('mutateReservationExtra'));
+
+const reservationExtraServiceSource = await readFile(
+  join(root, 'src/server/reservation-extra-service.ts'),
+  'utf8',
+);
+assert(reservationExtraServiceSource.includes('acquireReservationMutationLock'));
+assert(reservationExtraServiceSource.includes('acquireCatalogStockLocks'));
+assert(reservationExtraServiceSource.includes('computeReservationFinancials'));
+assert(reservationExtraServiceSource.includes('rollbackLineMutation'));
+
+await assert.rejects(
+  access(join(root, 'src/pages/api/reservation-extra-stock.ts')),
+  (error) => error?.code === 'ENOENT',
+);
 
 const dashboardDataSource = await readFile(
   join(root, 'src/lib/dashboard-data.ts'),
