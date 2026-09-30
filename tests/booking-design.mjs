@@ -35,6 +35,32 @@ for (const endpointPath of [
   const source = await readFile(join(root, endpointPath), 'utf8');
   assert(source.includes('requireDashboardUser'));
 }
+
+const reservationsDashboardSource = await readFile(
+  join(root, 'src/extensions/dashboard/pages/reservations/reservations-v2.tsx'),
+  'utf8',
+);
+assert(reservationsDashboardSource.includes('/api/dashboard-reservation'));
+assert(reservationsDashboardSource.includes('fetchWithAuth'));
+assert(!reservationsDashboardSource.includes('items.insert(RESERVATIONS'));
+assert(!reservationsDashboardSource.includes('items.insert(RESERVATION_ITEMS'));
+
+const dashboardReservationApiSource = await readFile(
+  join(root, 'src/pages/api/dashboard-reservation.ts'),
+  'utf8',
+);
+assert(dashboardReservationApiSource.includes('requireDashboardUser'));
+assert(dashboardReservationApiSource.includes('createDashboardReservation'));
+
+const dashboardReservationServiceSource = await readFile(
+  join(root, 'src/server/dashboard-reservation-service.ts'),
+  'utf8',
+);
+assert(dashboardReservationServiceSource.includes('acquireBookingLocks'));
+assert(dashboardReservationServiceSource.includes('loadBlockingItems'));
+assert(dashboardReservationServiceSource.includes('bookingPricingOptions(plan)'));
+assert(dashboardReservationServiceSource.includes('computeReservationFinancials'));
+assert(dashboardReservationServiceSource.includes('createdCustomer'));
 await assert.rejects(
   access(join(root, 'src/pages/api/public-booking-debug.ts')),
   (error) => error?.code === 'ENOENT',
