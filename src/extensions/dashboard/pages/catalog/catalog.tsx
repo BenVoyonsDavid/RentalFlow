@@ -8,6 +8,7 @@ import type { CatalogCompatibilityRule } from '../../../../lib/catalog-compatibi
 import type { CatalogItemType, CatalogPricingMode, CatalogReservationItem } from '../../../../lib/reservation-catalog';
 import { useRentalFlowI18n } from '../../../../intl';
 import { COLLECTIONS } from '../../../../lib/collection-ids';
+import { loadAllDashboardItems } from '../../../../lib/dashboard-data';
 import type { Asset, Category } from '../../../../domain/types';
 
 const CATALOG = COLLECTIONS.catalogItems;
@@ -63,12 +64,14 @@ const CatalogPage: FC = () => {
   const load = async () => {
     setLoading(true); setError('');
     try {
-      const [catalogResult, assetResult, categoryResult] = await Promise.all([
-        items.query(CATALOG).limit(1000).find(), items.query(ASSETS).limit(1000).find(), items.query(CATEGORIES).limit(1000).find(),
+      const [loadedCatalog, loadedAssets, loadedCategories] = await Promise.all([
+        loadAllDashboardItems<CatalogItem>(CATALOG),
+        loadAllDashboardItems<Asset>(ASSETS),
+        loadAllDashboardItems<Category>(CATEGORIES),
       ]);
-      setCatalog(catalogResult.items as CatalogItem[]);
-      setAssets((assetResult.items as Asset[]).filter((asset) => asset.active !== false));
-      setCategories(categoryResult.items as Category[]);
+      setCatalog(loadedCatalog);
+      setAssets(loadedAssets.filter((asset) => asset.active !== false));
+      setCategories(loadedCategories);
     } catch (e) {
       setError(e instanceof Error ? e.message : t('Impossible de charger le catalogue.', 'Unable to load the catalog.'));
     } finally { setLoading(false); }
