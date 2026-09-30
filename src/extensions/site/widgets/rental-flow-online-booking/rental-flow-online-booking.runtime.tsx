@@ -9,23 +9,12 @@ import {
   type ReservationCatalogLine,
 } from '../../../../lib/reservation-catalog';
 
-// The legacy booking module still registers its constructor as
-// <rental-flow-booking>. Wix CLI also registers the exported constructor using
-// the extension tagName (<rental-flow-online-booking>). A Custom Element
-// constructor can't be registered twice, so export a distinct subclass for Wix.
-class RentalFlowOnlineBookingElement extends RentalFlowBookingElement {}
-
 // Wix-managed site extensions should call this app's HTTP endpoints through
 // BASE_API_URL. In the editor/dev environment the module origin can also work,
 // but on a published site it may be the static asset origin instead of the app
 // backend. Keep module origin only as a compatibility fallback.
 const wixBaseApiUrl = String(import.meta.env.BASE_API_URL || '').trim().replace(/\/$/, '');
 const appOrigin = wixBaseApiUrl || new URL(import.meta.url).origin;
-
-const Element = RentalFlowOnlineBookingElement as unknown as {
-  new (): HTMLElement;
-  prototype: Record<string, unknown>;
-};
 
 type PublicCatalogItem = {
   id: string;
@@ -285,53 +274,69 @@ function renumberSteps(root: ShadowRoot): void {
   });
 }
 
-// The public widget follows the site's active Wix language automatically.
-// Keep currency formatting aligned with Wix's locale as well.
-(Element.prototype as any).money = function money(cents = 0, currency = 'CAD'): string {
-  return new Intl.NumberFormat(resolveLocale('site', 'auto'), { style: 'currency', currency }).format(cents / 100);
-};
+class RentalFlowOnlineBookingElement extends RentalFlowBookingElement {
+  private __rentalFlowCatalogSelection = new Map<string, number>();
 
-// Include catalog selections in the existing public-booking POST without
-// duplicating the booking component's customer/payment submission flow.
-const originalFetchJson = (Element.prototype as any).fetchJson;
-if (typeof originalFetchJson === 'function') {
-  (Element.prototype as any).fetchJson = function fetchJsonWithCatalog(url: string, options?: RequestInit) {
+  protected override money(
+    cents = 0,
+    currency = this.data.settings.currency || 'CAD',
+  ): string {
+    return new Intl.NumberFormat(
+      resolveLocale('site', 'auto'),
+      { style: 'currency', currency },
+    ).format(cents / 100);
+  }
+
+  protected override async fetchJson(
+    url: string,
+    options?: RequestInit,
+  ): Promise<any> {
     let nextOptions = options;
-    if (options?.method?.toUpperCase() === 'POST' && typeof options.body === 'string') {
+
+    if (
+      options?.method?.toUpperCase() === 'POST'
+      && typeof options.body === 'string'
+    ) {
       try {
         syncCatalogSelections(this);
         const payload = JSON.parse(options.body);
-        payload.catalogItems = [...selectionMap(this).entries()].map(([id, quantity]) => ({ id, quantity }));
-        nextOptions = { ...options, body: JSON.stringify(payload) };
+        payload.catalogItems = [...selectionMap(this).entries()]
+          .map(([id, quantity]) => ({ id, quantity }));
+        nextOptions = {
+          ...options,
+          body: JSON.stringify(payload),
+        };
       } catch {
         // Preserve the original request if the body cannot be parsed.
       }
     }
-    return originalFetchJson.call(this, url, nextOptions);
-  };
-}
 
-// Extend the existing summary/tax preview so extras are priced before the
-// booking is submitted and the client sees the same total the backend validates.
-(Element.prototype as any).subtotalCents = function subtotalWithCatalog(): number {
-  return financePreview(this).subtotalCents;
-};
+    return super.fetchJson(url, nextOptions);
+  }
 
-(Element.prototype as any).taxPreview = function taxPreviewWithCatalog() {
-  const finance = financePreview(this);
-  return { tax1: finance.tax1Cents, tax2: finance.tax2Cents, total: finance.totalCents };
-};
+  protected override subtotalCents(): number {
+    return financePreview(this).subtotalCents;
+  }
 
-// Track the core RentalFlow success action only after the booking component has
-// actually received a successful reservation result from the backend.
-const originalSubmitBooking = (Element.prototype as any).submitBooking;
-if (typeof originalSubmitBooking === 'function') {
-  (Element.prototype as any).submitBooking = async function trackedSubmitBooking(...args: unknown[]) {
+  protected override taxPreview() {
+    const finance = financePreview(this);
+    return {
+      tax1: finance.tax1Cents,
+      tax2: finance.tax2Cents,
+      total: finance.totalCents,
+    };
+  }
+
+  protected override async submitBooking(): Promise<void> {
     syncCatalogSelections(this);
     const language = resolveLanguage('site', 'auto');
     const unavailableRequired = compatibleCatalogItems(this).find(
-      (item) => item.required && item.trackInventory && maxCatalogQuantity(item) <= 0,
+      (item) =>
+        item.required
+        && item.trackInventory
+        && maxCatalogQuantity(item) <= 0,
     );
+
     if (unavailableRequired) {
       this.error = language === 'fr'
         ? `L’extra obligatoire « ${unavailableRequired.name} » n’est plus disponible.`
@@ -341,10 +346,13 @@ if (typeof originalSubmitBooking === 'function') {
     }
 
     const previousReservationNumber = this.result?.reservationNumber || '';
-    const result = await originalSubmitBooking.apply(this, args);
+    await super.submitBooking();
     const reservationNumber = this.result?.reservationNumber || '';
 
-    if (reservationNumber && reservationNumber !== previousReservationNumber) {
+    if (
+      reservationNumber
+      && reservationNumber !== previousReservationNumber
+    ) {
       await Promise.all([
         sendRentalFlowBiEvent({
           eventName: 'PRIMARY_ACTION_PERFORMED',
@@ -357,26 +365,19 @@ if (typeof originalSubmitBooking === 'function') {
         }, appOrigin),
       ]);
     }
+  }
 
-    return result;
-  };
-}
-
-// Inject the Catalog & Extras step into the legacy booking component while
-// preserving its proven date/equipment/customer/payment flow.
-const originalRender = (Element.prototype as any).render;
-if (typeof originalRender === 'function') {
-  (Element.prototype as any).render = function catalogAwareRender(...args: unknown[]) {
+  protected override render(): void {
     syncCatalogSelections(this);
-    const result = originalRender.apply(this, args);
-    const root = this.shadowRoot as ShadowRoot | null;
-    if (root) {
-      injectCatalogExtras(this);
-      localizeDom(root, resolveLanguage('site', 'auto'));
-      renumberSteps(root);
-    }
-    return result;
-  };
+    super.render();
+
+    const root = this.shadowRoot;
+    if (!root) return;
+
+    injectCatalogExtras(this);
+    localizeDom(root, resolveLanguage('site', 'auto'));
+    renumberSteps(root);
+  }
 }
 
-export default Element;
+export default RentalFlowOnlineBookingElement;
