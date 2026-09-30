@@ -1,10 +1,10 @@
 import type { CSSProperties, FC } from 'react';
 import { useEffect, useMemo, useState } from 'react';
-import { items } from '@wix/data';
 import { httpClient } from '@wix/essentials';
 import { Page, WixDesignSystemProvider } from '@wix/design-system';
 import '@wix/design-system/styles.global.css';
 import { COLLECTIONS } from '../../../../lib/collection-ids';
+import { loadAllDashboardItems } from '../../../../lib/dashboard-data';
 import type { Asset, Reservation } from '../../../../domain/types';
 
 const ASSETS = COLLECTIONS.assets;
@@ -44,13 +44,13 @@ const DashboardPage: FC = () => {
           console.warn('RentalFlow payment reconciliation skipped.', paymentSyncError);
         }
 
-        const [assetResult, reservationResult] = await Promise.all([
-          items.query(ASSETS).limit(1000).find(),
-          items.query(RESERVATIONS).limit(1000).find(),
+        const [loadedAssets, loadedReservations] = await Promise.all([
+          loadAllDashboardItems<Asset>(ASSETS),
+          loadAllDashboardItems<Reservation>(RESERVATIONS),
         ]);
         if (active) {
-          setAssets(assetResult.items as Asset[]);
-          setReservations(reservationResult.items as Reservation[]);
+          setAssets(loadedAssets);
+          setReservations(loadedReservations);
         }
       } catch (e) {
         if (active) setError(e instanceof Error ? e.message : 'Impossible de charger les données RentalFlow.');
