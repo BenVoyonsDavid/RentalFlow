@@ -7,6 +7,7 @@ import '@wix/design-system/styles.global.css';
 import { COLLECTIONS } from '../../../../lib/collection-ids';
 import { generateReferenceNumber } from '../../../../lib/reference-number';
 import { getCurrentPlan, hasFeature } from '../../../../lib/plans';
+import { loadAllDashboardItems } from '../../../../lib/dashboard-data';
 import type {
   ActivityEntry,
   AppSettings,
@@ -182,19 +183,42 @@ const ReservationsV2Page: FC = () => {
   const load = useCallback(async () => {
     setLoading(true); setError('');
     try {
-      const results = await Promise.all([
-        items.query(ASSETS).limit(1000).find(), items.query(CUSTOMERS).limit(1000).find(),
-        items.query(RESERVATIONS).limit(1000).find(), items.query(RESERVATION_ITEMS).limit(1000).find(),
-        items.query(DOCUMENTS).limit(1000).find(), items.query(PAYMENTS).limit(1000).find(),
-        items.query(INSPECTIONS).limit(1000).find(), items.query(ACTIVITY).limit(1000).find(),
-        items.query(TEMPLATES).limit(100).find(), items.query(SETTINGS).eq('settingsKey', 'default').limit(1).find(),
+      const [
+        loadedAssets,
+        loadedCustomers,
+        loadedReservations,
+        loadedReservationItems,
+        loadedDocuments,
+        loadedPayments,
+        loadedInspections,
+        loadedActivity,
+        loadedTemplates,
+        settingsResult,
+      ] = await Promise.all([
+        loadAllDashboardItems<Asset>(ASSETS),
+        loadAllDashboardItems<Customer>(CUSTOMERS),
+        loadAllDashboardItems<Reservation>(RESERVATIONS),
+        loadAllDashboardItems<ReservationItem>(RESERVATION_ITEMS),
+        loadAllDashboardItems<RentalDocument>(DOCUMENTS),
+        loadAllDashboardItems<Payment>(PAYMENTS),
+        loadAllDashboardItems<Inspection>(INSPECTIONS),
+        loadAllDashboardItems<ActivityEntry>(ACTIVITY),
+        loadAllDashboardItems<DocumentTemplate>(TEMPLATES),
+        items.query(SETTINGS).eq('settingsKey', 'default').limit(1).find(),
       ]);
-      setAssets(results[0].items as Asset[]); setCustomers(results[1].items as Customer[]);
-      setReservations(results[2].items as Reservation[]); setReservationItems(results[3].items as ReservationItem[]);
-      setDocuments(results[4].items as RentalDocument[]); setPayments(results[5].items as Payment[]);
-      setInspections(results[6].items as Inspection[]); setActivity(results[7].items as ActivityEntry[]);
-      setTemplates(results[8].items as DocumentTemplate[]);
-      setSettings({ ...defaultSettings, ...((results[9].items[0] as AppSettings | undefined) || {}) });
+      setAssets(loadedAssets);
+      setCustomers(loadedCustomers);
+      setReservations(loadedReservations);
+      setReservationItems(loadedReservationItems);
+      setDocuments(loadedDocuments);
+      setPayments(loadedPayments);
+      setInspections(loadedInspections);
+      setActivity(loadedActivity);
+      setTemplates(loadedTemplates);
+      setSettings({
+        ...defaultSettings,
+        ...((settingsResult.items[0] as AppSettings | undefined) || {}),
+      });
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Impossible de charger les données RentalFlow.');
     } finally { setLoading(false); }
