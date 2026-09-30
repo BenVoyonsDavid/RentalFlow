@@ -94,27 +94,27 @@ const blankCustomerDraft: CustomerDraft = {
   notes: '',
 };
 
-class RentalFlowBookingElement extends HTMLElement {
-  private root: ShadowRoot;
-  private data: BookingData = {
+export class RentalFlowBookingElement extends HTMLElement {
+  protected root: ShadowRoot;
+  protected data: BookingData = {
     company: { name: 'Location en ligne', logoUrl: '' },
     hero: { title: '', subtitle: '', backgroundUrl: '' },
     settings: initialSettings,
     assets: [],
   };
-  private selected = new Set<string>();
-  private customerDraft: CustomerDraft = { ...blankCustomerDraft };
-  private calendarMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
-  private choosingEnd = false;
-  private startValue = '';
-  private endValue = '';
-  private paymentMode: 'FULL' | 'DEPOSIT' = 'FULL';
-  private loading = true;
-  private searching = false;
-  private submitting = false;
-  private message = '';
-  private error = '';
-  private result: BookingResult | null = null;
+  protected selected = new Set<string>();
+  protected customerDraft: CustomerDraft = { ...blankCustomerDraft };
+  protected calendarMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+  protected choosingEnd = false;
+  protected startValue = '';
+  protected endValue = '';
+  protected paymentMode: 'FULL' | 'DEPOSIT' = 'FULL';
+  protected loading = true;
+  protected searching = false;
+  protected submitting = false;
+  protected message = '';
+  protected error = '';
+  protected result: BookingResult | null = null;
 
   constructor() {
     super();
@@ -126,13 +126,13 @@ class RentalFlowBookingElement extends HTMLElement {
     void this.loadCatalog();
   }
 
-  private apiUrl(params = ''): string {
+  protected apiUrl(params = ''): string {
     const url = new URL('/api/public-booking', import.meta.url);
     if (params) url.search = params;
     return url.toString();
   }
 
-  private async fetchJson(url: string, options?: RequestInit): Promise<any> {
+  protected async fetchJson(url: string, options?: RequestInit): Promise<any> {
     let response: Response;
     try {
       response = await httpClient.fetchWithAuth(url, options);
@@ -175,7 +175,7 @@ class RentalFlowBookingElement extends HTMLElement {
     return payload;
   }
 
-  private async loadCatalog() {
+  protected async loadCatalog() {
     this.loading = true;
     this.error = '';
     this.render();
@@ -190,7 +190,7 @@ class RentalFlowBookingElement extends HTMLElement {
     }
   }
 
-  private async searchAvailability() {
+  protected async searchAvailability() {
     if (!this.startValue || !this.endValue) {
       this.error = 'Choisissez une date de début et une date de fin.';
       this.render();
@@ -227,7 +227,7 @@ class RentalFlowBookingElement extends HTMLElement {
     }
   }
 
-  private friendlyError(error: unknown): string {
+  protected friendlyError(error: unknown): string {
     const raw = error instanceof Error ? error.message : String(error || '');
     if (raw === 'PAST_PERIOD') return 'La période choisie est déjà terminée.';
     if (raw === 'PERIOD_TOO_LONG') return 'La réservation ne peut pas dépasser 366 jours.';
@@ -235,7 +235,7 @@ class RentalFlowBookingElement extends HTMLElement {
     return raw || 'Une erreur est survenue.';
   }
 
-  private toggleAsset(id: string) {
+  protected toggleAsset(id: string) {
     const asset = this.data.assets.find((item) => item.id === id);
     if (!asset?.available) return;
     if (this.selected.has(id)) this.selected.delete(id);
@@ -245,15 +245,15 @@ class RentalFlowBookingElement extends HTMLElement {
     this.render();
   }
 
-  private selectedAssets(): PublicAsset[] {
+  protected selectedAssets(): PublicAsset[] {
     return this.data.assets.filter((asset) => this.selected.has(asset.id));
   }
 
-  private subtotalCents(): number {
+  protected subtotalCents(): number {
     return this.selectedAssets().reduce((sum, asset) => sum + (asset.lineTotalCents || 0), 0);
   }
 
-  private taxPreview() {
+  protected taxPreview() {
     const subtotal = this.subtotalCents();
     if (!this.data.settings.taxesEnabled) return { tax1: 0, tax2: 0, total: subtotal };
     const tax1 = Math.round(subtotal * (this.data.settings.tax1Rate || 0) / 100);
@@ -262,7 +262,7 @@ class RentalFlowBookingElement extends HTMLElement {
     return { tax1, tax2, total: subtotal + tax1 + tax2 };
   }
 
-  private dueNowCents(): number {
+  protected dueNowCents(): number {
     if (!this.data.settings.paymentsEnabled) return 0;
     const total = this.taxPreview().total;
     if (this.paymentMode !== 'DEPOSIT' || !this.data.settings.depositEnabled) return total;
@@ -271,11 +271,11 @@ class RentalFlowBookingElement extends HTMLElement {
     return Math.min(total, Math.round(total * value / 100));
   }
 
-  private isRequired(key: string): boolean {
+  protected isRequired(key: string): boolean {
     return this.data.settings.requiredFields.includes(key);
   }
 
-  private async submitBooking() {
+  protected async submitBooking() {
     if (this.submitting || this.searching) return;
     if (!this.startValue || !this.endValue || this.selected.size === 0) {
       this.error = 'Choisissez une période et au moins un équipement.';
@@ -335,17 +335,17 @@ class RentalFlowBookingElement extends HTMLElement {
     }
   }
 
-  private money(cents = 0, currency = this.data.settings.currency || 'CAD'): string {
+  protected money(cents = 0, currency = this.data.settings.currency || 'CAD'): string {
     return new Intl.NumberFormat('fr-CA', { style: 'currency', currency }).format(cents / 100);
   }
 
-  private escape(value: unknown): string {
+  protected escape(value: unknown): string {
     return String(value ?? '').replace(/[&<>"']/g, (char) => ({
       '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
     }[char] || char));
   }
 
-  private invalidateDates() {
+  protected invalidateDates() {
     this.selected.clear();
     this.data.assets.forEach(asset => { asset.available = null; });
     this.result = null;
@@ -354,7 +354,7 @@ class RentalFlowBookingElement extends HTMLElement {
     this.render();
   }
 
-  private calendar() {
+  protected calendar() {
     const year = this.calendarMonth.getFullYear(), month = this.calendarMonth.getMonth();
     const dateKey = (date: Date) => `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
     const today = dateKey(new Date());
@@ -371,7 +371,7 @@ class RentalFlowBookingElement extends HTMLElement {
     return `<div class="calendar"><div class="month"><button type="button" data-month="-1" aria-label="Mois précédent">‹</button><strong>${this.escape(new Intl.DateTimeFormat(locale,{month:'long',year:'numeric'}).format(this.calendarMonth))}</strong><button type="button" data-month="1" aria-label="Mois suivant">›</button></div><div class="days">${weekdays}${'<span></span>'.repeat(first)}${days}</div><p class="muted calendar-hint">Sélectionnez le début, puis la fin.</p></div>`;
   }
 
-  private render() {
+  protected render() {
     const language = resolveLanguage('site', 'auto');
     const company = this.data.company;
     const hero = this.data.hero || {};
@@ -506,7 +506,7 @@ class RentalFlowBookingElement extends HTMLElement {
     this.bindEvents();
   }
 
-  private bindEvents() {
+  protected bindEvents() {
     this.root.querySelectorAll<HTMLElement>('[data-month]').forEach(button => button.addEventListener('click', () => {
       this.calendarMonth = new Date(this.calendarMonth.getFullYear(), this.calendarMonth.getMonth() + Number(button.dataset.month),1);
       this.render();
@@ -573,10 +573,6 @@ class RentalFlowBookingElement extends HTMLElement {
       if (this.root.querySelector<HTMLFormElement>('#customer-form')?.reportValidity()) void this.submitBooking();
     });
   }
-}
-
-if (!customElements.get('rental-flow-booking')) {
-  customElements.define('rental-flow-booking', RentalFlowBookingElement);
 }
 
 export default RentalFlowBookingElement;
