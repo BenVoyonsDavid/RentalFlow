@@ -61,6 +61,35 @@ assert(dashboardReservationServiceSource.includes('loadBlockingItems'));
 assert(dashboardReservationServiceSource.includes('bookingPricingOptions(plan)'));
 assert(dashboardReservationServiceSource.includes('computeReservationFinancials'));
 assert(dashboardReservationServiceSource.includes('createdCustomer'));
+
+const dashboardDataSource = await readFile(
+  join(root, 'src/lib/dashboard-data.ts'),
+  'utf8',
+);
+assert(dashboardDataSource.includes('hasNext()'));
+assert(dashboardDataSource.includes('result.next()'));
+
+for (const dashboardPath of [
+  'src/extensions/dashboard/pages/reservations/reservations-v2.tsx',
+  'src/extensions/dashboard/pages/customers/customers.tsx',
+  'src/extensions/dashboard/pages/catalog/catalog.tsx',
+  'src/extensions/dashboard/pages/categories/categories.tsx',
+  'src/extensions/dashboard/pages/reservation-extras/reservation-extras.tsx',
+  'src/extensions/dashboard/pages/equipment/equipment.tsx',
+  'src/extensions/dashboard/pages/calendar/calendar.tsx',
+  'src/extensions/dashboard/pages/my-page/my-page.tsx',
+  'src/extensions/dashboard/pages/settings/settings-v2.tsx',
+]) {
+  const source = await readFile(join(root, dashboardPath), 'utf8');
+  assert(!source.includes('.limit(1000)'));
+}
+
+const calendarSource = await readFile(
+  join(root, 'src/extensions/dashboard/pages/calendar/calendar.tsx'),
+  'utf8',
+);
+assert(calendarSource.includes(".le('startDateTime', visibleEnd)"));
+assert(calendarSource.includes(".ge('endDateTime', visibleStart)"));
 await assert.rejects(
   access(join(root, 'src/pages/api/public-booking-debug.ts')),
   (error) => error?.code === 'ENOENT',
