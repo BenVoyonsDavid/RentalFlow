@@ -1,6 +1,7 @@
 import type { APIRoute } from 'astro';
 import { items } from '@wix/data';
 import { auth } from '@wix/essentials';
+import { requireDashboardUser } from '../../server/request-auth';
 import type { CatalogStockLock, Reservation, ReservationItem } from '../../domain/types';
 import { activeCatalogReservedQuantity, availableCatalogStock } from '../../lib/catalog-inventory';
 import { COLLECTIONS } from '../../lib/collection-ids';
@@ -66,16 +67,11 @@ async function elevatedUpdate(collectionId: string, item: Record<string, unknown
   return update(collectionId, { ...item, _id: itemId });
 }
 
-async function requireAppInstance(): Promise<void> {
-  const tokenInfo = await auth.getTokenInfo();
-  if (!tokenInfo?.instanceId) throw new Error('UNAUTHORIZED');
-}
-
 export const POST: APIRoute = async ({ request }) => {
   let locks: CatalogStockLock[] = [];
 
   try {
-    await requireAppInstance();
+    await requireDashboardUser();
 
     const body = await request.json() as RequestBody;
     const reservationId = clean(body.reservationId, 80);
@@ -178,6 +174,7 @@ export const POST: APIRoute = async ({ request }) => {
     console.error('RentalFlow reservation extra stock mutation failed', error);
 
     if (error instanceof Error && error.message === 'UNAUTHORIZED') return json({ error: 'Unauthorized' }, 401);
+    if (error instanceof Error && error.message === 'FORBIDDEN') return json({ error: 'Forbidden' }, 403);
     if (error instanceof Error && error.message === 'CATALOG_STOCK_BUSY') {
       return json({ error: 'CATALOG_STOCK_BUSY' }, 409);
     }
