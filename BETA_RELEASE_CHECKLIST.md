@@ -20,7 +20,7 @@ Cette checklist couvre la validation de la première version publique de RentalF
 - Exécuter `npm run typecheck`.
 - Exécuter `npm run build`.
 - Corriger toute erreur TypeScript/build avant de continuer.
-- Exécuter `npm run release` seulement après validation fonctionnelle, avec le site de développement principal et `--version-type minor`.
+- Exécuter `npm run release -- --site 7f1ec6c8-4e35-4b19-a55d-21a9009e9386 --version-type minor --comment "RentalFlow hardening, booking security and data integrity"` seulement après validation fonctionnelle.
 - Utiliser une version **Minor** pour cette mise à jour tant qu'aucune nouvelle permission Wix n'est ajoutée.
 - Après la release, confirmer que les nouvelles collections et leurs index sont actifs avant les tests fonctionnels.
 
