@@ -13,7 +13,7 @@ export default extensions.customElement({
   },
   installation: {
     staticContainer: 'HOMEPAGE',
-  },
+  } as any,
   presets: [
     {
       id: 'c76f9552-dc23-49bb-b3c5-113e6a943e0e',
