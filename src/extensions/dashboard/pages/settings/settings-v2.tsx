@@ -10,6 +10,7 @@ import { assetLimits, hasFeature, planLabels, type RentalFlowPlan } from '../../
 import { useRentalFlowPlan } from '../../../../lib/use-plan';
 import PaymentSettingsPanel from './payment-settings-panel';
 import { COLLECTIONS } from '../../../../lib/collection-ids';
+import { loadAllDashboardItems } from '../../../../lib/dashboard-data';
 import { loadDefaultAppSettings, saveDefaultAppSettings } from '../../../../lib/app-settings-store';
 import type { AppSettings, DepositType, DocumentTemplate, DocumentType } from '../../../../domain/types';
 
@@ -118,12 +119,12 @@ const SettingsV2Page: FC = () => {
   const load = useCallback(async () => {
     setLoading(true); setError('');
     try {
-      const [saved, templateResult] = await Promise.all([
+      const [saved, loadedTemplates] = await Promise.all([
         loadDefaultAppSettings(),
-        items.query(TEMPLATES).limit(100).find(),
+        loadAllDashboardItems<DocumentTemplate>(TEMPLATES),
       ]);
       setSettings({ ...defaultSettings, ...(saved || {}) });
-      setTemplates(templateResult.items as DocumentTemplate[]);
+      setTemplates(loadedTemplates);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Impossible de charger les paramètres.');
     } finally {
