@@ -2,8 +2,6 @@ import RentalFlowOnlineBookingElement from './rental-flow-online-booking.runtime
 import { localizeDom, resolveLanguage } from '../../../../intl';
 
 
-class NavigableRentalFlowOnlineBookingElement extends (RentalFlowOnlineBookingElement as any) {}
-
 function installBookingStepNavigation(root: ShadowRoot): void {
   const main = root.querySelector<HTMLElement>('main');
   if (!main || main.querySelector('[data-rf-step-navigation]')) return;
@@ -64,19 +62,13 @@ function installBookingStepNavigation(root: ShadowRoot): void {
   }
 }
 
-const Element = NavigableRentalFlowOnlineBookingElement as unknown as {
-  new (): HTMLElement;
-  prototype: Record<string, unknown>;
-};
+class NavigableRentalFlowOnlineBookingElement extends RentalFlowOnlineBookingElement {
+  protected override render(): void {
+    super.render();
 
-const originalRender = (Element.prototype as any).render;
-if (typeof originalRender === 'function') {
-  (Element.prototype as any).render = function navigableRender(...args: unknown[]) {
-    const result = originalRender.apply(this, args);
-    const root = this.shadowRoot as ShadowRoot | null;
+    const root = this.shadowRoot;
     if (root) installBookingStepNavigation(root);
-    return result;
-  };
+  }
 }
 
-export default Element;
+export default NavigableRentalFlowOnlineBookingElement;
