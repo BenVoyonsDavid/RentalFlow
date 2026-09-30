@@ -5,6 +5,7 @@ import { Page, WixDesignSystemProvider } from '@wix/design-system';
 import '@wix/design-system/styles.global.css';
 import { COLLECTIONS } from '../../../../lib/collection-ids';
 import { generateReferenceNumber } from '../../../../lib/reference-number';
+import { getCurrentPlan, hasFeature } from '../../../../lib/plans';
 import type { Customer, Reservation } from '../../../../domain/types';
 
 const CUSTOMERS = COLLECTIONS.customers;
@@ -65,6 +66,8 @@ function dateTime(value?: Date | string): string {
 }
 
 const CustomersPage: FC = () => {
+  const plan = getCurrentPlan();
+  const customerDiscountEnabled = hasFeature(plan, 'CUSTOMER_DISCOUNT');
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [loading, setLoading] = useState(true);
@@ -162,7 +165,7 @@ const CustomersPage: FC = () => {
       return setFormError('Un client avec ce courriel existe déjà.');
     }
 
-    const discountPercent = Number(form.discountPercent.replace(',', '.'));
+    const discountPercent = customerDiscountEnabled ? Number(form.discountPercent.replace(',', '.')) : 0;
     if (!Number.isFinite(discountPercent) || discountPercent < 0 || discountPercent > 100) {
       return setFormError('Le rabais client doit être entre 0 et 100 %.');
     }
