@@ -1,7 +1,13 @@
 import { httpClient } from '@wix/essentials';
 
 export function publicBookingApiUrl(params = ''): string {
-  const url = new URL('/api/public-booking', import.meta.url);
+  const wixBaseApiUrl = String(import.meta.env.BASE_API_URL || '')
+    .trim()
+    .replace(/\/$/, '');
+  const moduleOrigin = new URL(import.meta.url).origin;
+  const baseUrl = wixBaseApiUrl || moduleOrigin;
+  const url = new URL(`${baseUrl}/api/public-booking`);
+
   if (params) url.search = params;
   return url.toString();
 }
