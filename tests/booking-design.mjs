@@ -53,6 +53,13 @@ const dashboardReservationApiSource = await readFile(
 assert(dashboardReservationApiSource.includes('requireDashboardUser'));
 assert(dashboardReservationApiSource.includes('createDashboardReservation'));
 
+const publicBookingEndpointSource = await readFile(
+  join(root, 'src/pages/api/public-booking.ts'),
+  'utf8',
+);
+assert(publicBookingEndpointSource.includes('access-control-request-headers'));
+assert(publicBookingEndpointSource.includes('X-Wix-Linguist'));
+
 const dashboardReservationServiceSource = await readFile(
   join(root, 'src/server/dashboard-reservation-service.ts'),
   'utf8',
