@@ -7,6 +7,7 @@ import type {
   DocumentTemplate,
   Reservation,
   ReservationItem,
+  WorkflowStage,
 } from '../domain/types';
 import type { NormalizedPublicCustomer } from '../lib/booking-customer';
 import { COLLECTIONS } from '../lib/collection-ids';
@@ -63,6 +64,10 @@ export type CreateOnlineReservationInput = {
   notes: string;
   priceLines: PricedAssetLine[];
   catalogLines: ReservationCatalogLine[];
+  customerDiscountPercent?: number;
+  workflowStage?: WorkflowStage;
+  activityActionType?: string;
+  activityActor?: string;
 };
 
 export type CreatedOnlineReservation = {
@@ -130,7 +135,8 @@ export async function createOnlineReservation(
       bufferBeforeHours: input.beforeHours,
       bufferAfterHours: input.afterHours,
       status: 'CONFIRMED',
-      workflowStage: input.paymentsEnabled ? 'PAYMENT' : 'RESERVATION',
+      workflowStage: input.workflowStage
+        || (input.paymentsEnabled ? 'PAYMENT' : 'RESERVATION'),
       quoteTemplateId: input.quoteTemplate?._id || '',
       quoteTemplateName: input.quoteTemplate?.name || '',
       contractTemplateId: input.contractTemplate?._id || '',
@@ -138,7 +144,7 @@ export async function createOnlineReservation(
       invoiceTemplateId: input.invoiceTemplate?._id || '',
       invoiceTemplateName: input.invoiceTemplate?.name || '',
       subtotalCents: input.finance.subtotalCents,
-      customerDiscountPercent: 0,
+      customerDiscountPercent: input.customerDiscountPercent || 0,
       discountCents: input.finance.discountCents,
       preTaxTotalCents: input.finance.preTaxTotalCents,
       tax1Name: input.settings.taxesEnabled === false ? '' : input.settings.tax1Name || '',
@@ -213,11 +219,13 @@ export async function createOnlineReservation(
       await elevatedInsert(ACTIVITY, {
         reservationId: reservation._id,
         reservationNumber,
-        actionType: 'ONLINE_RESERVATION_CREATED',
-        description: input.catalogLines.length
-          ? `Réservation en ligne ${reservationNumber} créée par ${input.customer.name} avec ${input.catalogLines.length} extra(s).`
-          : `Réservation en ligne ${reservationNumber} créée par ${input.customer.name}.`,
-        actor: 'Client en ligne',
+        actionType: input.activityActionType || 'ONLINE_RESERVATION_CREATED',
+        description: input.activityActionType === 'RESERVATION_CREATED'
+          ? `Réservation ${reservationNumber} créée.`
+          : input.catalogLines.length
+            ? `Réservation en ligne ${reservationNumber} créée par ${input.customer.name} avec ${input.catalogLines.length} extra(s).`
+            : `Réservation en ligne ${reservationNumber} créée par ${input.customer.name}.`,
+        actor: input.activityActor || 'Client en ligne',
         eventDate: new Date(),
       });
     } catch (activityError) {
