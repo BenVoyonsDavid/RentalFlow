@@ -1,10 +1,8 @@
 import { items } from '@wix/data';
 
-type QueryBuilder = ReturnType<typeof items.query>;
-
 export type DashboardQueryRefiner = (
-  query: QueryBuilder,
-) => QueryBuilder;
+  query: any,
+) => any;
 
 export async function loadAllDashboardItems<T>(
   collectionId: string,
@@ -16,10 +14,10 @@ export async function loadAllDashboardItems<T>(
     Math.max(1, Math.floor(pageSize)),
   );
 
-  let query = items.query(collectionId);
+  let query: any = items.query(collectionId);
   if (refine) query = refine(query);
 
-  let result = await query
+  let result: any = await query
     .limit(normalizedPageSize)
     .find();
 
