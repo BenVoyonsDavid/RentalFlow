@@ -80,19 +80,21 @@ const CalendarPage: FC = () => {
       const visibleCells = monthCells(cursor);
       const visibleStart = dayStart(visibleCells[0]);
       const visibleEnd = dayEnd(visibleCells[visibleCells.length - 1]);
+      const afterVisibleStart = new Date(visibleStart.getTime() - 1);
+      const beforeVisibleEnd = new Date(visibleEnd.getTime() + 1);
 
       const [loadedReservations, loadedReservationItems] = await Promise.all([
         loadAllDashboardItems<Reservation>(
           RESERVATIONS,
           (query) => query
-            .le('startDateTime', visibleEnd)
-            .ge('endDateTime', visibleStart),
+            .lt('startDateTime', beforeVisibleEnd)
+            .gt('endDateTime', afterVisibleStart),
         ),
         loadAllDashboardItems<ReservationItem>(
           RESERVATION_ITEMS,
           (query) => query
-            .le('startDateTime', visibleEnd)
-            .ge('endDateTime', visibleStart),
+            .lt('startDateTime', beforeVisibleEnd)
+            .gt('endDateTime', afterVisibleStart),
         ),
       ]);
 
