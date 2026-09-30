@@ -2,14 +2,27 @@
 
 Cette checklist couvre la validation de la première version publique de RentalFlow.
 
+## État E.4 — 30 septembre 2026
+
+- PR #24 : branche principale de validation; CI GitHub verte.
+- PR #1 et #5 : fermées, leurs changements sont intégrés dans #24.
+- PR #23 : conservée séparément (Square / PayFlow).
+- Site Wix principal de validation : Dev Sitex1646783860.
+- Version RentalFlow installée : ^12.7.0.
+- Accès Wix Pay Links : confirmé.
+- Collections attendues après la prochaine release : asset-capacity-locks et catalog-stock-locks.
+- Index uniques déjà actifs : assetNumber, customerNumber, reservationNumber, paymentNumber et booking-locks.assetId.
+- Release prévue : mineure, tant qu'aucune nouvelle permission Wix n'est ajoutée.
+
+
 ## 1. Build et version
 
 - Exécuter `npm run typecheck`.
 - Exécuter `npm run build`.
 - Corriger toute erreur TypeScript/build avant de continuer.
-- Exécuter `npm run release` seulement après validation fonctionnelle.
-- Utiliser une version **Major** pour cette mise à jour : de nouvelles Data Collections et de nouveaux index sont ajoutés.
-- Attendre jusqu'à 5 minutes après la mise à jour des collections sur le site de test.
+- Exécuter `npm run release` seulement après validation fonctionnelle, avec le site de développement principal et `--version-type minor`.
+- Utiliser une version **Minor** pour cette mise à jour tant qu'aucune nouvelle permission Wix n'est ajoutée.
+- Après la release, confirmer que les nouvelles collections et leurs index sont actifs avant les tests fonctionnels.
 
 ## 2. Forfaits Wix et limites
 
