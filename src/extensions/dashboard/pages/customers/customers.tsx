@@ -5,6 +5,7 @@ import { Page, WixDesignSystemProvider } from '@wix/design-system';
 import '@wix/design-system/styles.global.css';
 import { COLLECTIONS } from '../../../../lib/collection-ids';
 import { generateReferenceNumber } from '../../../../lib/reference-number';
+import { loadAllDashboardItems } from '../../../../lib/dashboard-data';
 import { getCurrentPlan, hasFeature } from '../../../../lib/plans';
 import type { Customer, Reservation } from '../../../../domain/types';
 
@@ -85,12 +86,12 @@ const CustomersPage: FC = () => {
   const load = useCallback(async () => {
     setLoading(true); setError('');
     try {
-      const [customerResult, reservationResult] = await Promise.all([
-        items.query(CUSTOMERS).limit(1000).find(),
-        items.query(RESERVATIONS).limit(1000).find(),
+      const [loadedCustomers, loadedReservations] = await Promise.all([
+        loadAllDashboardItems<Customer>(CUSTOMERS),
+        loadAllDashboardItems<Reservation>(RESERVATIONS),
       ]);
-      setCustomers(customerResult.items as Customer[]);
-      setReservations(reservationResult.items as Reservation[]);
+      setCustomers(loadedCustomers);
+      setReservations(loadedReservations);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Impossible de charger les clients.');
     } finally { setLoading(false); }
