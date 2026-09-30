@@ -3,6 +3,7 @@ import { items } from '@wix/data';
 import { auth } from '@wix/essentials';
 import { requireDashboardUser } from '../../server/request-auth';
 import { COLLECTIONS } from '../../lib/collection-ids';
+import { collectAllPages } from '../../lib/pagination';
 import type { Payment, Reservation } from '../../domain/types';
 
 const PAYMENTS = COLLECTIONS.payments;
@@ -43,15 +44,23 @@ function asCents(value: unknown): number {
 }
 
 async function syncReservationBalance(reservationId: string): Promise<number> {
-  const [reservationResult, paymentsResult] = await Promise.all([
+  const [reservationResult, payments] = await Promise.all([
     elevatedFind(items.query(RESERVATIONS).eq('_id', reservationId).limit(1)),
-    elevatedFind(items.query(PAYMENTS).eq('reservationId', reservationId).limit(100)),
+    collectAllPages(async (offset, limit) => {
+      const result = await elevatedFind(
+        items.query(PAYMENTS)
+          .eq('reservationId', reservationId)
+          .skip(offset)
+          .limit(limit),
+      );
+      return (result.items || []) as Payment[];
+    }, 100),
   ]);
 
   const reservation = reservationResult.items?.[0] as Reservation | undefined;
   if (!reservation?._id) return 0;
 
-  const paid = (paymentsResult.items as Payment[])
+  const paid = payments
     .filter((payment) => payment.status === 'PAID')
     .reduce((sum, payment) => sum + Math.max(0, payment.amountCents || 0), 0);
   const balanceDueCents = Math.max(0, (reservation.totalCents || 0) - paid);
@@ -68,13 +77,16 @@ async function syncReservationBalance(reservationId: string): Promise<number> {
 }
 
 async function reconcilePendingPayments(): Promise<{ checked: number; updated: number }> {
-  const pendingResult = await elevatedFind(
-    items.query(PAYMENTS)
-      .eq('status', 'PENDING')
-      .eq('wixOnlinePayment', true)
-      .limit(100)
-  );
-  const pending = pendingResult.items as Payment[];
+  const pending = await collectAllPages(async (offset, limit) => {
+    const result = await elevatedFind(
+      items.query(PAYMENTS)
+        .eq('status', 'PENDING')
+        .eq('wixOnlinePayment', true)
+        .skip(offset)
+        .limit(limit),
+    );
+    return (result.items || []) as Payment[];
+  }, 100);
   if (!pending.length) return { checked: 0, updated: 0 };
 
   const wixGetPaid = await import('@wix/get-paid') as any;
