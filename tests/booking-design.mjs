@@ -1,13 +1,32 @@
 import { build } from 'esbuild';
 import { chromium } from 'playwright';
 import { createServer } from 'node:http';
-import { mkdtemp, readFile } from 'node:fs/promises';
+import { access, mkdtemp, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import assert from 'node:assert/strict';
 const temp = await mkdtemp(join(tmpdir(), 'rf-design-'));
 const root = resolve('.');
+const bookingApiSource = await readFile(
+  join(root, 'src/extensions/site/widgets/rental-flow-online-booking/booking-widget-api.ts'),
+  'utf8',
+);
+const bookingPanelSource = await readFile(
+  join(root, 'src/extensions/site/widgets/rental-flow-online-booking/rental-flow-online-booking.panel.tsx'),
+  'utf8',
+);
+assert(!bookingApiSource.includes('rentalflow-network-ping'));
+assert(!bookingApiSource.includes('authPing'));
+assert(!bookingPanelSource.includes('public-booking-debug'));
+await assert.rejects(
+  access(join(root, 'src/pages/api/public-booking-debug.ts')),
+  (error) => error?.code === 'ENOENT',
+);
+await assert.rejects(
+  access(join(root, 'src/pages/api/rentalflow-network-ping.ts')),
+  (error) => error?.code === 'ENOENT',
+);
 const mock = `export const httpClient={fetchWithAuth:(...args)=>fetch(...args)}; export const i18n={getLanguage:()=>window.testLanguage||'fr',getLocale:()=>window.testLanguage==='en'?'en-CA':'fr-CA'};`;
 const plugins = [{name:'test-wix',setup(b){b.onResolve({filter:/^@wix\/essentials$/},()=>({path:'wix',namespace:'mock'}));b.onLoad({filter:/.*/,namespace:'mock'},()=>({contents:mock,loader:'js'}));b.onResolve({filter:/\.css\?inline$/},args=>({path:resolve(args.resolveDir,args.path.slice(0,-7)),namespace:'inline'}));b.onLoad({filter:/.*/,namespace:'inline'},async args=>({contents:await readFile(args.path,'utf8'),loader:'text'}));}}];
 await build({stdin:{contents:`import Widget from './src/extensions/site/widgets/rental-flow-online-booking/rental-flow-online-booking.navigation.runtime';customElements.define('test-booking',Widget);`,resolveDir:root},bundle:true,format:'esm',outfile:join(temp,'widget.js'),plugins,define:{'import.meta.env.BASE_API_URL':'""'}});
