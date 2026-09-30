@@ -121,6 +121,17 @@ const calendarSource = await readFile(
 );
 assert(calendarSource.includes(".lt('startDateTime', beforeVisibleEnd)"));
 assert(calendarSource.includes(".gt('endDateTime', afterVisibleStart)"));
+
+const reservationItemsCollectionSource = await readFile(
+  join(root, 'src/extensions/backend/data-collections/reservation-items.ts'),
+  'utf8',
+);
+const reservationItemsIndexesBlock =
+  reservationItemsCollectionSource.match(/indexes:\s*\[([\s\S]*?)\]\s*,\s*initialData:/)?.[1] || '';
+assert(
+  (reservationItemsIndexesBlock.match(/unique:/g) || []).length <= 3,
+  'Wix data collection extensions support at most 3 configured indexes per collection.',
+);
 await assert.rejects(
   access(join(root, 'src/pages/api/public-booking-debug.ts')),
   (error) => error?.code === 'ENOENT',
