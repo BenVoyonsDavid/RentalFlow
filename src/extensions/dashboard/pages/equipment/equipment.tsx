@@ -7,6 +7,7 @@ import '@wix/design-system/styles.global.css';
 import { assetLimitForPlan, canCreateAsset, hasFeature, planLabels, requiredPlan } from '../../../../lib/plans';
 import { useRentalFlowPlan } from '../../../../lib/use-plan';
 import { COLLECTIONS } from '../../../../lib/collection-ids';
+import { loadAllDashboardItems } from '../../../../lib/dashboard-data';
 import type { Asset, AssetStatus, Category } from '../../../../domain/types';
 
 const COLLECTION = COLLECTIONS.assets;
@@ -106,12 +107,12 @@ const EquipmentPage: FC = () => {
   const load = async () => {
     setLoading(true); setError('');
     try {
-      const [assetResult, categoryResult] = await Promise.all([
-        items.query(COLLECTION).limit(1000).find(),
-        items.query(CATEGORIES).limit(1000).find(),
+      const [loadedAssets, loadedCategories] = await Promise.all([
+        loadAllDashboardItems<Asset>(COLLECTION),
+        loadAllDashboardItems<Category>(CATEGORIES),
       ]);
-      setAssets(assetResult.items as Asset[]);
-      setCategories(categoryResult.items as Category[]);
+      setAssets(loadedAssets);
+      setCategories(loadedCategories);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Impossible de charger les équipements.');
     } finally { setLoading(false); }
