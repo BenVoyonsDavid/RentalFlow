@@ -90,7 +90,8 @@ function normalizePlanTokens(value: unknown): string[] {
   // Match complete package words, not substrings: "Proxy" is not "Pro".
   return String(value ?? '')
     .trim()
-    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    // Wix package tiers must be complete, delimited words; camel-case brand
+    // names such as MyBusinessTools are not proof of a Business subscription.
     .toUpperCase()
     .split(/[^A-Z0-9]+/)
     .filter(Boolean);
