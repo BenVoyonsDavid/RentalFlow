@@ -10,6 +10,7 @@ import { getCurrentPlan, hasFeature } from '../../../../lib/plans';
 import { loadAllDashboardItems } from '../../../../lib/dashboard-data';
 import { filterManagementReservations, type ReservationListFilter } from '../../../../lib/management-filters';
 import { reservationBalanceCents } from '../../../../lib/payment-reconciliation';
+import { safeBookingCheckoutUrl } from '../../../../lib/booking-checkout';
 import type {
   ActivityEntry,
   AppSettings,
@@ -471,6 +472,7 @@ const ReservationsV2Page: FC = () => {
   const linkedItems = selectedReservation ? reservationItems.filter((row) => row.reservationId === selectedReservation._id) : [];
   const linkedDocuments = selectedReservation ? documents.filter((row) => row.reservationId === selectedReservation._id) : [];
   const linkedPayments = selectedReservation ? payments.filter((row) => row.reservationId === selectedReservation._id) : [];
+  const pendingOnlinePayment = linkedPayments.find((payment) => payment.wixOnlinePayment && payment.status === 'PENDING' && !!payment.wixPaymentLinkId);
   const linkedInspections = selectedReservation ? inspections.filter((row) => row.reservationId === selectedReservation._id) : [];
   const linkedActivity = fullHistoryEnabled && selectedReservation ? activity.filter((row) => row.reservationId === selectedReservation._id).sort((a, b) => asDate(b.eventDate || b._createdDate).getTime() - asDate(a.eventDate || a._createdDate).getTime()) : [];
   const liveBalance = selectedReservation
@@ -550,6 +552,7 @@ const ReservationsV2Page: FC = () => {
   const createWixPaymentLink = async () => {
     if (!paymentsEnabled) return setError('Les paiements Wix sont disponibles à partir du plan Starter.');
     if (!selectedReservation?._id || liveBalance <= 0) return;
+    if (pendingOnlinePayment) return setError('Un lien Wix est déjà en attente pour cette réservation. Vérifiez son paiement avant d’en créer un autre.');
     const amount = paidCents === 0 && initialDue > 0 ? initialDue : liveBalance;
     if (amount <= 0) return setError('Aucun montant à percevoir.');
     setProcessing(true); setError('');
@@ -578,6 +581,9 @@ const ReservationsV2Page: FC = () => {
         checkoutUrl = initiated?.ecomCheckout?.checkoutUrl || initiated?.checkoutUrl || '';
         checkoutId = initiated?.ecomCheckout?.checkoutId || initiated?.checkoutId || '';
       }
+
+      checkoutUrl = safeBookingCheckoutUrl(checkoutUrl);
+      if (!checkoutUrl) throw new Error('Wix n’a pas fourni un lien HTTPS sécurisé de paiement.');
 
       const payment = await items.insert(PAYMENTS, {
         reservationId: selectedReservation._id, reservationNumber: selectedReservation.reservationNumber || '',
@@ -844,7 +850,11 @@ const ReservationsV2Page: FC = () => {
                     ? <div role="alert" style={{ ...card, marginBottom: 12, background: '#fff7ed', color: '#9a3412', borderColor: '#fdba74' }}>
                         Réservation clôturée avec un solde de {money(liveBalance, selectedReservation.currency || 'CAD')} non réglé. Vérifiez les paiements Wix.
                       </div>
-                    : null}{liveBalance > 0 ? <button style={primary} disabled={processing} onClick={() => void createWixPaymentLink()}>Créer lien de paiement Wix — {money(paidCents === 0 && initialDue > 0 ? initialDue : liveBalance, selectedReservation.currency || 'CAD')}</button> : <div style={{ ...card, background: '#f0fdf4', color: '#166534' }}>Réservation payée en totalité.</div>}<div style={{ display: 'grid', gap: 10, marginTop: 18 }}>{linkedPayments.length === 0 ? <div style={{ color: '#64748b' }}>Aucun paiement.</div> : linkedPayments.map((payment) => <div key={payment._id} style={{ ...card, padding: 14 }}><div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}><div><strong>{payment.paymentNumber}</strong><div style={{ color: '#64748b', marginTop: 3 }}>{payment.method} · {payment.status} · {payment.paymentType}</div></div><strong>{money(payment.amountCents, payment.currency || 'CAD')}</strong></div>{payment.wixPaymentUrl ? <button style={{ ...secondary, marginTop: 8 }} onClick={() => window.open(payment.wixPaymentUrl, '_blank', 'noopener,noreferrer')}>Ouvrir le checkout Wix</button> : null}{payment.wixPaymentLinkId && payment.status !== 'PAID' ? <button style={{ ...secondary, marginTop: 8, marginLeft: 8 }} disabled={processing} onClick={() => void refreshWixPayment(payment)}>Actualiser le statut Wix</button> : null}</div>)}</div></div>}
+                    : null}{liveBalance > 0
+                    ? pendingOnlinePayment
+                      ? <div style={{ ...card, background: '#fff7ed', borderColor: '#fdba74', color: '#9a3412' }}>Un lien de paiement Wix est déjà en attente. Vérifiez son statut avant de créer une nouvelle demande.</div>
+                      : <button style={primary} disabled={processing} onClick={() => void createWixPaymentLink()}>Créer lien de paiement Wix — {money(paidCents === 0 && initialDue > 0 ? initialDue : liveBalance, selectedReservation.currency || 'CAD')}</button>
+                    : <div style={{ ...card, background: '#f0fdf4', color: '#166534' }}>Réservation payée en totalité.</div>}<div style={{ display: 'grid', gap: 10, marginTop: 18 }}>{linkedPayments.length === 0 ? <div style={{ color: '#64748b' }}>Aucun paiement.</div> : linkedPayments.map((payment) => <div key={payment._id} style={{ ...card, padding: 14 }}><div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}><div><strong>{payment.paymentNumber}</strong><div style={{ color: '#64748b', marginTop: 3 }}>{payment.method} · {payment.status} · {payment.paymentType}</div></div><strong>{money(payment.amountCents, payment.currency || 'CAD')}</strong></div>{safeBookingCheckoutUrl(payment.wixPaymentUrl) ? <button style={{ ...secondary, marginTop: 8 }} onClick={() => window.open(safeBookingCheckoutUrl(payment.wixPaymentUrl), '_blank', 'noopener,noreferrer')}>Ouvrir le checkout Wix</button> : null}{payment.wixPaymentLinkId && payment.status !== 'PAID' ? <button style={{ ...secondary, marginTop: 8, marginLeft: 8 }} disabled={processing} onClick={() => void refreshWixPayment(payment)}>Actualiser le statut Wix</button> : null}</div>)}</div></div>}
 
               {detailTab === 'DOCUMENTS' && <div><div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 18 }}><button style={secondary} disabled={processing} onClick={() => void createDocument('QUOTE')}>+ Devis</button><button style={secondary} disabled={processing} onClick={() => void createDocument('CONTRACT')}>+ Contrat</button><button style={secondary} disabled={processing} onClick={() => void createDocument('INVOICE')}>+ Facture</button></div><div style={{ display: 'grid', gap: 10 }}>{linkedDocuments.length === 0 ? <div style={{ color: '#64748b' }}>Aucun document généré.</div> : linkedDocuments.map((document) => <div key={document._id} style={{ ...card, padding: 14 }}><div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}><div><strong>{documentLabels[document.documentType || 'QUOTE']} · {document.documentNumber}</strong><div style={{ color: '#64748b', marginTop: 3 }}>Modèle : {document.templateName || '—'} · {document.status}</div></div><strong>{money(document.amountCents, document.currency || 'CAD')}</strong></div><div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginTop: 10 }}><button style={secondary} onClick={() => printDocument(document)}>Aperçu / PDF</button>{document.documentType === 'QUOTE' && document.status !== 'ACCEPTED' ? <button style={successButton} onClick={() => void updateDocumentStatus(document, 'ACCEPT')}>Accepter le devis</button> : null}{document.documentType === 'CONTRACT' && document.status !== 'SIGNED' ? <button style={successButton} onClick={() => void updateDocumentStatus(document, 'SIGN')}>Signer le contrat</button> : null}{document.documentType === 'INVOICE' && document.status !== 'ISSUED' ? <button style={successButton} onClick={() => void updateDocumentStatus(document, 'ISSUE')}>Émettre la facture</button> : null}</div></div>)}</div></div>}
 

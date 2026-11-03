@@ -28,7 +28,6 @@ export default {
     { type: 'TEXT', displayName: 'Wix Order ID', key: 'wixOrderId' },
     { type: 'TEXT', displayName: 'Wix Transaction ID', key: 'wixTransactionId' },
     { type: 'BOOLEAN', displayName: 'Paiement en ligne Wix', key: 'wixOnlinePayment' },
-    { type: 'BOOLEAN', displayName: 'Réparation du solde en attente', key: 'balanceSyncPending' },
     { type: 'NUMBER', displayName: 'Solde après paiement en cents', key: 'remainingBalanceCents' },
     { type: 'TEXT', displayName: 'Notes', key: 'notes' },
   ],

@@ -36,11 +36,11 @@ export function verifiedWixPaymentLink(
 
   const expectedId = String(payment.wixPaymentLinkId || '').trim();
   const linkId = String(link._id || link.id || '').trim();
-  if (!expectedId || (linkId && linkId !== expectedId)) return null;
+  if (!expectedId || !linkId || linkId !== expectedId) return null;
 
   const expectedCurrency = String(payment.currency || '').trim().toUpperCase();
   const actualCurrency = String(link.currency || '').trim().toUpperCase();
-  if (!expectedCurrency || (actualCurrency && actualCurrency !== expectedCurrency)) return null;
+  if (!expectedCurrency || !actualCurrency || actualCurrency !== expectedCurrency) return null;
 
   const status = String(link.status || '').trim().toUpperCase();
   const receivedCount = Number(link.totalReceived?.paymentCount);

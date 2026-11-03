@@ -35,7 +35,7 @@ async function elevatedInsert(collectionId: string, item: Record<string, unknown
   return insert(collectionId, item);
 }
 
-async function syncReservationBalance(reservationId: string): Promise<number> {
+async function syncReservationBalance(reservationId: string): Promise<{ balanceDueCents: number; updated: boolean }> {
   const [reservationResult, payments] = await Promise.all([
     elevatedFind(items.query(RESERVATIONS).eq('_id', reservationId).limit(1)),
     collectAllPages(async (offset, limit) => {
@@ -58,7 +58,8 @@ async function syncReservationBalance(reservationId: string): Promise<number> {
     reservation.currency || 'CAD',
   );
 
-  if (reservationBalanceNeedsSync(reservation, balanceDueCents)) {
+  const needsSync = reservationBalanceNeedsSync(reservation, balanceDueCents);
+  if (needsSync) {
     await elevatedUpdate(RESERVATIONS, {
       ...reservation,
       balanceDueCents,
@@ -66,7 +67,7 @@ async function syncReservationBalance(reservationId: string): Promise<number> {
     });
   }
 
-  return balanceDueCents;
+  return { balanceDueCents, updated: needsSync };
 }
 
 async function reconcilePendingPayments(): Promise<{ checked: number; updated: number; repaired: number; repairPending: number }> {
@@ -101,7 +102,6 @@ async function reconcilePendingPayments(): Promise<{ checked: number; updated: n
       const confirmed: Payment = {
         ...payment,
         status: 'PAID',
-        balanceSyncPending: true,
         amountCents: evidence.amountCents,
         paymentDate: evidence.paymentDate || payment.paymentDate || new Date(),
         wixTransactionId: evidence.transactionId || payment.wixTransactionId || '',
@@ -112,16 +112,11 @@ async function reconcilePendingPayments(): Promise<{ checked: number; updated: n
 
       try {
         if (!payment.reservationId) throw new Error('RECONCILIATION_RESERVATION_MISSING');
-        const balanceDueCents = await syncReservationBalance(payment.reservationId);
-        // Clearing the repair flag is the last step, only after the reservation was saved.
-        await elevatedUpdate(PAYMENTS, {
-          ...confirmed,
-          remainingBalanceCents: balanceDueCents,
-          balanceSyncPending: false,
-        });
+        const { balanceDueCents } = await syncReservationBalance(payment.reservationId);
+        await elevatedUpdate(PAYMENTS, { ...confirmed, remainingBalanceCents: balanceDueCents });
       } catch (balanceError) {
-        // Keep balanceSyncPending=true for an automatic retry on the next dashboard load.
-        // Never change the verified receipt back from PAID.
+        // The receipt remains PAID. A later run scans PAID Wix receipts and repairs
+        // their linked reservation without needing new collection fields.
         console.error('RentalFlow reservation balance synchronization is pending repair.', balanceError);
       }
 
@@ -145,42 +140,51 @@ async function reconcilePendingPayments(): Promise<{ checked: number; updated: n
     }
   }
 
-  // A receipt may have been saved as PAID even if its reservation write failed.
-  // Those receipts are no longer in the PENDING query, hence the persisted repair flag.
-  const repairPayments = await collectAllPages(async (offset, limit) => {
+  // Wix collections already installed do not have a balanceSyncPending field.
+  // Re-check paid online receipts on every sync, including legacy PAID records
+  // whose reservation write may have failed on a previous dashboard load.
+  // This is idempotent: unchanged balances and snapshots are never rewritten.
+  const paidOnline = await collectAllPages(async (offset, limit) => {
     const result = await elevatedFind(
       items.query(PAYMENTS)
         .eq('status', 'PAID')
         .eq('wixOnlinePayment', true)
-        .eq('balanceSyncPending', true)
         .skip(offset)
         .limit(limit),
     );
     return (result.items || []) as Payment[];
   }, 100);
 
+  const byReservation = new Map<string, Payment[]>();
+  let repairPending = 0;
+  for (const payment of paidOnline) {
+    if (!payment._id || !payment.reservationId) {
+      repairPending += 1;
+      continue;
+    }
+    const group = byReservation.get(payment.reservationId) || [];
+    group.push(payment);
+    byReservation.set(payment.reservationId, group);
+  }
+
   let repaired = 0;
-  for (const payment of repairPayments) {
-    if (!payment._id || !payment.reservationId) continue;
+  for (const [reservationId, linkedReceipts] of byReservation) {
     try {
-      const balanceDueCents = await syncReservationBalance(payment.reservationId);
-      await elevatedUpdate(PAYMENTS, {
-        ...payment,
-        remainingBalanceCents: balanceDueCents,
-        balanceSyncPending: false,
-      });
-      repaired += 1;
+      const { balanceDueCents, updated } = await syncReservationBalance(reservationId);
+      let changed = updated;
+      for (const payment of linkedReceipts) {
+        if (payment.remainingBalanceCents === balanceDueCents) continue;
+        await elevatedUpdate(PAYMENTS, { ...payment, remainingBalanceCents: balanceDueCents });
+        changed = true;
+      }
+      if (changed) repaired += 1;
     } catch (error) {
+      repairPending += 1;
       console.error('RentalFlow could not repair a verified payment balance.', error);
     }
   }
 
-  return {
-    checked: pending.length,
-    updated,
-    repaired,
-    repairPending: repairPayments.length - repaired,
-  };
+  return { checked: pending.length, updated, repaired, repairPending };
 }
 
 export const POST: APIRoute = async () => {
