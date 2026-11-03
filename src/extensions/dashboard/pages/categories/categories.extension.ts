@@ -1,4 +1,5 @@
 import { extensions } from '@wix/astro/builders';
+import type { DashboardSearchPageOptions } from '../../../../lib/dashboard-search-metadata';
 
 export default extensions.dashboardPage({
   id: '9a3dd83f-183e-45dc-843d-b2a9b93f9a14',
@@ -11,4 +12,4 @@ export default extensions.dashboardPage({
     title: "Catégories",
     description: "Organiser les catégories d’équipements, de produits, de services et d’extras.",
   },
-});
+} as DashboardSearchPageOptions);

@@ -1,4 +1,5 @@
 import { extensions } from '@wix/astro/builders';
+import type { DashboardSearchPageOptions } from '../../../../lib/dashboard-search-metadata';
 
 export default extensions.dashboardPage({
   id: '4e66043b-5a38-4a75-a93f-cf1fa15d4ff7',
@@ -11,4 +12,4 @@ export default extensions.dashboardPage({
     title: "Tableau de bord",
     description: "Suivre les locations à venir, les départs, les retours et les opérations quotidiennes.",
   },
-});
+} as DashboardSearchPageOptions);

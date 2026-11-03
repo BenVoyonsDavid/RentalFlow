@@ -19,6 +19,8 @@ Date de revue : 3 novembre 2026. Cette branche est une **candidature de prévisu
 | Add a video | À fournir | Enregistrer une courte démonstration réelle. Proposition de scénario ci-dessous; ne pas présenter le vidéo comme téléversé. |
 | Add some webhooks | À configurer/vérifier | Auditer les webhooks déjà définis dans le tableau de bord Wix avant d'en ajouter; ne pas créer de double handler. Voir ci-dessous. |
 
+**Compatibilité SDK** : les types fournis par `@wix/astro 2.75.0` omettent encore `metaData` malgré la documentation Wix actuelle. `src/lib/dashboard-search-metadata.ts` contient un type d'adaptation ciblé, tout en conservant `extensions.dashboardPage` et le payload d'origine. Le typecheck et le build peuvent réussir sans prouver que Wix indexera les pages : la vérification finale de la recherche se fait après une release contrôlée.
+
 **Important** : ces réglages de recherche ne deviennent visibles dans le tableau de bord Wix qu'après une **nouvelle version de l'app**. Un `wix preview` n'est pas une release. Aucun `wix release` ni soumission App Market n'est déclenché par cette PR.
 
 ## Vidéo de démonstration — scénario proposé (50 à 70 secondes)
