@@ -5,7 +5,7 @@ import { requireDashboardUser } from '../../server/request-auth';
 import { COLLECTIONS } from '../../lib/collection-ids';
 import { collectAllPages } from '../../lib/pagination';
 import type { Payment, Reservation } from '../../domain/types';
-import { reservationBalanceCents, verifiedWixPaymentLink } from '../../lib/payment-reconciliation';
+import { reservationBalanceCents, reservationBalanceNeedsSync, reservationStageAfterBalance, verifiedWixPaymentLink } from '../../lib/payment-reconciliation';
 
 const PAYMENTS = COLLECTIONS.payments;
 const RESERVATIONS = COLLECTIONS.reservations;
@@ -20,7 +20,7 @@ function json(data: unknown, status = 200): Response {
 
 async function elevatedFind(query: any): Promise<any> {
   const run = auth.elevate(query.find.bind(query));
-  return run();
+  return run({ consistentRead: true });
 }
 
 async function elevatedUpdate(collectionId: string, item: Record<string, unknown>): Promise<any> {
@@ -50,7 +50,7 @@ async function syncReservationBalance(reservationId: string): Promise<number> {
   ]);
 
   const reservation = reservationResult.items?.[0] as Reservation | undefined;
-  if (!reservation?._id) return 0;
+  if (!reservation?._id) throw new Error('RECONCILIATION_RESERVATION_NOT_FOUND');
 
   const balanceDueCents = reservationBalanceCents(
     reservation.totalCents || 0,
@@ -58,18 +58,18 @@ async function syncReservationBalance(reservationId: string): Promise<number> {
     reservation.currency || 'CAD',
   );
 
-  await elevatedUpdate(RESERVATIONS, {
-    ...reservation,
-    balanceDueCents,
-    workflowStage: balanceDueCents === 0 && reservation.workflowStage === 'PAYMENT'
-      ? 'READY'
-      : reservation.workflowStage,
-  });
+  if (reservationBalanceNeedsSync(reservation, balanceDueCents)) {
+    await elevatedUpdate(RESERVATIONS, {
+      ...reservation,
+      balanceDueCents,
+      workflowStage: reservationStageAfterBalance(reservation.workflowStage, balanceDueCents),
+    });
+  }
 
   return balanceDueCents;
 }
 
-async function reconcilePendingPayments(): Promise<{ checked: number; updated: number }> {
+async function reconcilePendingPayments(): Promise<{ checked: number; updated: number; repaired: number; repairPending: number }> {
   const pending = await collectAllPages(async (offset, limit) => {
     const result = await elevatedFind(
       items.query(PAYMENTS)
@@ -80,12 +80,13 @@ async function reconcilePendingPayments(): Promise<{ checked: number; updated: n
     );
     return (result.items || []) as Payment[];
   }, 100);
-  if (!pending.length) return { checked: 0, updated: 0 };
-
-  const wixGetPaid = await import('@wix/get-paid') as any;
-  const paymentLinksApi = wixGetPaid.paymentLinks;
-  if (!paymentLinksApi?.getPaymentLink) throw new Error('GET_PAYMENT_LINK_UNAVAILABLE');
-  const getPaymentLink = auth.elevate(paymentLinksApi.getPaymentLink);
+  let getPaymentLink: ((id: string) => Promise<any>) | null = null;
+  if (pending.length) {
+    const wixGetPaid = await import('@wix/get-paid') as any;
+    const paymentLinksApi = wixGetPaid.paymentLinks;
+    if (!paymentLinksApi?.getPaymentLink) throw new Error('GET_PAYMENT_LINK_UNAVAILABLE');
+    getPaymentLink = auth.elevate(paymentLinksApi.getPaymentLink);
+  }
 
   let updated = 0;
 
@@ -93,13 +94,14 @@ async function reconcilePendingPayments(): Promise<{ checked: number; updated: n
     if (!payment._id || !payment.wixPaymentLinkId) continue;
 
     try {
-      const response = await getPaymentLink(payment.wixPaymentLinkId);
+      const response = await getPaymentLink!(payment.wixPaymentLinkId);
       const evidence = verifiedWixPaymentLink(response, payment);
       if (!evidence) continue;
 
       const confirmed: Payment = {
         ...payment,
         status: 'PAID',
+        balanceSyncPending: true,
         amountCents: evidence.amountCents,
         paymentDate: evidence.paymentDate || payment.paymentDate || new Date(),
         wixTransactionId: evidence.transactionId || payment.wixTransactionId || '',
@@ -108,20 +110,19 @@ async function reconcilePendingPayments(): Promise<{ checked: number; updated: n
       // Save the receipt before calculating balance so the calculation includes it.
       await elevatedUpdate(PAYMENTS, confirmed);
 
-      let balanceDueCents = payment.remainingBalanceCents || 0;
       try {
-        if (payment.reservationId) {
-          balanceDueCents = await syncReservationBalance(payment.reservationId);
-        }
+        if (!payment.reservationId) throw new Error('RECONCILIATION_RESERVATION_MISSING');
+        const balanceDueCents = await syncReservationBalance(payment.reservationId);
+        // Clearing the repair flag is the last step, only after the reservation was saved.
+        await elevatedUpdate(PAYMENTS, {
+          ...confirmed,
+          remainingBalanceCents: balanceDueCents,
+          balanceSyncPending: false,
+        });
       } catch (balanceError) {
-        // The receipt must remain PAID; surface balance sync failure for repair.
-        console.error('RentalFlow reservation balance synchronization failed.', balanceError);
-      }
-
-      try {
-        await elevatedUpdate(PAYMENTS, { ...confirmed, remainingBalanceCents: balanceDueCents });
-      } catch (balanceRecordError) {
-        console.error('RentalFlow payment balance snapshot could not be updated.', balanceRecordError);
+        // Keep balanceSyncPending=true for an automatic retry on the next dashboard load.
+        // Never change the verified receipt back from PAID.
+        console.error('RentalFlow reservation balance synchronization is pending repair.', balanceError);
       }
 
       // Audit logging must not roll back or hide an already verified receipt.
@@ -144,7 +145,42 @@ async function reconcilePendingPayments(): Promise<{ checked: number; updated: n
     }
   }
 
-  return { checked: pending.length, updated };
+  // A receipt may have been saved as PAID even if its reservation write failed.
+  // Those receipts are no longer in the PENDING query, hence the persisted repair flag.
+  const repairPayments = await collectAllPages(async (offset, limit) => {
+    const result = await elevatedFind(
+      items.query(PAYMENTS)
+        .eq('status', 'PAID')
+        .eq('wixOnlinePayment', true)
+        .eq('balanceSyncPending', true)
+        .skip(offset)
+        .limit(limit),
+    );
+    return (result.items || []) as Payment[];
+  }, 100);
+
+  let repaired = 0;
+  for (const payment of repairPayments) {
+    if (!payment._id || !payment.reservationId) continue;
+    try {
+      const balanceDueCents = await syncReservationBalance(payment.reservationId);
+      await elevatedUpdate(PAYMENTS, {
+        ...payment,
+        remainingBalanceCents: balanceDueCents,
+        balanceSyncPending: false,
+      });
+      repaired += 1;
+    } catch (error) {
+      console.error('RentalFlow could not repair a verified payment balance.', error);
+    }
+  }
+
+  return {
+    checked: pending.length,
+    updated,
+    repaired,
+    repairPending: repairPayments.length - repaired,
+  };
 }
 
 export const POST: APIRoute = async () => {

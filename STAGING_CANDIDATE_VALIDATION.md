@@ -32,6 +32,17 @@ Ajouter une clé d'API Wix valide comme secret GitHub Actions nommé `WIX_API_KE
 
 Une fois le secret ajouté, relancer le workflow **Wix Staging Candidate Preview (No Release)** sur la branche candidate, ou utiliser l'option de réexécution du job GitHub Actions. Ne jamais copier la valeur du secret dans le chat.
 
+## Phase 5 — reprise des paiements et soldes
+
+La branche `fix/payment-reconciliation-phase5` vérifie :
+- Que l'interface ne marque jamais un paiement Wix comme payé depuis le navigateur.
+- Que le serveur vérifie l'identité du lien, sa devise et le montant reçu.
+- Que le solde affiché tient compte des remboursements locatifs sans y mélanger les dépôts de garantie et les frais de dommage.
+- Qu'une réservation clôturée avec solde impayé est explicitement signalée.
+- Qu'un paiement confirmé `PAID` conserve `balanceSyncPending=true` si son solde n'a pas été mis à jour et que la réconciliation réessaie sans débiter de nouveau.
+
+**Migration Wix** : la collection RentalFlow Payments reçoit le champ booléen `balanceSyncPending`. Contrôler la compatibilité des collections de la version installée avant toute release. Les anciens paiements `PAID` sans marqueur doivent faire l'objet d'un audit manuel si une défaillance historique est suspectée. La reprise est déclenchée à l'ouverture du tableau de bord, pas par un webhook temps réel.
+
 ## Vérifications manuelles après la création du preview
 
 - [ ] Confirmer le lien de prévisualisation généré par `wix preview` et la version candidate réellement chargée.

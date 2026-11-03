@@ -9,6 +9,7 @@ import { generateReferenceNumber } from '../../../../lib/reference-number';
 import { getCurrentPlan, hasFeature } from '../../../../lib/plans';
 import { loadAllDashboardItems } from '../../../../lib/dashboard-data';
 import { filterManagementReservations, type ReservationListFilter } from '../../../../lib/management-filters';
+import { reservationBalanceCents } from '../../../../lib/payment-reconciliation';
 import type {
   ActivityEntry,
   AppSettings,
@@ -472,8 +473,10 @@ const ReservationsV2Page: FC = () => {
   const linkedPayments = selectedReservation ? payments.filter((row) => row.reservationId === selectedReservation._id) : [];
   const linkedInspections = selectedReservation ? inspections.filter((row) => row.reservationId === selectedReservation._id) : [];
   const linkedActivity = fullHistoryEnabled && selectedReservation ? activity.filter((row) => row.reservationId === selectedReservation._id).sort((a, b) => asDate(b.eventDate || b._createdDate).getTime() - asDate(a.eventDate || a._createdDate).getTime()) : [];
-  const paidCents = linkedPayments.filter((payment) => payment.status === 'PAID' && (payment.paymentType === 'PAYMENT' || payment.paymentType === 'BOOKING_DEPOSIT')).reduce((sum, payment) => sum + (payment.amountCents || 0), 0);
-  const liveBalance = selectedReservation ? Math.max(0, (selectedReservation.totalCents || 0) - paidCents) : 0;
+  const liveBalance = selectedReservation
+    ? reservationBalanceCents(selectedReservation.totalCents || 0, linkedPayments, selectedReservation.currency || 'CAD')
+    : 0;
+  const paidCents = selectedReservation ? Math.max(0, (selectedReservation.totalCents || 0) - liveBalance) : 0;
   const initialDue = selectedReservation ? Math.min(liveBalance, selectedReservation.amountDueNowCents || liveBalance) : 0;
 
   const templateForDocument = (type: DocumentType, reservation: Reservation): DocumentTemplate | undefined => {
@@ -598,20 +601,20 @@ const ReservationsV2Page: FC = () => {
     if (!payment._id || !payment.wixPaymentLinkId) return;
     setProcessing(true); setError('');
     try {
-      const wixGetPaid = (await import('@wix/get-paid')) as any;
-      const api = wixGetPaid.paymentLinks;
-      if (!api?.getPaymentLink) throw new Error('Le module Wix Payment Links n’est pas disponible.');
-      const response = await api.getPaymentLink(payment.wixPaymentLinkId);
-      const link = response?.paymentLink || response;
-      const wixStatus = String(link?.status || '').toUpperCase();
-      const paid = wixStatus === 'PAID';
-      await items.update(PAYMENTS, { ...payment, _id: payment._id, status: paid ? 'PAID' : payment.status || 'PENDING', paymentDate: paid ? new Date() : payment.paymentDate });
-      if (paid && selectedReservation) {
-        await logActivity(selectedReservation, 'PAYMENT_CONFIRMED', `Paiement Wix ${payment.paymentNumber || ''} confirmé.`);
-        await updateReservation(selectedReservation, { workflowStage: stageAtLeast(selectedReservation.workflowStage, 'PAYMENT') }, 'WORKFLOW_PAYMENT', 'Étape paiement atteinte.');
+      // The server verifies Wix's link ID, currency and received amount before
+      // promoting a pending payment. Never mark PAID from a client-side status.
+      const response = await httpClient.fetchWithAuth(
+        `${import.meta.env.BASE_API_URL}/api/reconcile-payments`,
+        { method: 'POST' },
+      );
+      const result = await response.json().catch(() => null) as { error?: string; updated?: number; repaired?: number; repairPending?: number } | null;
+      if (!response.ok) {
+        throw new Error(result?.error || 'La vérification des paiements Wix a échoué.');
       }
       await load();
-      setSuccess(paid ? 'Paiement Wix confirmé.' : `Statut Wix : ${wixStatus || 'en attente'}.`);
+      setSuccess(result?.repairPending
+        ? 'Vérification Wix terminée. Une mise à jour du solde doit être réessayée.'
+        : 'Vérification Wix terminée. Consultez le statut du paiement et le solde actualisés.');
     } catch (e) { setError(e instanceof Error ? e.message : 'Impossible d’actualiser le paiement Wix.'); }
     finally { setProcessing(false); }
   };
@@ -837,7 +840,11 @@ const ReservationsV2Page: FC = () => {
 
               {detailTab === 'EQUIPMENT' && <div style={{ display: 'grid', gap: 10 }}>{linkedItems.map((item) => <div key={item._id} style={{ ...card, padding: 14 }}><strong>{item.assetTitle || item.assetNumber}</strong><div style={{ color: '#64748b', marginTop: 4 }}>{item.assetNumber} · {item.billableDays || 0} jour(s) · {item.pricingMode}</div><div style={{ marginTop: 4 }}>{dateTime(item.blockedStartDateTime)} → {dateTime(item.blockedEndDateTime)} (période bloquée)</div><div style={{ marginTop: 4, fontWeight: 700 }}>{money(item.lineTotalCents, item.currency || selectedReservation.currency || 'CAD')}</div></div>)}</div>}
 
-              {detailTab === 'PAYMENTS' && <div><div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(190px,1fr))', gap: 10, marginBottom: 18 }}><Info label="Total" value={money(selectedReservation.totalCents, selectedReservation.currency || 'CAD')} /><Info label="Payé" value={money(paidCents, selectedReservation.currency || 'CAD')} /><Info label="Solde" value={money(liveBalance, selectedReservation.currency || 'CAD')} /></div>{liveBalance > 0 ? <button style={primary} disabled={processing} onClick={() => void createWixPaymentLink()}>Créer lien de paiement Wix — {money(paidCents === 0 && initialDue > 0 ? initialDue : liveBalance, selectedReservation.currency || 'CAD')}</button> : <div style={{ ...card, background: '#f0fdf4', color: '#166534' }}>Réservation payée en totalité.</div>}<div style={{ display: 'grid', gap: 10, marginTop: 18 }}>{linkedPayments.length === 0 ? <div style={{ color: '#64748b' }}>Aucun paiement.</div> : linkedPayments.map((payment) => <div key={payment._id} style={{ ...card, padding: 14 }}><div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}><div><strong>{payment.paymentNumber}</strong><div style={{ color: '#64748b', marginTop: 3 }}>{payment.method} · {payment.status} · {payment.paymentType}</div></div><strong>{money(payment.amountCents, payment.currency || 'CAD')}</strong></div>{payment.wixPaymentUrl ? <button style={{ ...secondary, marginTop: 8 }} onClick={() => window.open(payment.wixPaymentUrl, '_blank', 'noopener,noreferrer')}>Ouvrir le checkout Wix</button> : null}{payment.wixPaymentLinkId && payment.status !== 'PAID' ? <button style={{ ...secondary, marginTop: 8, marginLeft: 8 }} disabled={processing} onClick={() => void refreshWixPayment(payment)}>Actualiser le statut Wix</button> : null}</div>)}</div></div>}
+              {detailTab === 'PAYMENTS' && <div><div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(190px,1fr))', gap: 10, marginBottom: 18 }}><Info label="Total" value={money(selectedReservation.totalCents, selectedReservation.currency || 'CAD')} /><Info label="Payé" value={money(paidCents, selectedReservation.currency || 'CAD')} /><Info label="Solde" value={money(liveBalance, selectedReservation.currency || 'CAD')} /></div>{selectedReservation.status === 'COMPLETED' && liveBalance > 0
+                    ? <div role="alert" style={{ ...card, marginBottom: 12, background: '#fff7ed', color: '#9a3412', borderColor: '#fdba74' }}>
+                        Réservation clôturée avec un solde de {money(liveBalance, selectedReservation.currency || 'CAD')} non réglé. Vérifiez les paiements Wix.
+                      </div>
+                    : null}{liveBalance > 0 ? <button style={primary} disabled={processing} onClick={() => void createWixPaymentLink()}>Créer lien de paiement Wix — {money(paidCents === 0 && initialDue > 0 ? initialDue : liveBalance, selectedReservation.currency || 'CAD')}</button> : <div style={{ ...card, background: '#f0fdf4', color: '#166534' }}>Réservation payée en totalité.</div>}<div style={{ display: 'grid', gap: 10, marginTop: 18 }}>{linkedPayments.length === 0 ? <div style={{ color: '#64748b' }}>Aucun paiement.</div> : linkedPayments.map((payment) => <div key={payment._id} style={{ ...card, padding: 14 }}><div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}><div><strong>{payment.paymentNumber}</strong><div style={{ color: '#64748b', marginTop: 3 }}>{payment.method} · {payment.status} · {payment.paymentType}</div></div><strong>{money(payment.amountCents, payment.currency || 'CAD')}</strong></div>{payment.wixPaymentUrl ? <button style={{ ...secondary, marginTop: 8 }} onClick={() => window.open(payment.wixPaymentUrl, '_blank', 'noopener,noreferrer')}>Ouvrir le checkout Wix</button> : null}{payment.wixPaymentLinkId && payment.status !== 'PAID' ? <button style={{ ...secondary, marginTop: 8, marginLeft: 8 }} disabled={processing} onClick={() => void refreshWixPayment(payment)}>Actualiser le statut Wix</button> : null}</div>)}</div></div>}
 
               {detailTab === 'DOCUMENTS' && <div><div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 18 }}><button style={secondary} disabled={processing} onClick={() => void createDocument('QUOTE')}>+ Devis</button><button style={secondary} disabled={processing} onClick={() => void createDocument('CONTRACT')}>+ Contrat</button><button style={secondary} disabled={processing} onClick={() => void createDocument('INVOICE')}>+ Facture</button></div><div style={{ display: 'grid', gap: 10 }}>{linkedDocuments.length === 0 ? <div style={{ color: '#64748b' }}>Aucun document généré.</div> : linkedDocuments.map((document) => <div key={document._id} style={{ ...card, padding: 14 }}><div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}><div><strong>{documentLabels[document.documentType || 'QUOTE']} · {document.documentNumber}</strong><div style={{ color: '#64748b', marginTop: 3 }}>Modèle : {document.templateName || '—'} · {document.status}</div></div><strong>{money(document.amountCents, document.currency || 'CAD')}</strong></div><div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginTop: 10 }}><button style={secondary} onClick={() => printDocument(document)}>Aperçu / PDF</button>{document.documentType === 'QUOTE' && document.status !== 'ACCEPTED' ? <button style={successButton} onClick={() => void updateDocumentStatus(document, 'ACCEPT')}>Accepter le devis</button> : null}{document.documentType === 'CONTRACT' && document.status !== 'SIGNED' ? <button style={successButton} onClick={() => void updateDocumentStatus(document, 'SIGN')}>Signer le contrat</button> : null}{document.documentType === 'INVOICE' && document.status !== 'ISSUED' ? <button style={successButton} onClick={() => void updateDocumentStatus(document, 'ISSUE')}>Émettre la facture</button> : null}</div></div>)}</div></div>}
 

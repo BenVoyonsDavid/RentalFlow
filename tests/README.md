@@ -26,3 +26,7 @@ The public booking journey test is a **browser integration test with mocked Wix 
 Management UI regression tests cover accent-insensitive searching, status filters, date-based operational queues and source-level wiring of the new dashboard and equipment/reservation interfaces. They do not replace a manual check inside the Wix dashboard.
 
 For payment reconciliation before App Market validation, run `npm run test:billing`. It checks exact settlement amounts, currency and link identity, refunds/deposits, and plan names. Wix API calls are mocked: these tests cannot replace live Wix checkout and staging validation.
+
+## Phase 5 — cohérence des paiements sur Wix staging
+
+Lancer `npm run test:staging-finance` pour contrôler le calcul du solde, les remboursements, l'état du parcours paiement et l'absence de confirmation client non vérifiée. Cette suite ne remplace pas un paiement Wix sandbox réel.

@@ -269,6 +269,8 @@ export type Payment = {
   wixOrderId?: string;
   wixTransactionId?: string;
   wixOnlinePayment?: boolean;
+  // Persisted with PAID before updating its reservation; retried on dashboard refresh.
+  balanceSyncPending?: boolean;
   remainingBalanceCents?: number;
   notes?: string;
   _createdDate?: Date | string;
