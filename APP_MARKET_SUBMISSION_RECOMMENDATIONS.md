@@ -17,7 +17,7 @@ Date de revue : 3 novembre 2026. Cette branche est une **candidature de prévisu
 | Paramètres searchable | Code prêt | Idem |
 | Add BI events | Instrumentation prête, réception Wix non vérifiée | `APP_DASHBOARD_LOADED` après le chargement réussi du tableau de bord; `PRIMARY_ACTION_PERFORMED` après création d'une réservation; événements personnalisés du premier équipement et des réservations. Aucun renseignement personnel. |
 | Add a video | À fournir | Enregistrer une courte démonstration réelle. Proposition de scénario ci-dessous; ne pas présenter le vidéo comme téléversé. |
-| Add some webhooks | À configurer/vérifier | Auditer les webhooks déjà définis dans le tableau de bord Wix avant d'en ajouter; ne pas créer de double handler. Voir ci-dessous. |
+| Add some webhooks | 3 gestionnaires codés; présence de doublons non vérifiée | Extensions Wix CLI pour installation, changement de forfait et désinstallation, avec journaux sans données locataires. **Vérifier dans le Wix App Dashboard avant toute release** qu'il n'existe pas déjà des abonnements à ces événements. |
 
 **Compatibilité SDK** : les types fournis par `@wix/astro 2.75.0` omettent encore `metaData` malgré la documentation Wix actuelle. `src/lib/dashboard-search-metadata.ts` contient un type d'adaptation ciblé, tout en conservant `extensions.dashboardPage` et le payload d'origine. Le typecheck et le build peuvent réussir sans prouver que Wix indexera les pages : la vérification finale de la recherche se fait après une release contrôlée.
 
@@ -35,10 +35,10 @@ Prévoir idéalement une capture d'écran en 16:9, avec sous-titres français et
 
 ## Webhooks : validation avant ajout
 
-Wix recommande les événements d'installation, de montée de forfait et de désinstallation. Pour le CLI, préférer des **event extensions** gérées par Wix à un webhook HTTP maison :
+Wix recommande les événements d'installation, de montée de forfait et de désinstallation. Trois extensions CLI sont maintenant préparées dans `src/extensions/backend/events/` : `app-installed`, `app-plan-changed`, `app-removed`. Elles ne suppriment aucune donnée et se limitent à consigner des événements sans identité de locataire. **Attention : un appel Wix peut être livré plusieurs fois et les journaux ne sont pas une base d'événements durable.** Pour le CLI, préférer des **event extensions** gérées par Wix à un webhook HTTP maison :
 1. Relever les événements déjà configurés dans le Wix App Dashboard (il ne peut y avoir deux extensions pour un même événement, y compris celles créées dans Wix).
 2. Identifier les types d'événements exacts et SDK applicables à l'app actuelle. Éviter de supposer qu'un module SDK expose un événement particulier.
-3. Ajouter les abonnements seulement si non existants. Prévoir la tolérance aux doublons, aux arrivées désordonnées et à la reprise.
+3. Conserver les extensions préparées uniquement si aucun abonnement au même événement n'existe déjà dans le Wix App Dashboard; supprimer le doublon avant la release. Comme elles n'ont aucun effet métier, une livraison en double n'altère pas les données, mais les comptes de logs peuvent être surestimés.
 4. Tester en environnement de développement; la configuration d'un nouvel événement ne prend effet que sur les installations recevant une nouvelle version.
 
 **Ne jamais supprimer les données d'un locataire sur simple réception d'un webhook « uninstall » sans politique de conservation explicite et mécanisme vérifié.**

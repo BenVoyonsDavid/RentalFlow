@@ -54,3 +54,22 @@ assert.equal(normalizeBiEventInput({ eventName: 'CUSTOM', customEventName: 'rent
 assert.equal(normalizeBiEventInput({ eventName: 'CUSTOM', customEventName: 'unexpected' }), null);
 assert.equal(normalizeBiEventInput({ eventName: 'NOT_A_REAL_EVENT' }), null);
 console.log('PASS: 9 searchable Wix dashboard pages, correct descriptions, safe BI event call sites and event validation.');
+
+const lifecycle = [
+  ['app-installed', 'onAppInstanceInstalled'],
+  ['app-plan-changed', 'onAppInstancePaidPlanChanged'],
+  ['app-removed', 'onAppInstanceRemoved'],
+];
+const appExtensionRoot = await readFile('src/extensions.ts', 'utf8');
+for (const [slug, fn] of lifecycle) {
+  const base = `src/extensions/backend/events/${slug}/${slug}`;
+  const builder = await readFile(`${base}.extension.ts`, 'utf8');
+  const handler = await readFile(`${base}.ts`, 'utf8');
+  assert(builder.includes('extensions.event({'), `Missing Wix event builder for ${slug}`);
+  assert(builder.includes(`./extensions/backend/events/${slug}/${slug}.ts`));
+  assert(appExtensionRoot.includes(`./extensions/backend/events/${slug}/${slug}.extension.ts`));
+  assert(handler.includes(`appInstances.${fn}(`), `Incorrect Wix lifecycle SDK event: ${slug}`);
+  assert(!handler.includes('items.remove(') && !handler.includes('items.update('));
+  assert(!handler.includes('event.entity') && !handler.includes('event.data'));
+}
+console.log('PASS: 3 Wix App Market lifecycle event extensions are registered with no tenant-data side effects.');

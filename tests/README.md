@@ -36,3 +36,5 @@ Lancer `npm run test:staging-finance` pour contrôler le calcul du solde, les re
 La suite `npm run test:app-market` vérifie que les neuf pages de tableau de bord Wix sont recherchables et ont un titre et une description de moins de 200 caractères, conformément aux règles du builder. Elle vérifie également la présence des appels BI non bloquants dans le code et le filtrage des noms d'événements.
 
 Les modifications d'extensions ne deviennent visibles aux utilisateurs Wix qu'après la publication d'une nouvelle version de l'application. La prévisualisation ne publie pas de version App Market.
+
+Les extensions Wix de cycle de vie (installation, changement de forfait, désinstallation) disposent d'un test de structure dans `test:app-market`. Leur enregistrement côté Wix doit être confirmé par les journaux de l'application, après activation de la version, sans aucun test de désinstallation destructeur.
