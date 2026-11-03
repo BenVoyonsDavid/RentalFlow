@@ -1,0 +1,29 @@
+1
+00:00:00,000 --> 00:00:08,000
+Running a rental business takes
+more than keeping track of dates.
+
+2
+00:00:08,000 --> 00:00:20,000
+RentalFlow brings equipment, pricing
+and availability into one workspace.
+
+3
+00:00:20,000 --> 00:00:32,000
+See your upcoming bookings
+on a clear calendar.
+
+4
+00:00:32,000 --> 00:00:44,000
+Follow every rental, from the first request
+to equipment return.
+
+5
+00:00:44,000 --> 00:00:54,000
+Keep your daily operations organized
+with a practical dashboard.
+
+6
+00:00:54,000 --> 00:01:00,000
+RentalFlow: rental operations together,
+right inside Wix.

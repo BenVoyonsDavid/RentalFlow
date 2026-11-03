@@ -1,4 +1,5 @@
 import { extensions } from '@wix/astro/builders';
+import type { DashboardSearchPageOptions } from '../../../../lib/dashboard-search-metadata';
 
 export default extensions.dashboardPage({
   id: '52d1588d-fc70-441a-aba5-dc65a48e07f4',
@@ -6,4 +7,9 @@ export default extensions.dashboardPage({
   routePath: 'equipment',
   component: './extensions/dashboard/pages/equipment/equipment.localized.tsx',
   fullPage: false,
-});
+  metaData: {
+    searchable: true,
+    title: "Équipements",
+    description: "Gérer les équipements de location, leur inventaire, disponibilité, tarifs et entretien.",
+  },
+} as DashboardSearchPageOptions);

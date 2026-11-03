@@ -1,10 +1,11 @@
 import type { CSSProperties, FC } from 'react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { httpClient } from '@wix/essentials';
 import { Page, WixDesignSystemProvider } from '@wix/design-system';
 import '@wix/design-system/styles.global.css';
 import { COLLECTIONS } from '../../../../lib/collection-ids';
 import { loadAllDashboardItems } from '../../../../lib/dashboard-data';
+import { sendRentalFlowBiEvent } from '../../../../lib/bi-events-client';
 import { getOperationsForDashboard, type OperationsFilter } from '../../../../lib/management-filters';
 import type { Asset, Reservation } from '../../../../domain/types';
 
@@ -35,6 +36,7 @@ const DashboardPage: FC = () => {
   const [refreshKey, setRefreshKey] = useState(0);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [focus, setFocus] = useState<OperationsFilter>('DEPARTURES');
+  const dashboardLoadedTracked = useRef(false);
 
   useEffect(() => {
     let active = true;
@@ -59,6 +61,11 @@ const DashboardPage: FC = () => {
           setAssets(loadedAssets);
           setReservations(loadedReservations);
           setLastUpdated(new Date());
+          if (!dashboardLoadedTracked.current) {
+            dashboardLoadedTracked.current = true;
+            // BI failures never interrupt dashboard loading. No customer data is sent.
+            void sendRentalFlowBiEvent({ eventName: 'APP_DASHBOARD_LOADED' });
+          }
         }
       } catch (e) {
         if (active) setError(e instanceof Error ? e.message : 'Impossible de charger les données RentalFlow.');

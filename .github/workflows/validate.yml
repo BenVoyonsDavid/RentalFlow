@@ -51,5 +51,8 @@ jobs:
       - name: Staging payment consistency regression tests
         run: npm run test:staging-finance
 
+      - name: App Market dashboard search and BI event checks
+        run: npm run test:app-market
+
       - name: Wix build note
         run: echo "Wix build is validated locally after 'npx wix env pull'; CI cannot supply the Wix-managed instance environment."

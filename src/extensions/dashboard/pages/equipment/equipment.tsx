@@ -8,6 +8,7 @@ import { assetLimitForPlan, canCreateAsset, hasFeature, planLabels, requiredPlan
 import { useRentalFlowPlan } from '../../../../lib/use-plan';
 import { COLLECTIONS } from '../../../../lib/collection-ids';
 import { loadAllDashboardItems } from '../../../../lib/dashboard-data';
+import { sendRentalFlowBiEvent } from '../../../../lib/bi-events-client';
 import { filterManagementAssets, type EquipmentStatusFilter } from '../../../../lib/management-filters';
 import type { Asset, AssetStatus, Category } from '../../../../domain/types';
 
@@ -202,6 +203,10 @@ const EquipmentPage: FC = () => {
       } else {
         setAssets((current) => [...current, saved]);
         setSuccess(`${title} a été ajouté.`);
+        if (assets.length === 0) {
+          // Report first setup milestone without equipment names, serial numbers or client data.
+          void sendRentalFlowBiEvent({ eventName: 'CUSTOM', customEventName: 'rentalflow_first_asset_created' });
+        }
       }
       setOpen(false); setEditing(null); setForm(blankForm);
     } catch (e) {

@@ -10,6 +10,9 @@ import customersPage from './extensions/dashboard/pages/customers/customers.exte
 import settingsPage from './extensions/dashboard/pages/settings/settings.extension.ts';
 import bookingWidget from './extensions/site/widgets/rental-flow-online-booking/rental-flow-online-booking.extension.ts';
 import dataCollections from './extensions/backend/data-collections/data-collections.extension.ts';
+import appInstalledEvent from './extensions/backend/events/app-installed/app-installed.extension.ts';
+import appPlanChangedEvent from './extensions/backend/events/app-plan-changed/app-plan-changed.extension.ts';
+import appRemovedEvent from './extensions/backend/events/app-removed/app-removed.extension.ts';
 
 export default app()
   .use(dashboardPage)
@@ -22,4 +25,7 @@ export default app()
   .use(customersPage)
   .use(settingsPage)
   .use(bookingWidget)
-  .use(dataCollections);
+  .use(dataCollections)
+  .use(appInstalledEvent)
+  .use(appPlanChangedEvent)
+  .use(appRemovedEvent);
