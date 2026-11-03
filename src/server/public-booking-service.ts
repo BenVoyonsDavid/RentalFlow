@@ -118,7 +118,7 @@ export async function loadPublicBooking(
 }
 
 export async function submitPublicBooking(
-  request: Request,
+  _request: Request,
   body: BookingRequest,
 ): Promise<PublicBookingSuccess> {
   let createdBooking: CreatedOnlineReservation | null = null;

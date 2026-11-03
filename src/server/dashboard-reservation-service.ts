@@ -189,7 +189,7 @@ export async function createDashboardReservation(
       await Promise.all([
         loadSettingsAndTemplates(),
         loadActiveAssets(),
-        loadCurrentPlan(request),
+        loadCurrentPlan(),
       ]);
 
     if (!hasAppAccess(plan)) {
