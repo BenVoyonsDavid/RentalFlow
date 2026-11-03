@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - test/wix-staging-candidate-validation
+      - fix/payment-reconciliation-phase5
   workflow_dispatch:
 
 permissions:

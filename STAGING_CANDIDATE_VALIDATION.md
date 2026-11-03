@@ -32,6 +32,18 @@ Ajouter une clé d'API Wix valide comme secret GitHub Actions nommé `WIX_API_KE
 
 Une fois le secret ajouté, relancer le workflow **Wix Staging Candidate Preview (No Release)** sur la branche candidate, ou utiliser l'option de réexécution du job GitHub Actions. Ne jamais copier la valeur du secret dans le chat.
 
+## Phase 5 — reprise des paiements et soldes
+
+La branche `fix/payment-reconciliation-phase5` vérifie :
+- Que l'interface ne marque jamais un paiement Wix comme payé depuis le navigateur.
+- Que le serveur vérifie l'identité du lien, sa devise et le montant reçu.
+- Que le solde affiché tient compte des remboursements locatifs sans y mélanger les dépôts de garantie et les frais de dommage.
+- Qu'une réservation clôturée avec solde impayé est explicitement signalée.
+- Qu'un paiement confirmé `PAID` dont le solde n'a pas été mis à jour est retrouvé lors des vérifications suivantes, sans nouveau débit ni nouveau champ CMS requis.
+- Qu'un second lien de paiement ne peut pas être créé lorsqu'un premier est encore en attente sur la même réservation.
+
+**Contrôle Wix effectué le 3 novembre 2026** : le CMS du site de test ne possède pas le champ `balanceSyncPending`. La phase 5 a donc été ajustée pour fonctionner avec le schéma existant, sans migration nécessaire. La reprise passe par la lecture des paiements Wix confirmés, puis un recalcul idempotent de chaque réservation liée. Vérifier la performance sur un volume important de paiements avant la sortie publique. La reprise est déclenchée à l'ouverture du tableau de bord, pas par un webhook temps réel.
+
 ## Vérifications manuelles après la création du preview
 
 - [ ] Confirmer le lien de prévisualisation généré par `wix preview` et la version candidate réellement chargée.

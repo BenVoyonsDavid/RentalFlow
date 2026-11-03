@@ -22,6 +22,7 @@
     "test:journey": "node tests/booking-journey.mjs",
     "test:management-ui": "node tests/management-ui.mjs",
     "test:billing": "node tests/billing-hardening.mjs",
+    "test:staging-finance": "node tests/staging-finance.mjs",
     "test:booking-design": "node tests/booking-design.mjs"
   },
   "dependencies": {

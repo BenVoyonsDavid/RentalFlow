@@ -1,4 +1,4 @@
-import type { Payment } from '../domain/types';
+import type { Payment, Reservation } from '../domain/types';
 
 /**
  * Wix Payment Links represents received money in major currency units.
@@ -36,11 +36,11 @@ export function verifiedWixPaymentLink(
 
   const expectedId = String(payment.wixPaymentLinkId || '').trim();
   const linkId = String(link._id || link.id || '').trim();
-  if (!expectedId || (linkId && linkId !== expectedId)) return null;
+  if (!expectedId || !linkId || linkId !== expectedId) return null;
 
   const expectedCurrency = String(payment.currency || '').trim().toUpperCase();
   const actualCurrency = String(link.currency || '').trim().toUpperCase();
-  if (!expectedCurrency || (actualCurrency && actualCurrency !== expectedCurrency)) return null;
+  if (!expectedCurrency || !actualCurrency || actualCurrency !== expectedCurrency) return null;
 
   const status = String(link.status || '').trim().toUpperCase();
   const receivedCount = Number(link.totalReceived?.paymentCount);
@@ -84,4 +84,23 @@ export function reservationBalanceCents(
   const total = Number(totalCents);
   if (!Number.isSafeInteger(total) || total < 0) return 0;
   return Math.max(0, total - netPaid);
+}
+
+/** Keep a paid rental ready only when the verified balance is actually zero. */
+export function reservationStageAfterBalance(
+  stage: Reservation['workflowStage'],
+  balanceDueCents: number,
+): Reservation['workflowStage'] {
+  if (stage === 'PAYMENT' && balanceDueCents === 0) return 'READY';
+  if (stage === 'READY' && balanceDueCents > 0) return 'PAYMENT';
+  return stage;
+}
+
+/** Avoid rewriting unchanged reservations on repeated reconciliation runs. */
+export function reservationBalanceNeedsSync(
+  reservation: Pick<Reservation, 'balanceDueCents' | 'workflowStage'>,
+  balanceDueCents: number,
+): boolean {
+  return reservation.balanceDueCents !== balanceDueCents
+    || reservation.workflowStage !== reservationStageAfterBalance(reservation.workflowStage, balanceDueCents);
 }
