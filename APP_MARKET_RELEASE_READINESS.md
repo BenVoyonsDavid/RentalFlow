@@ -22,16 +22,33 @@ Dernière revue de code : 3 novembre 2026. **Aucune publication, fusion vers mai
 
 Ce tableau décrit le comportement du code, **pas** une configuration Wix vérifiée. Il faut confirmer le mapping des vrais `packageName`, des droits et de la facturation des abonnements via le système de facturation Wix.
 
+## Contrôles Wix en lecture seule — 3 novembre 2026
+
+Site identifié : `Dev Sitex1646783860` (environnement de développement Wix). Le site est publié en mode développement, dispose de Premium et de Wix Pay Links, avec Velo activé. Le connecteur Wix a confirmé la présence d'une instance RentalFlow **activée**. La **version exacte de l'application installée** n'a pas pu être établie par les appels en lecture seule.
+
+Contrôles effectués sans créer de réservation, paiement ou publication :
+
+- [x] RentalFlow présent dans la liste des applications installées et activées.
+- [x] Les **16 collections RentalFlow** attendues existent dans Wix CMS, incluant les collections de verrouillage.
+- [x] Les index uniques de `assetNumber`, `customerNumber`, `reservationNumber`, `paymentNumber`, `booking-locks.assetId`, `asset-capacity-locks.lockKey` et `catalog-stock-locks.catalogItemId` sont tous **ACTIVE**.
+- [x] L'API Wix Payment Links répond en lecture seule; ceci ne prouve **pas** que la permission de création ou l'encaissement sont encore opérationnels pour l'application.
+- [ ] Vérifier les scénarios de clôture de réservation alors qu'un lien de paiement reste impayé : conserver un solde exact et un suivi administratif explicite.
+- [ ] Exécuter une validation fonctionnelle réelle sur le site de test, puis comparer la version du code déployé aux PR non fusionnées.
+
+**Avertissement :** le site est configuré en anglais/US/USD, alors que les paramètres métiers RentalFlow consultés en lecture seule utilisent CAD. Vérifier le checkout, les conversions monétaires et la langue. Aucun montant ni renseignement de clientèle issu du staging n'est publié dans ce dépôt.
+
 ## Liste de validation avant publication
 
-- [ ] Identifier le vrai site de staging RentalFlow et y confirmer la version installée; une simple liste de sites ne suffit pas.
+- [x] Identifier le site de développement avec l'instance RentalFlow installée.
+- [ ] Confirmer la version installée et vérifier qu'elle inclut effectivement les PR de correction avant de tester les nouveaux comportements.
 - [ ] Vérifier les 4 forfaits dans le tableau de bord Wix, les tarifs, l'upgrade/downgrade, le plan gratuit et les limites serveur.
 - [ ] Vérifier la permission **Manage Paylinks** : les liens Wix nécessitent un site Premium avec une méthode de paiement connectée.
 - [ ] Faire un checkout Wix de test : paiement intégral, dépôt, montant partiel, devise différente, paiement refusé et lien expiré.
 - [ ] Vérifier PENDING → PAID, le solde et le passage PAYMENT → READY après un règlement complet.
 - [ ] Vérifier séparément dépôt de sécurité, remboursement, dommage et remboursement locatif.
 - [ ] Confirmer que les écritures intermédiaires en échec sont réparées par réconciliation. La synchronisation n'est actuellement ni atomique ni temps réel.
-- [ ] Vérifier le déploiement des collections, index et verrous, les réservations simultanées et plus de 1 000 lignes historiques.
+- [x] Vérifier en lecture seule les 16 collections et leurs index critiques uniques en statut ACTIVE.
+- [ ] Exercer deux réservations simultanées, tester le verrouillage et vérifier un historique dépassant 1 000 lignes.
 - [ ] Exécuter `npm run typecheck` et toutes les suites de tests, puis `npx wix env pull` et `npm run build` pour le site de staging identifié.
 - [ ] Choisir Major/Minor après contrôle des nouveaux schémas, index et permissions; ne jamais utiliser par défaut l'ancienne consigne « minor » du dépôt.
 - [ ] Configurer facturation Wix, compte de versement, prix exacts, fiche bilingue FR/EN, captures, icône, descriptions et support.
