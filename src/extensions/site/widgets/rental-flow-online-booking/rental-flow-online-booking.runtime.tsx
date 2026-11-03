@@ -9,22 +9,12 @@ import {
   type ReservationCatalogLine,
 } from '../../../../lib/reservation-catalog';
 
-// The legacy booking module still registers its constructor as
-// <rental-flow-booking>. Wix CLI also registers the exported constructor using
-// the extension tagName (<rental-flow-online-booking>). A Custom Element
-// constructor can't be registered twice, so export a distinct subclass for Wix.
-class RentalFlowOnlineBookingElement extends RentalFlowBookingElement {}
-
-// Wix's current CLI tutorial recommends deriving the app backend origin from
-// the module URL so the same endpoint URL works in local development and after
-// deployment. BASE_API_URL is compiled to undefined in this custom-element
-// bundle, so don't depend on it here.
-const appOrigin = new URL(import.meta.url).origin;
-
-const Element = RentalFlowOnlineBookingElement as unknown as {
-  new (): HTMLElement;
-  prototype: Record<string, unknown>;
-};
+// Wix-managed site extensions should call this app's HTTP endpoints through
+// BASE_API_URL. In the editor/dev environment the module origin can also work,
+// but on a published site it may be the static asset origin instead of the app
+// backend. Keep module origin only as a compatibility fallback.
+const wixBaseApiUrl = String(import.meta.env.BASE_API_URL || '').trim().replace(/\/$/, '');
+const appOrigin = wixBaseApiUrl || new URL(import.meta.url).origin;
 
 type PublicCatalogItem = {
   id: string;
@@ -41,6 +31,7 @@ type PublicCatalogItem = {
   trackInventory?: boolean;
   stockQuantity?: number | null;
   compatibilityMode?: 'ALL' | 'CATEGORIES' | 'TAGS' | 'ASSETS';
+  applicableCategoryIdsJson?: string;
   applicableCategoriesJson?: string;
   applicableTagsJson?: string;
   applicableAssetIdsJson?: string;
@@ -65,6 +56,8 @@ function compatibleCatalogItems(instance: any): PublicCatalogItem[] {
   const assets = selectedAssets(instance).map((asset: any) => ({
     _id: asset.id,
     productType: asset.productType || '',
+    categoryId: asset.categoryId || '',
+    categoryName: asset.categoryName || '',
     catalogTagsJson: asset.catalogTagsJson || '[]',
   }));
   if (!assets.length) return [];
@@ -179,9 +172,10 @@ function injectCatalogExtras(instance: any): boolean {
       .filter((line) => line.catalogItemId)
       .map((line) => [line.catalogItemId as string, line]),
   );
+  const extrasSlot = root.querySelector('[data-rf-extras]');
   const contactSection = Array.from(root.querySelectorAll<HTMLElement>('section.section'))
     .find((section) => section.querySelector('.step')?.textContent?.includes('Vos informations'));
-  if (!contactSection) return false;
+  if (!extrasSlot && !contactSection) return false;
 
   const section = document.createElement('section');
   section.className = 'section rf-catalog-extras';
@@ -204,16 +198,16 @@ function injectCatalogExtras(instance: any): boolean {
     return `
       <div class="rf-extra ${selected ? 'selected' : ''} ${unavailable ? 'unavailable' : ''}">
         <label class="rf-extra-select">
-          <input type="checkbox" data-catalog-toggle="${escapeHtml(item.id)}" ${selected ? 'checked' : ''} ${item.required || unavailable ? 'disabled' : ''}>
+          <input type="checkbox" data-catalog-toggle="${escapeHtml(item.id)}" ${selected ? 'checked' : ''} ${item.required || unavailable || instance.submitting ? 'disabled' : ''}>
           <span class="rf-extra-main">
-            <span class="rf-extra-title"><strong>${escapeHtml(item.name)}</strong>${badges}</span>
-            ${item.description ? `<small>${escapeHtml(item.description)}</small>` : ''}
+            <span class="rf-extra-title"><strong translate="no">${escapeHtml(item.name)}</strong>${badges}</span>
+            ${item.description ? `<small translate="no">${escapeHtml(item.description)}</small>` : ''}
             <small>${escapeHtml(typeLabel(item, language))} · ${escapeHtml(pricingLabel(instance, item, language))}</small>
             ${unavailable ? `<small class="rf-extra-stock">${language === 'fr' ? 'Indisponible' : 'Unavailable'}</small>` : ''}
           </span>
         </label>
         <div class="rf-extra-actions">
-          ${showQuantity ? `<label>${language === 'fr' ? 'Qté' : 'Qty'} <input type="number" min="1" max="${Math.max(1, max)}" value="${quantity}" data-catalog-qty="${escapeHtml(item.id)}"></label>` : ''}
+          ${showQuantity ? `<label>${language === 'fr' ? 'Qté' : 'Qty'} <input type="number" ${instance.submitting ? 'disabled' : ''} min="1" max="${Math.max(1, max)}" value="${quantity}" data-catalog-qty="${escapeHtml(item.id)}"></label>` : ''}
           ${total}
         </div>
       </div>`;
@@ -221,8 +215,8 @@ function injectCatalogExtras(instance: any): boolean {
 
   section.innerHTML = `
     <style>
-      .rf-extra-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:11px}
-      .rf-extra{border:1px solid var(--border);border-radius:12px;padding:14px;background:#fff;display:flex;justify-content:space-between;gap:14px;align-items:center}
+      .rf-extra-list{display:grid;grid-template-columns:1fr;gap:11px}
+      .rf-extra{border:1px solid var(--border);border-radius:12px;padding:14px;background:var(--rf-surface);display:flex;justify-content:space-between;gap:14px;align-items:center}
       .rf-extra.selected{border:2px solid var(--rf);background:var(--rf-soft)}
       .rf-extra.unavailable{opacity:.55}.rf-extra-select{display:flex;gap:11px;align-items:flex-start;cursor:pointer;flex:1}.rf-extra-select input{width:auto;margin-top:3px}
       .rf-extra-main{display:flex;flex-direction:column;gap:4px}.rf-extra-main small{color:var(--muted)}.rf-extra-title{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
@@ -235,7 +229,13 @@ function injectCatalogExtras(instance: any): boolean {
     <p class="muted" style="margin-bottom:14px">${language === 'fr' ? 'Ajoutez les produits, services ou options compatibles avec les équipements choisis.' : 'Add products, services, or options compatible with your selected equipment.'}</p>
     <div class="rf-extra-list">${cards}</div>`;
 
-  contactSection.before(section);
+  const summaryExtras = root.querySelector('[data-rf-summary-extras]');
+  if (summaryExtras) summaryExtras.innerHTML = [...lines.values()].map(line => {
+    const item = compatible.find(candidate => candidate.id === line.catalogItemId);
+    return `<div class="summary-item"><strong translate="no">${escapeHtml(item?.name || '')} × ${map.get(line.catalogItemId!) || 1}</strong><span>${escapeHtml(instance.money(line.lineTotalCents || 0, line.currency || 'CAD'))}</span></div>`;
+  }).join('');
+  if (extrasSlot) extrasSlot.append(section);
+  else contactSection?.before(section);
 
   section.querySelectorAll<HTMLInputElement>('[data-catalog-toggle]').forEach((input) => {
     input.addEventListener('change', () => {
@@ -274,61 +274,69 @@ function renumberSteps(root: ShadowRoot): void {
   });
 }
 
-// apiUrl is private only at TypeScript compile time. Patch the booking element
-// before Wix registers it so all GET/POST booking calls use the Wix-managed app
-// origin without hardcoding a development or deployment host.
-(Element.prototype as any).apiUrl = function apiUrl(params = ''): string {
-  const url = `${appOrigin}/api/public-booking`;
-  return params ? `${url}?${params}` : url;
-};
+class RentalFlowOnlineBookingElement extends RentalFlowBookingElement {
+  private __rentalFlowCatalogSelection = new Map<string, number>();
 
-// The public widget follows the site's active Wix language automatically.
-// Keep currency formatting aligned with Wix's locale as well.
-(Element.prototype as any).money = function money(cents = 0, currency = 'CAD'): string {
-  return new Intl.NumberFormat(resolveLocale('site', 'auto'), { style: 'currency', currency }).format(cents / 100);
-};
+  protected override money(
+    cents = 0,
+    currency = this.data.settings.currency || 'CAD',
+  ): string {
+    return new Intl.NumberFormat(
+      resolveLocale('site', 'auto'),
+      { style: 'currency', currency },
+    ).format(cents / 100);
+  }
 
-// Include catalog selections in the existing public-booking POST without
-// duplicating the booking component's customer/payment submission flow.
-const originalFetchJson = (Element.prototype as any).fetchJson;
-if (typeof originalFetchJson === 'function') {
-  (Element.prototype as any).fetchJson = function fetchJsonWithCatalog(url: string, options?: RequestInit) {
+  protected override async fetchJson(
+    url: string,
+    options?: RequestInit,
+  ): Promise<any> {
     let nextOptions = options;
-    if (options?.method?.toUpperCase() === 'POST' && typeof options.body === 'string') {
+
+    if (
+      options?.method?.toUpperCase() === 'POST'
+      && typeof options.body === 'string'
+    ) {
       try {
         syncCatalogSelections(this);
         const payload = JSON.parse(options.body);
-        payload.catalogItems = [...selectionMap(this).entries()].map(([id, quantity]) => ({ id, quantity }));
-        nextOptions = { ...options, body: JSON.stringify(payload) };
+        payload.catalogItems = [...selectionMap(this).entries()]
+          .map(([id, quantity]) => ({ id, quantity }));
+        nextOptions = {
+          ...options,
+          body: JSON.stringify(payload),
+        };
       } catch {
         // Preserve the original request if the body cannot be parsed.
       }
     }
-    return originalFetchJson.call(this, url, nextOptions);
-  };
-}
 
-// Extend the existing summary/tax preview so extras are priced before the
-// booking is submitted and the client sees the same total the backend validates.
-(Element.prototype as any).subtotalCents = function subtotalWithCatalog(): number {
-  return financePreview(this).subtotalCents;
-};
+    return super.fetchJson(url, nextOptions);
+  }
 
-(Element.prototype as any).taxPreview = function taxPreviewWithCatalog() {
-  const finance = financePreview(this);
-  return { tax1: finance.tax1Cents, tax2: finance.tax2Cents, total: finance.totalCents };
-};
+  protected override subtotalCents(): number {
+    return financePreview(this).subtotalCents;
+  }
 
-// Track the core RentalFlow success action only after the booking component has
-// actually received a successful reservation result from the backend.
-const originalSubmitBooking = (Element.prototype as any).submitBooking;
-if (typeof originalSubmitBooking === 'function') {
-  (Element.prototype as any).submitBooking = async function trackedSubmitBooking(...args: unknown[]) {
+  protected override taxPreview() {
+    const finance = financePreview(this);
+    return {
+      tax1: finance.tax1Cents,
+      tax2: finance.tax2Cents,
+      total: finance.totalCents,
+    };
+  }
+
+  protected override async submitBooking(): Promise<void> {
     syncCatalogSelections(this);
     const language = resolveLanguage('site', 'auto');
     const unavailableRequired = compatibleCatalogItems(this).find(
-      (item) => item.required && item.trackInventory && maxCatalogQuantity(item) <= 0,
+      (item) =>
+        item.required
+        && item.trackInventory
+        && maxCatalogQuantity(item) <= 0,
     );
+
     if (unavailableRequired) {
       this.error = language === 'fr'
         ? `L’extra obligatoire « ${unavailableRequired.name} » n’est plus disponible.`
@@ -338,10 +346,13 @@ if (typeof originalSubmitBooking === 'function') {
     }
 
     const previousReservationNumber = this.result?.reservationNumber || '';
-    const result = await originalSubmitBooking.apply(this, args);
+    await super.submitBooking();
     const reservationNumber = this.result?.reservationNumber || '';
 
-    if (reservationNumber && reservationNumber !== previousReservationNumber) {
+    if (
+      reservationNumber
+      && reservationNumber !== previousReservationNumber
+    ) {
       await Promise.all([
         sendRentalFlowBiEvent({
           eventName: 'PRIMARY_ACTION_PERFORMED',
@@ -354,26 +365,19 @@ if (typeof originalSubmitBooking === 'function') {
         }, appOrigin),
       ]);
     }
+  }
 
-    return result;
-  };
-}
-
-// Inject the Catalog & Extras step into the legacy booking component while
-// preserving its proven date/equipment/customer/payment flow.
-const originalRender = (Element.prototype as any).render;
-if (typeof originalRender === 'function') {
-  (Element.prototype as any).render = function catalogAwareRender(...args: unknown[]) {
+  protected override render(): void {
     syncCatalogSelections(this);
-    const result = originalRender.apply(this, args);
-    const root = this.shadowRoot as ShadowRoot | null;
-    if (root) {
-      injectCatalogExtras(this);
-      localizeDom(root, resolveLanguage('site', 'auto'));
-      renumberSteps(root);
-    }
-    return result;
-  };
+    super.render();
+
+    const root = this.shadowRoot;
+    if (!root) return;
+
+    injectCatalogExtras(this);
+    localizeDom(root, resolveLanguage('site', 'auto'));
+    renumberSteps(root);
+  }
 }
 
-export default Element;
+export default RentalFlowOnlineBookingElement;

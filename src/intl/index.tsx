@@ -144,6 +144,8 @@ function localizeElementAttributes(element: Element, language: RentalFlowLanguag
 }
 
 function localizeNode(node: Node, language: RentalFlowLanguage) {
+  const element = node.nodeType === 1 ? node as Element : node.parentElement;
+  if (element?.closest('[translate="no"]')) return;
   if (node.nodeType === 3) {
     const parent = node.parentElement;
     if (parent && ['SCRIPT', 'STYLE'].includes(parent.tagName)) return;

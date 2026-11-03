@@ -3,42 +3,14 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { items } from '@wix/data';
 import { Page, WixDesignSystemProvider } from '@wix/design-system';
 import '@wix/design-system/styles.global.css';
+import { COLLECTIONS } from '../../../../lib/collection-ids';
+import { generateReferenceNumber } from '../../../../lib/reference-number';
+import { loadAllDashboardItems } from '../../../../lib/dashboard-data';
+import { getCurrentPlan, hasFeature } from '../../../../lib/plans';
+import type { Customer, Reservation } from '../../../../domain/types';
 
-const CUSTOMERS = '@pilotedavid1/rental-flow/customers';
-const RESERVATIONS = '@pilotedavid1/rental-flow/reservations';
-
-type Customer = {
-  _id?: string;
-  customerNumber?: string;
-  firstName?: string;
-  lastName?: string;
-  companyName?: string;
-  email?: string;
-  phone?: string;
-  addressLine1?: string;
-  addressLine2?: string;
-  city?: string;
-  region?: string;
-  postalCode?: string;
-  country?: string;
-  discountPercent?: number;
-  notes?: string;
-  active?: boolean;
-  _createdDate?: Date | string;
-  _updatedDate?: Date | string;
-};
-
-type Reservation = {
-  _id?: string;
-  reservationNumber?: string;
-  customerId?: string;
-  customerEmail?: string;
-  startDateTime?: Date | string;
-  endDateTime?: Date | string;
-  totalCents?: number;
-  currency?: string;
-  status?: string;
-};
+const CUSTOMERS = COLLECTIONS.customers;
+const RESERVATIONS = COLLECTIONS.reservations;
 
 type CustomerForm = {
   firstName: string;
@@ -80,11 +52,6 @@ const input: CSSProperties = {
   borderRadius: 8, padding: '10px 12px', fontSize: 14, background: '#fff',
 };
 
-function customerNumber(): string {
-  const now = new Date();
-  const stamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
-  return `C-${stamp}-${Math.floor(1000 + Math.random() * 9000)}`;
-}
 function fullName(customer: Customer): string {
   const person = [customer.firstName, customer.lastName].filter(Boolean).join(' ').trim();
   return person || customer.companyName || 'Client sans nom';
@@ -100,6 +67,8 @@ function dateTime(value?: Date | string): string {
 }
 
 const CustomersPage: FC = () => {
+  const plan = getCurrentPlan();
+  const customerDiscountEnabled = hasFeature(plan, 'CUSTOMER_DISCOUNT');
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [loading, setLoading] = useState(true);
@@ -117,12 +86,12 @@ const CustomersPage: FC = () => {
   const load = useCallback(async () => {
     setLoading(true); setError('');
     try {
-      const [customerResult, reservationResult] = await Promise.all([
-        items.query(CUSTOMERS).limit(1000).find(),
-        items.query(RESERVATIONS).limit(1000).find(),
+      const [loadedCustomers, loadedReservations] = await Promise.all([
+        loadAllDashboardItems<Customer>(CUSTOMERS),
+        loadAllDashboardItems<Reservation>(RESERVATIONS),
       ]);
-      setCustomers(customerResult.items as Customer[]);
-      setReservations(reservationResult.items as Reservation[]);
+      setCustomers(loadedCustomers);
+      setReservations(loadedReservations);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Impossible de charger les clients.');
     } finally { setLoading(false); }
@@ -197,7 +166,9 @@ const CustomersPage: FC = () => {
       return setFormError('Un client avec ce courriel existe déjà.');
     }
 
-    const discountPercent = Number(form.discountPercent.replace(',', '.'));
+    const discountPercent = customerDiscountEnabled
+      ? Number(form.discountPercent.replace(',', '.'))
+      : editing?.discountPercent || 0;
     if (!Number.isFinite(discountPercent) || discountPercent < 0 || discountPercent > 100) {
       return setFormError('Le rabais client doit être entre 0 et 100 %.');
     }
@@ -205,7 +176,7 @@ const CustomersPage: FC = () => {
     setSaving(true);
     try {
       const data: Customer = {
-        customerNumber: editing?.customerNumber || customerNumber(),
+        customerNumber: editing?.customerNumber || generateReferenceNumber('C'),
         firstName: form.firstName.trim(), lastName: form.lastName.trim(), companyName: form.companyName.trim(),
         email, phone: form.phone.trim(), addressLine1: form.addressLine1.trim(), addressLine2: form.addressLine2.trim(),
         city: form.city.trim(), region: form.region.trim(), postalCode: form.postalCode.trim().toUpperCase(),
@@ -236,20 +207,51 @@ const CustomersPage: FC = () => {
 
   const removeCustomer = async (customer: Customer) => {
     if (!customer._id) return;
-    const linked = linkedReservations(customer);
-    if (linked.length > 0) {
-      const deactivate = window.confirm(
-        `${fullName(customer)} possède ${linked.length} réservation(s). La fiche ne peut pas être supprimée sans perdre le lien historique.\n\nVoulez-vous désactiver ce client plutôt ?`
-      );
-      if (deactivate && customer.active !== false) await toggleActive(customer, false);
-      return;
-    }
-    if (!window.confirm(`Supprimer définitivement la fiche de ${fullName(customer)} ? Cette action est irréversible.`)) return;
-    setError(''); setSuccess('');
+
+    setError('');
+    setSuccess('');
+
     try {
+      const byId = await items.query(RESERVATIONS)
+        .eq('customerId', customer._id)
+        .limit(1)
+        .find();
+
+      let hasLinkedReservation = byId.items.length > 0;
+      const email = customer.email?.trim().toLowerCase();
+
+      if (!hasLinkedReservation && email) {
+        const byEmail = await items.query(RESERVATIONS)
+          .eq('customerEmail', email)
+          .limit(1)
+          .find();
+        hasLinkedReservation = byEmail.items.length > 0;
+      }
+
+      if (hasLinkedReservation) {
+        const linked = linkedReservations(customer);
+        const countLabel = linked.length > 0
+          ? `${linked.length} réservation(s) chargée(s)`
+          : 'un historique de réservation';
+
+        const deactivate = window.confirm(
+          `${fullName(customer)} possède ${countLabel}. La fiche ne peut pas être supprimée sans perdre le lien historique.\n\nVoulez-vous désactiver ce client plutôt ?`,
+        );
+
+        if (deactivate && customer.active !== false) {
+          await toggleActive(customer, false);
+        }
+        return;
+      }
+
+      if (!window.confirm(`Supprimer définitivement la fiche de ${fullName(customer)} ? Cette action est irréversible.`)) {
+        return;
+      }
+
       await items.remove(CUSTOMERS, customer._id);
       setSuccess(`${fullName(customer)} a été supprimé définitivement.`);
-      setDetailCustomer(null); await load();
+      setDetailCustomer(null);
+      await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Impossible de supprimer le client.');
     }
@@ -327,7 +329,7 @@ const CustomersPage: FC = () => {
                   <Field label="Entreprise"><input style={input} value={form.companyName} onChange={(e) => setForm({ ...form, companyName: e.target.value })} /></Field>
                   <Field label="Courriel"><input type="email" style={input} value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></Field>
                   <Field label="Téléphone"><input style={input} value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></Field>
-                  <Field label="Rabais permanent (%)"><input type="number" min="0" max="100" step="0.1" style={input} value={form.discountPercent} onChange={(e) => setForm({ ...form, discountPercent: e.target.value })} /></Field>
+                  <Field label="Rabais permanent (%)"><input type="number" min="0" max="100" step="0.1" style={input} value={form.discountPercent} disabled={!customerDiscountEnabled} onChange={(e) => setForm({ ...form, discountPercent: e.target.value })} /></Field>
                   <Field label="Adresse"><input style={input} value={form.addressLine1} onChange={(e) => setForm({ ...form, addressLine1: e.target.value })} /></Field>
                   <Field label="Adresse 2"><input style={input} value={form.addressLine2} onChange={(e) => setForm({ ...form, addressLine2: e.target.value })} /></Field>
                   <Field label="Ville"><input style={input} value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} /></Field>

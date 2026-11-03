@@ -2,14 +2,29 @@
 
 Cette checklist couvre la validation de la première version publique de RentalFlow.
 
+## Référence historique E.4 — 30 septembre 2026
+
+> Cette section est une référence historique. Voir `APP_MARKET_RELEASE_READINESS.md` pour les blocages et l'état des PR des phases 1 à 4.
+
+- PR #24 : branche principale de validation; CI GitHub verte.
+- PR #1 et #5 : fermées, leurs changements sont intégrés dans #24.
+- PR #23 : conservée séparément (Square / PayFlow).
+- Site Wix principal de validation : Dev Sitex1646783860.
+- Version RentalFlow installée : ^12.7.0.
+- Accès Wix Pay Links : confirmé.
+- Collections attendues après la prochaine release : asset-capacity-locks et catalog-stock-locks.
+- Index uniques déjà actifs : assetNumber, customerNumber, reservationNumber, paymentNumber et booking-locks.assetId.
+- Type de version : **à déterminer en staging**. Les changements de schéma et d'index de collections peuvent imposer une version majeure.
+
+
 ## 1. Build et version
 
 - Exécuter `npm run typecheck`.
 - Exécuter `npm run build`.
 - Corriger toute erreur TypeScript/build avant de continuer.
-- Exécuter `npm run release` seulement après validation fonctionnelle.
-- Utiliser une version **Major** pour cette mise à jour : de nouvelles Data Collections et de nouveaux index sont ajoutés.
-- Attendre jusqu'à 5 minutes après la mise à jour des collections sur le site de test.
+- Ne pas lancer `wix release` ou publier l’application tant que les PR et les tests de staging ne sont pas validés.
+- Choisir Major/Minor seulement après révision des permissions, des collections et de leur compatibilité avec les installations existantes.
+- Après la release, confirmer que les nouvelles collections et leurs index sont actifs avant les tests fonctionnels.
 
 ## 2. Forfaits Wix et limites
 
@@ -27,7 +42,7 @@ Valider les quatre plans configurés dans Wix :
 Tests obligatoires :
 - Vérifier la détection de chacun des quatre forfaits sur une installation réelle.
 - Tester une mise à niveau et une rétrogradation.
-- Basic : le 6e équipement actif doit être refusé.
+- Basic : le 6e équipement actif doit être refusé par le backend, même si l’écriture ne vient pas du contrôle visuel du formulaire.
 - Starter : le 26e équipement actif doit être refusé.
 - Business : le 101e équipement actif doit être refusé.
 - Pro : vérifier qu'aucune limite d'inventaire n'est appliquée.
@@ -75,7 +90,9 @@ Tests obligatoires :
 ### Paiements
 - Créer une réservation en ligne payante et vérifier la création du Wix Payment Link.
 - Effectuer un paiement réel ou de test.
-- Ouvrir le tableau de bord RentalFlow et vérifier que le paiement PENDING est réconcilié en PAID.
+- Ouvrir le tableau de bord RentalFlow et vérifier que PENDING passe à PAID **seulement** si Wix confirme le bon lien, la devise et le montant réellement reçu.
+- Tester les montants partiels, nuls et de devises différentes : aucune fausse confirmation.
+- Contrôler les soldes après paiement, dépôt de sécurité, dommage, remboursement locatif et remboursement de dépôt.
 - Vérifier la mise à jour du solde de la réservation.
 - Vérifier que l'étape PAYMENT passe à READY lorsque le solde atteint zéro.
 - Enregistrer un dépôt de sécurité et un remboursement manuel.
@@ -110,7 +127,7 @@ Tests obligatoires :
 ## 5. Performance, intégrité et sécurité
 
 - Vérifier la création des nouveaux index des collections.
-- Vérifier les index uniques `assetNumber`, `customerNumber`, `reservationNumber` et `paymentNumber` avec des données existantes avant la release Major.
+- Vérifier les index uniques `assetNumber`, `customerNumber`, `reservationNumber`, `paymentNumber` et `asset-capacity-locks.lockKey` avec des données existantes avant la release Major.
 - Confirmer qu'aucune donnée existante en double n'empêche la création d'un index unique.
 - Vérifier les requêtes de disponibilité avec plus de 1 000 réservations historiques.
 - Vérifier les erreurs réseau et les collections vides.
@@ -141,3 +158,10 @@ Tests obligatoires :
 - QR / codes-barres.
 - Automatisations avancées.
 - Multi-emplacements.
+
+## 8. Phases récentes (sans déploiement)
+
+- PR #25 : sécurité des endpoints et des privilèges Wix.
+- PR #26 : parcours de réservation et paiement en attente.
+- PR #27 : tableau de bord et filtres d’administration.
+- Phase 4 : voir `APP_MARKET_RELEASE_READINESS.md`. Les tests automatisés ne remplacent pas un vrai checkout en staging.

@@ -23,3 +23,7 @@ npm-debug.log*
 .DS_Store
 .idea/
 out
+
+# generated widget thumbnails
+public/rental-flow-online-booking-thumbnail.png
+public/rentalflow-booking.png

@@ -1,31 +1,13 @@
 import type { CSSProperties, FC } from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { items } from '@wix/data';
 import { Page, WixDesignSystemProvider } from '@wix/design-system';
 import '@wix/design-system/styles.global.css';
+import { COLLECTIONS } from '../../../../lib/collection-ids';
+import { loadAllDashboardItems } from '../../../../lib/dashboard-data';
+import type { Reservation, ReservationItem } from '../../../../domain/types';
 
-const RESERVATIONS = '@pilotedavid1/rental-flow/reservations';
-const RESERVATION_ITEMS = '@pilotedavid1/rental-flow/reservation-items';
-
-type Reservation = {
-  _id?: string;
-  reservationNumber?: string;
-  customerName?: string;
-  startDateTime?: Date | string;
-  endDateTime?: Date | string;
-  bufferBeforeHours?: number;
-  bufferAfterHours?: number;
-  status?: string;
-  workflowStage?: string;
-  totalCents?: number;
-  currency?: string;
-};
-
-type ReservationItem = {
-  reservationId?: string;
-  assetTitle?: string;
-  assetNumber?: string;
-};
+const RESERVATIONS = COLLECTIONS.reservations;
+const RESERVATION_ITEMS = COLLECTIONS.reservationItems;
 
 const card: CSSProperties = {
   background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12,
@@ -91,20 +73,39 @@ const CalendarPage: FC = () => {
   const [selected, setSelected] = useState<Reservation | null>(null);
 
   const load = useCallback(async () => {
-    setLoading(true); setError('');
+    setLoading(true);
+    setError('');
+
     try {
-      const [reservationResult, itemResult] = await Promise.all([
-        items.query(RESERVATIONS).limit(1000).find(),
-        items.query(RESERVATION_ITEMS).limit(1000).find(),
+      const visibleCells = monthCells(cursor);
+      const visibleStart = dayStart(visibleCells[0]);
+      const visibleEnd = dayEnd(visibleCells[visibleCells.length - 1]);
+      const afterVisibleStart = new Date(visibleStart.getTime() - 1);
+      const beforeVisibleEnd = new Date(visibleEnd.getTime() + 1);
+
+      const [loadedReservations, loadedReservationItems] = await Promise.all([
+        loadAllDashboardItems<Reservation>(
+          RESERVATIONS,
+          (query) => query
+            .lt('startDateTime', beforeVisibleEnd)
+            .gt('endDateTime', afterVisibleStart),
+        ),
+        loadAllDashboardItems<ReservationItem>(
+          RESERVATION_ITEMS,
+          (query) => query
+            .lt('startDateTime', beforeVisibleEnd)
+            .gt('endDateTime', afterVisibleStart),
+        ),
       ]);
-      setReservations(reservationResult.items as Reservation[]);
-      setReservationItems(itemResult.items as ReservationItem[]);
+
+      setReservations(loadedReservations);
+      setReservationItems(loadedReservationItems);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Impossible de charger le calendrier.');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [cursor]);
 
   useEffect(() => { void load(); }, [load]);
 

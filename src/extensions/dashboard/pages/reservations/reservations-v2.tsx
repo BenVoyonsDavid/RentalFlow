@@ -1,8 +1,34 @@
 import type { CSSProperties, FC, FormEvent, ReactNode } from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { items } from '@wix/data';
+import { httpClient } from '@wix/essentials';
 import { Page, WixDesignSystemProvider } from '@wix/design-system';
 import '@wix/design-system/styles.global.css';
+import { COLLECTIONS } from '../../../../lib/collection-ids';
+import { generateReferenceNumber } from '../../../../lib/reference-number';
+import { getCurrentPlan, hasFeature } from '../../../../lib/plans';
+import { loadAllDashboardItems } from '../../../../lib/dashboard-data';
+import { sendRentalFlowBiEvent } from '../../../../lib/bi-events-client';
+import { filterManagementReservations, type ReservationListFilter } from '../../../../lib/management-filters';
+import { reservationBalanceCents } from '../../../../lib/payment-reconciliation';
+import { safeBookingCheckoutUrl } from '../../../../lib/booking-checkout';
+import type {
+  ActivityEntry,
+  AppSettings,
+  Asset,
+  Customer,
+  DocumentTemplate,
+  DocumentType,
+  Inspection,
+  InspectionType,
+  Payment,
+  PaymentType,
+  RentalDocument,
+  Reservation,
+  ReservationItem,
+  ReservationStatus,
+  WorkflowStage,
+} from '../../../../domain/types';
 import { calculateRentalPrice, getBlockedRange, rangesOverlap } from '../../../../lib/rental-pricing';
 import {
   calculateDeposit,
@@ -13,107 +39,27 @@ import {
   type PaymentMode,
 } from '../../../../lib/reservation-finance';
 
-const ASSETS = '@pilotedavid1/rental-flow/assets';
-const CUSTOMERS = '@pilotedavid1/rental-flow/customers';
-const RESERVATIONS = '@pilotedavid1/rental-flow/reservations';
-const RESERVATION_ITEMS = '@pilotedavid1/rental-flow/reservation-items';
-const DOCUMENTS = '@pilotedavid1/rental-flow/documents';
-const PAYMENTS = '@pilotedavid1/rental-flow/payments';
-const INSPECTIONS = '@pilotedavid1/rental-flow/inspections';
-const ACTIVITY = '@pilotedavid1/rental-flow/activity-log';
-const SETTINGS = '@pilotedavid1/rental-flow/app-settings';
-const TEMPLATES = '@pilotedavid1/rental-flow/document-templates';
+const ASSETS = COLLECTIONS.assets;
+const CUSTOMERS = COLLECTIONS.customers;
+const RESERVATIONS = COLLECTIONS.reservations;
+const RESERVATION_ITEMS = COLLECTIONS.reservationItems;
+const DOCUMENTS = COLLECTIONS.documents;
+const PAYMENTS = COLLECTIONS.payments;
+const INSPECTIONS = COLLECTIONS.inspections;
+const ACTIVITY = COLLECTIONS.activityLog;
+const SETTINGS = COLLECTIONS.appSettings;
+const TEMPLATES = COLLECTIONS.documentTemplates;
 
 type ViewMode = 'MONTH' | 'LIST' | 'AVAILABILITY';
+const reservationFilterOptions: { key: ReservationListFilter; label: string }[] = [
+  { key: 'ALL', label: 'Toutes' },
+  { key: 'UPCOMING', label: 'À venir' },
+  { key: 'IN_PROGRESS', label: 'En cours' },
+  { key: 'COMPLETED', label: 'Terminées' },
+  { key: 'CANCELLED', label: 'Annulées' },
+];
 type DetailTab = 'DETAILS' | 'EQUIPMENT' | 'PAYMENTS' | 'DOCUMENTS' | 'INSPECTION' | 'NOTES' | 'HISTORY';
-type ReservationStatus = 'CONFIRMED' | 'RENTED' | 'RETURNED' | 'CANCELLED' | 'COMPLETED' | 'ERROR';
-type WorkflowStage = 'RESERVATION' | 'QUOTE' | 'CONTRACT' | 'INVOICE' | 'PAYMENT' | 'READY' | 'RENTED' | 'RETURNED' | 'COMPLETED';
-type DocumentType = 'QUOTE' | 'CONTRACT' | 'INVOICE';
 type CustomerMode = 'EXISTING' | 'NEW';
-type PaymentType = 'PAYMENT' | 'BOOKING_DEPOSIT' | 'SECURITY_DEPOSIT' | 'REFUND' | 'DEPOSIT_REFUND' | 'DAMAGE_CHARGE';
-type InspectionType = 'DEPARTURE' | 'RETURN';
-
-type Asset = {
-  _id?: string; title?: string; assetNumber?: string; productType?: string; status?: string;
-  dailyRateCents?: number; weeklyRateCents?: number; monthlyRateCents?: number;
-  discountAfterDays?: number; discountPercent?: number; currency?: string; active?: boolean;
-};
-
-type Customer = {
-  _id?: string; customerNumber?: string; firstName?: string; lastName?: string; companyName?: string;
-  email?: string; phone?: string; addressLine1?: string; addressLine2?: string; city?: string;
-  region?: string; postalCode?: string; country?: string; discountPercent?: number; active?: boolean;
-};
-
-type AppSettings = {
-  _id?: string; settingsKey?: string; companyName?: string; logoUrl?: string; currency?: string;
-  defaultBufferBeforeHours?: number; defaultBufferAfterHours?: number; taxesEnabled?: boolean;
-  tax1Name?: string; tax1Rate?: number; tax2Name?: string; tax2Rate?: number; tax2Compound?: boolean;
-  defaultDepositEnabled?: boolean; defaultDepositType?: DepositType; defaultDepositValue?: number;
-  defaultQuoteTemplateId?: string; defaultContractTemplateId?: string; defaultInvoiceTemplateId?: string;
-};
-
-type DocumentTemplate = {
-  _id?: string; name?: string; documentType?: DocumentType; logoUrl?: string; titleText?: string;
-  introText?: string; termsText?: string; footerText?: string; requiredFieldsCsv?: string; active?: boolean;
-};
-
-type Reservation = {
-  _id?: string; reservationNumber?: string; customerId?: string; customerNumber?: string;
-  customerName?: string; customerEmail?: string; customerPhone?: string;
-  customerAddressLine1?: string; customerAddressLine2?: string; customerCity?: string; customerRegion?: string;
-  customerPostalCode?: string; customerCountry?: string;
-  startDateTime?: Date | string; endDateTime?: Date | string; bufferBeforeHours?: number; bufferAfterHours?: number;
-  status?: ReservationStatus; workflowStage?: WorkflowStage;
-  quoteTemplateId?: string; quoteTemplateName?: string; contractTemplateId?: string; contractTemplateName?: string;
-  invoiceTemplateId?: string; invoiceTemplateName?: string;
-  subtotalCents?: number; customerDiscountPercent?: number; discountCents?: number; preTaxTotalCents?: number;
-  tax1Name?: string; tax1Rate?: number; tax1Cents?: number; tax2Name?: string; tax2Rate?: number;
-  tax2Cents?: number; taxTotalCents?: number; totalCents?: number; currency?: string;
-  depositRequired?: boolean; depositType?: DepositType; depositValue?: number; depositAmountCents?: number;
-  amountDueNowCents?: number; balanceDueCents?: number; paymentMode?: PaymentMode;
-  checkoutDateTime?: Date | string; returnDateTime?: Date | string; closedDateTime?: Date | string;
-  notes?: string; _createdDate?: Date | string; _updatedDate?: Date | string;
-};
-
-type ReservationItem = {
-  _id?: string; reservationId?: string; reservationNumber?: string; assetId?: string; assetNumber?: string;
-  assetTitle?: string; startDateTime?: Date | string; endDateTime?: Date | string;
-  blockedStartDateTime?: Date | string; blockedEndDateTime?: Date | string; bufferBeforeHours?: number;
-  bufferAfterHours?: number; billableDays?: number; lineTotalCents?: number; pricingMode?: string;
-  currency?: string; status?: ReservationStatus;
-};
-
-type RentalDocument = {
-  _id?: string; reservationId?: string; reservationNumber?: string; documentNumber?: string;
-  documentType?: DocumentType; status?: string; templateId?: string; templateName?: string;
-  logoUrl?: string; titleText?: string; introText?: string; termsText?: string; footerText?: string;
-  requiredFieldsCsv?: string; snapshotJson?: string; subtotalCents?: number; discountCents?: number;
-  preTaxTotalCents?: number; tax1Name?: string; tax1Cents?: number; tax2Name?: string; tax2Cents?: number;
-  amountCents?: number; currency?: string; issuedDate?: Date | string; sentDate?: Date | string;
-  acceptedDate?: Date | string; signedDate?: Date | string; dueDate?: Date | string; signerName?: string;
-  pdfUrl?: string; notes?: string; _createdDate?: Date | string;
-};
-
-type Payment = {
-  _id?: string; reservationId?: string; reservationNumber?: string; paymentNumber?: string; paymentType?: PaymentType;
-  method?: string; status?: string; amountCents?: number; currency?: string; paymentDate?: Date | string;
-  reference?: string; wixPaymentLinkId?: string; wixPaymentUrl?: string; wixCheckoutId?: string;
-  wixOrderId?: string; wixTransactionId?: string; wixOnlinePayment?: boolean; remainingBalanceCents?: number;
-  notes?: string; _createdDate?: Date | string;
-};
-
-type Inspection = {
-  _id?: string; reservationId?: string; reservationNumber?: string; inspectionNumber?: string;
-  inspectionType?: InspectionType; status?: string; assetId?: string; assetNumber?: string; assetTitle?: string;
-  condition?: string; hasDamage?: boolean; damageDescription?: string; damageAmountCents?: number;
-  photoUrls?: string; signerName?: string; inspectionDate?: Date | string; notes?: string; _createdDate?: Date | string;
-};
-
-type ActivityEntry = {
-  _id?: string; reservationId?: string; reservationNumber?: string; actionType?: string;
-  description?: string; actor?: string; eventDate?: Date | string; _createdDate?: Date | string;
-};
 
 type ReservationForm = {
   customerMode: CustomerMode; customerId: string; newFirstName: string; newLastName: string; newCompanyName: string;
@@ -171,11 +117,6 @@ function numeric(value: string): number {
   const number = Number(value.replace(',', '.'));
   return Number.isFinite(number) && number >= 0 ? number : 0;
 }
-function generatedNumber(prefix: string): string {
-  const now = new Date();
-  const stamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
-  return `${prefix}-${stamp}-${Math.floor(1000 + Math.random() * 9000)}`;
-}
 function customerDisplayName(customer: Customer): string {
   return [customer.firstName, customer.lastName].filter(Boolean).join(' ').trim() || customer.companyName || 'Client sans nom';
 }
@@ -206,7 +147,19 @@ function reservationPayload(reservation: Reservation, changes: Partial<Reservati
 }
 
 const ReservationsV2Page: FC = () => {
-  const [view, setView] = useState<ViewMode>('MONTH');
+  const plan = getCurrentPlan();
+  const weeklyEnabled = hasFeature(plan, 'WEEKLY_PRICING');
+  const monthlyEnabled = hasFeature(plan, 'MONTHLY_PRICING');
+  const longTermDiscountEnabled = hasFeature(plan, 'LONG_TERM_DISCOUNT');
+  const customerDiscountEnabled = hasFeature(plan, 'CUSTOMER_DISCOUNT');
+  const documentsEnabled = hasFeature(plan, 'DOCUMENTS');
+  const paymentsEnabled = hasFeature(plan, 'PAYMENTS');
+  const depositEnabledForPlan = hasFeature(plan, 'SECURITY_DEPOSIT');
+  const inspectionsEnabled = hasFeature(plan, 'INSPECTIONS');
+  const fullHistoryEnabled = hasFeature(plan, 'FULL_HISTORY');
+  const [view, setView] = useState<ViewMode>('LIST');
+  const [reservationSearch, setReservationSearch] = useState('');
+  const [reservationFilter, setReservationFilter] = useState<ReservationListFilter>('ALL');
   const [assets, setAssets] = useState<Asset[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [reservations, setReservations] = useState<Reservation[]>([]);
@@ -243,19 +196,42 @@ const ReservationsV2Page: FC = () => {
   const load = useCallback(async () => {
     setLoading(true); setError('');
     try {
-      const results = await Promise.all([
-        items.query(ASSETS).limit(1000).find(), items.query(CUSTOMERS).limit(1000).find(),
-        items.query(RESERVATIONS).limit(1000).find(), items.query(RESERVATION_ITEMS).limit(1000).find(),
-        items.query(DOCUMENTS).limit(1000).find(), items.query(PAYMENTS).limit(1000).find(),
-        items.query(INSPECTIONS).limit(1000).find(), items.query(ACTIVITY).limit(1000).find(),
-        items.query(TEMPLATES).limit(100).find(), items.query(SETTINGS).eq('settingsKey', 'default').limit(1).find(),
+      const [
+        loadedAssets,
+        loadedCustomers,
+        loadedReservations,
+        loadedReservationItems,
+        loadedDocuments,
+        loadedPayments,
+        loadedInspections,
+        loadedActivity,
+        loadedTemplates,
+        settingsResult,
+      ] = await Promise.all([
+        loadAllDashboardItems<Asset>(ASSETS),
+        loadAllDashboardItems<Customer>(CUSTOMERS),
+        loadAllDashboardItems<Reservation>(RESERVATIONS),
+        loadAllDashboardItems<ReservationItem>(RESERVATION_ITEMS),
+        loadAllDashboardItems<RentalDocument>(DOCUMENTS),
+        loadAllDashboardItems<Payment>(PAYMENTS),
+        loadAllDashboardItems<Inspection>(INSPECTIONS),
+        loadAllDashboardItems<ActivityEntry>(ACTIVITY),
+        loadAllDashboardItems<DocumentTemplate>(TEMPLATES),
+        items.query(SETTINGS).eq('settingsKey', 'default').limit(1).find(),
       ]);
-      setAssets(results[0].items as Asset[]); setCustomers(results[1].items as Customer[]);
-      setReservations(results[2].items as Reservation[]); setReservationItems(results[3].items as ReservationItem[]);
-      setDocuments(results[4].items as RentalDocument[]); setPayments(results[5].items as Payment[]);
-      setInspections(results[6].items as Inspection[]); setActivity(results[7].items as ActivityEntry[]);
-      setTemplates(results[8].items as DocumentTemplate[]);
-      setSettings({ ...defaultSettings, ...((results[9].items[0] as AppSettings | undefined) || {}) });
+      setAssets(loadedAssets);
+      setCustomers(loadedCustomers);
+      setReservations(loadedReservations);
+      setReservationItems(loadedReservationItems);
+      setDocuments(loadedDocuments);
+      setPayments(loadedPayments);
+      setInspections(loadedInspections);
+      setActivity(loadedActivity);
+      setTemplates(loadedTemplates);
+      setSettings({
+        ...defaultSettings,
+        ...((settingsResult.items[0] as AppSettings | undefined) || {}),
+      });
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Impossible de charger les données RentalFlow.');
     } finally { setLoading(false); }
@@ -265,8 +241,12 @@ const ReservationsV2Page: FC = () => {
 
   const activeAssets = useMemo(() => assets.filter((asset) => asset.active !== false && asset.status !== 'INACTIVE'), [assets]);
   const activeCustomers = useMemo(() => customers.filter((customer) => customer.active !== false).sort((a, b) => customerDisplayName(a).localeCompare(customerDisplayName(b), 'fr')), [customers]);
-  const activeTemplates = useMemo(() => templates.filter((template) => template.active !== false), [templates]);
+  const activeTemplates = useMemo(() => documentsEnabled ? templates.filter((template) => template.active !== false) : [], [documentsEnabled, templates]);
   const sortedReservations = useMemo(() => [...reservations].filter((r) => r.status !== 'ERROR').sort((a, b) => asDate(a.startDateTime).getTime() - asDate(b.startDateTime).getTime()), [reservations]);
+  const listReservations = useMemo(
+    () => filterManagementReservations(sortedReservations, reservationSearch, reservationFilter),
+    [sortedReservations, reservationSearch, reservationFilter],
+  );
 
   const logActivity = async (reservation: Reservation, actionType: string, description: string) => {
     if (!reservation._id) return;
@@ -294,7 +274,7 @@ const ReservationsV2Page: FC = () => {
   }, [reservationItems]);
 
   const openNewReservation = () => {
-    const depositEnabled = settings.defaultDepositEnabled === true;
+    const depositEnabled = paymentsEnabled && depositEnabledForPlan && settings.defaultDepositEnabled === true;
     setForm({
       customerMode: 'EXISTING', customerId: '', newFirstName: '', newLastName: '', newCompanyName: '',
       customerName: '', customerEmail: '', customerPhone: '', customerAddressLine1: '', customerAddressLine2: '',
@@ -352,18 +332,18 @@ const ReservationsV2Page: FC = () => {
       const asset = activeAssets.find((candidate) => candidate._id === id);
       if (!asset) return [];
       try {
-        return [{ asset, ...calculateRentalPrice(asset, formDates.start!, formDates.end!, { allowWeekly: true, allowMonthly: true, allowLongTermDiscount: true }) }];
+        return [{ asset, ...calculateRentalPrice(asset, formDates.start!, formDates.end!, { allowWeekly: weeklyEnabled, allowMonthly: monthlyEnabled, allowLongTermDiscount: longTermDiscountEnabled }) }];
       } catch { return []; }
     });
-  }, [activeAssets, formDates, selectedAssetIds]);
+  }, [activeAssets, formDates, longTermDiscountEnabled, monthlyEnabled, selectedAssetIds, weeklyEnabled]);
 
   const selectedCustomer = useMemo(() => form?.customerId ? activeCustomers.find((customer) => customer._id === form.customerId) : undefined, [activeCustomers, form?.customerId]);
   const subtotalCents = pricingLines.reduce((sum, line) => sum + line.totalCents, 0);
-  const discountPercent = form?.customerMode === 'EXISTING' ? selectedCustomer?.discountPercent || 0 : 0;
+  const discountPercent = customerDiscountEnabled && form?.customerMode === 'EXISTING' ? selectedCustomer?.discountPercent || 0 : 0;
   const discountCents = Math.round(subtotalCents * discountPercent / 100);
   const preTaxCents = Math.max(0, subtotalCents - discountCents);
   const taxPreview = calculateTaxes(preTaxCents, settings);
-  const depositPreview = form ? calculateDeposit(taxPreview.totalCents, form.paymentMode, form.depositType, numeric(form.depositValue)) : calculateDeposit(taxPreview.totalCents, 'NONE', 'PERCENT', 0);
+  const depositPreview = form ? calculateDeposit(taxPreview.totalCents, paymentsEnabled ? form.paymentMode : 'NONE', form.depositType, numeric(form.depositValue)) : calculateDeposit(taxPreview.totalCents, 'NONE', 'PERCENT', 0);
   const currency = pricingLines[0]?.asset.currency || settings.currency || 'CAD';
 
   const toggleAsset = (id: string) => setSelectedAssetIds((current) => current.includes(id) ? current.filter((value) => value !== id) : [...current, id]);
@@ -385,70 +365,80 @@ const ReservationsV2Page: FC = () => {
     });
     if (missing.length) return setFormError(`Champs requis par les modèles sélectionnés : ${missing.join(', ')}.`);
 
-    const before = numeric(form.bufferBeforeHours); const after = numeric(form.bufferAfterHours);
+    const before = numeric(form.bufferBeforeHours);
+    const after = numeric(form.bufferAfterHours);
+
     setSaving(true);
     try {
-      const latest = (await items.query(RESERVATION_ITEMS).limit(1000).find()).items as ReservationItem[];
-      const blocked = getBlockedRange(formDates.start, formDates.end, before, after);
-      for (const assetId of selectedAssetIds) {
-        const conflict = latest.some((item) => item.assetId === assetId && item.status !== 'CANCELLED' && item.status !== 'COMPLETED' && rangesOverlap(blocked.blockedStart, blocked.blockedEnd, asDate(item.blockedStartDateTime), asDate(item.blockedEndDateTime)));
-        if (conflict) throw new Error(`${activeAssets.find((asset) => asset._id === assetId)?.title || 'Un équipement'} n’est plus disponible pour cette période.`);
+      const response = await httpClient.fetchWithAuth(
+        `${import.meta.env.BASE_API_URL}/api/dashboard-reservation`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            customer: {
+              mode: form.customerMode,
+              customerId: form.customerId,
+              firstName: form.newFirstName,
+              lastName: form.newLastName,
+              companyName: form.newCompanyName,
+              name: form.customerName,
+              email: form.customerEmail,
+              phone: form.customerPhone,
+              addressLine1: form.customerAddressLine1,
+              addressLine2: form.customerAddressLine2,
+              city: form.customerCity,
+              region: form.customerRegion,
+              postalCode: form.customerPostalCode,
+              country: form.customerCountry,
+            },
+            startDateTime: form.startDateTime,
+            endDateTime: form.endDateTime,
+            assetIds: selectedAssetIds,
+            bufferBeforeHours: before,
+            bufferAfterHours: after,
+            quoteTemplateId: form.quoteTemplateId,
+            contractTemplateId: form.contractTemplateId,
+            invoiceTemplateId: form.invoiceTemplateId,
+            paymentMode: paymentsEnabled ? form.paymentMode : 'NONE',
+            depositType: form.depositType,
+            depositValue: numeric(form.depositValue),
+            notes: form.notes,
+          }),
+        },
+      );
+
+      const payload = await response.json().catch(() => ({})) as {
+        error?: string;
+        reservationNumber?: string;
+        reservation?: Reservation;
+      };
+
+      if (!response.ok || !payload.reservation?._id) {
+        throw new Error(
+          payload.error || 'Impossible de créer la réservation.',
+        );
       }
 
-      let customerId = form.customerId;
-      let customerNumber = selectedCustomer?.customerNumber || '';
-      if (form.customerMode === 'NEW') {
-        const created = await items.insert(CUSTOMERS, {
-          customerNumber: generatedNumber('C'), firstName: form.newFirstName.trim(), lastName: form.newLastName.trim(),
-          companyName: form.newCompanyName.trim(), email: form.customerEmail.trim().toLowerCase(), phone: form.customerPhone.trim(),
-          addressLine1: form.customerAddressLine1.trim(), addressLine2: form.customerAddressLine2.trim(), city: form.customerCity.trim(),
-          region: form.customerRegion.trim(), postalCode: form.customerPostalCode.trim().toUpperCase(), country: form.customerCountry.trim(),
-          discountPercent: 0, active: true,
-        }) as Customer;
-        if (!created._id) throw new Error('Impossible de créer le client.');
-        customerId = created._id; customerNumber = created.customerNumber || '';
-      }
+      const created = payload.reservation;
+      // Confirmed by the reservation API; report usage without customer/booking identifiers.
+      void sendRentalFlowBiEvent({ eventName: 'PRIMARY_ACTION_PERFORMED' });
+      void sendRentalFlowBiEvent({ eventName: 'CUSTOM', customEventName: 'rentalflow_reservation_created' });
+      const number = payload.reservationNumber
+        || created.reservationNumber
+        || '';
 
-      const number = generatedNumber('RF');
-      const quoteTemplate = activeTemplates.find((template) => template._id === form.quoteTemplateId);
-      const contractTemplate = activeTemplates.find((template) => template._id === form.contractTemplateId);
-      const invoiceTemplate = activeTemplates.find((template) => template._id === form.invoiceTemplateId);
-      const created = await items.insert(RESERVATIONS, {
-        reservationNumber: number, customerId, customerNumber,
-        customerName: form.customerName.trim(), customerEmail: form.customerEmail.trim(), customerPhone: form.customerPhone.trim(),
-        customerAddressLine1: form.customerAddressLine1.trim(), customerAddressLine2: form.customerAddressLine2.trim(),
-        customerCity: form.customerCity.trim(), customerRegion: form.customerRegion.trim(),
-        customerPostalCode: form.customerPostalCode.trim().toUpperCase(), customerCountry: form.customerCountry.trim(),
-        startDateTime: formDates.start, endDateTime: formDates.end, bufferBeforeHours: before, bufferAfterHours: after,
-        status: 'CONFIRMED', workflowStage: 'RESERVATION',
-        quoteTemplateId: quoteTemplate?._id || '', quoteTemplateName: quoteTemplate?.name || '',
-        contractTemplateId: contractTemplate?._id || '', contractTemplateName: contractTemplate?.name || '',
-        invoiceTemplateId: invoiceTemplate?._id || '', invoiceTemplateName: invoiceTemplate?.name || '',
-        subtotalCents, customerDiscountPercent: discountPercent, discountCents,
-        preTaxTotalCents: taxPreview.preTaxTotalCents,
-        tax1Name: settings.taxesEnabled === false ? '' : settings.tax1Name || '', tax1Rate: settings.taxesEnabled === false ? 0 : settings.tax1Rate || 0, tax1Cents: taxPreview.tax1Cents,
-        tax2Name: settings.taxesEnabled === false ? '' : settings.tax2Name || '', tax2Rate: settings.taxesEnabled === false ? 0 : settings.tax2Rate || 0, tax2Cents: taxPreview.tax2Cents,
-        taxTotalCents: taxPreview.taxTotalCents, totalCents: taxPreview.totalCents, currency,
-        depositRequired: form.paymentMode === 'DEPOSIT', depositType: form.depositType, depositValue: numeric(form.depositValue),
-        depositAmountCents: depositPreview.depositAmountCents, amountDueNowCents: depositPreview.amountDueNowCents,
-        balanceDueCents: depositPreview.balanceDueCents, paymentMode: form.paymentMode, notes: form.notes.trim(),
-      }) as Reservation;
-      if (!created._id) throw new Error('Wix n’a pas retourné l’identifiant de la réservation.');
-
-      for (const line of pricingLines) {
-        if (!line.asset._id) continue;
-        await items.insert(RESERVATION_ITEMS, {
-          reservationId: created._id, reservationNumber: number, assetId: line.asset._id,
-          assetNumber: line.asset.assetNumber || '', assetTitle: line.asset.title || '',
-          startDateTime: formDates.start, endDateTime: formDates.end,
-          blockedStartDateTime: blocked.blockedStart, blockedEndDateTime: blocked.blockedEnd,
-          bufferBeforeHours: before, bufferAfterHours: after, billableDays: line.billableDays,
-          lineTotalCents: line.totalCents, pricingMode: line.pricingMode, currency: line.asset.currency || currency, status: 'CONFIRMED',
-        });
-      }
-      await logActivity(created, 'RESERVATION_CREATED', `Réservation ${number} créée.`);
-      setFormOpen(false); setForm(null); setSuccess(`Réservation ${number} créée.`); await load();
-      setSelectedReservation(created); setNotesDraft(created.notes || ''); setDetailTab('DETAILS');
+      setFormOpen(false);
+      setForm(null);
+      setSuccess(
+        number
+          ? `Réservation ${number} créée.`
+          : 'Réservation créée.',
+      );
+      await load();
+      setSelectedReservation(created);
+      setNotesDraft(created.notes || '');
+      setDetailTab('DETAILS');
     } catch (e) {
       setFormError(e instanceof Error ? e.message : 'Impossible de créer la réservation.');
     } finally { setSaving(false); }
@@ -486,10 +476,13 @@ const ReservationsV2Page: FC = () => {
   const linkedItems = selectedReservation ? reservationItems.filter((row) => row.reservationId === selectedReservation._id) : [];
   const linkedDocuments = selectedReservation ? documents.filter((row) => row.reservationId === selectedReservation._id) : [];
   const linkedPayments = selectedReservation ? payments.filter((row) => row.reservationId === selectedReservation._id) : [];
+  const pendingOnlinePayment = linkedPayments.find((payment) => payment.wixOnlinePayment && payment.status === 'PENDING' && !!payment.wixPaymentLinkId);
   const linkedInspections = selectedReservation ? inspections.filter((row) => row.reservationId === selectedReservation._id) : [];
-  const linkedActivity = selectedReservation ? activity.filter((row) => row.reservationId === selectedReservation._id).sort((a, b) => asDate(b.eventDate || b._createdDate).getTime() - asDate(a.eventDate || a._createdDate).getTime()) : [];
-  const paidCents = linkedPayments.filter((payment) => payment.status === 'PAID' && (payment.paymentType === 'PAYMENT' || payment.paymentType === 'BOOKING_DEPOSIT')).reduce((sum, payment) => sum + (payment.amountCents || 0), 0);
-  const liveBalance = selectedReservation ? Math.max(0, (selectedReservation.totalCents || 0) - paidCents) : 0;
+  const linkedActivity = fullHistoryEnabled && selectedReservation ? activity.filter((row) => row.reservationId === selectedReservation._id).sort((a, b) => asDate(b.eventDate || b._createdDate).getTime() - asDate(a.eventDate || a._createdDate).getTime()) : [];
+  const liveBalance = selectedReservation
+    ? reservationBalanceCents(selectedReservation.totalCents || 0, linkedPayments, selectedReservation.currency || 'CAD')
+    : 0;
+  const paidCents = selectedReservation ? Math.max(0, (selectedReservation.totalCents || 0) - liveBalance) : 0;
   const initialDue = selectedReservation ? Math.min(liveBalance, selectedReservation.amountDueNowCents || liveBalance) : 0;
 
   const templateForDocument = (type: DocumentType, reservation: Reservation): DocumentTemplate | undefined => {
@@ -498,6 +491,7 @@ const ReservationsV2Page: FC = () => {
   };
 
   const createDocument = async (type: DocumentType) => {
+    if (!documentsEnabled) return setError('Les documents sont disponibles à partir du plan Starter.');
     if (!selectedReservation?._id) return;
     const template = templateForDocument(type, selectedReservation);
     if (!template) return setError(`Aucun modèle ${documentLabels[type].toLowerCase()} n’est sélectionné sur cette réservation.`);
@@ -510,7 +504,7 @@ const ReservationsV2Page: FC = () => {
       };
       const document = await items.insert(DOCUMENTS, {
         reservationId: selectedReservation._id, reservationNumber: selectedReservation.reservationNumber || '',
-        documentNumber: generatedNumber(prefix), documentType: type, status: 'DRAFT',
+        documentNumber: generateReferenceNumber(prefix), documentType: type, status: 'DRAFT',
         templateId: template._id || '', templateName: template.name || '', logoUrl: template.logoUrl || settings.logoUrl || '',
         titleText: template.titleText || documentLabels[type], introText: template.introText || '', termsText: template.termsText || '',
         footerText: template.footerText || '', requiredFieldsCsv: template.requiredFieldsCsv || '', snapshotJson: JSON.stringify(snapshot),
@@ -527,6 +521,7 @@ const ReservationsV2Page: FC = () => {
   };
 
   const updateDocumentStatus = async (document: RentalDocument, action: 'ACCEPT' | 'SIGN' | 'ISSUE') => {
+    if (!documentsEnabled) return setError('Les documents sont disponibles à partir du plan Starter.');
     if (!document._id || !selectedReservation) return;
     setProcessing(true); setError('');
     try {
@@ -559,7 +554,9 @@ const ReservationsV2Page: FC = () => {
   };
 
   const createWixPaymentLink = async () => {
+    if (!paymentsEnabled) return setError('Les paiements Wix sont disponibles à partir du plan Starter.');
     if (!selectedReservation?._id || liveBalance <= 0) return;
+    if (pendingOnlinePayment) return setError('Un lien Wix est déjà en attente pour cette réservation. Vérifiez son paiement avant d’en créer un autre.');
     const amount = paidCents === 0 && initialDue > 0 ? initialDue : liveBalance;
     if (amount <= 0) return setError('Aucun montant à percevoir.');
     setProcessing(true); setError('');
@@ -589,9 +586,12 @@ const ReservationsV2Page: FC = () => {
         checkoutId = initiated?.ecomCheckout?.checkoutId || initiated?.checkoutId || '';
       }
 
+      checkoutUrl = safeBookingCheckoutUrl(checkoutUrl);
+      if (!checkoutUrl) throw new Error('Wix n’a pas fourni un lien HTTPS sécurisé de paiement.');
+
       const payment = await items.insert(PAYMENTS, {
         reservationId: selectedReservation._id, reservationNumber: selectedReservation.reservationNumber || '',
-        paymentNumber: generatedNumber('PAY'), paymentType: selectedReservation.paymentMode === 'DEPOSIT' && paidCents === 0 ? 'BOOKING_DEPOSIT' : 'PAYMENT',
+        paymentNumber: generateReferenceNumber('PAY'), paymentType: selectedReservation.paymentMode === 'DEPOSIT' && paidCents === 0 ? 'BOOKING_DEPOSIT' : 'PAYMENT',
         method: 'WIX', status: 'PENDING', amountCents: amount, currency: selectedReservation.currency || 'CAD',
         paymentDate: new Date(), reference: label, wixPaymentLinkId: linkId, wixPaymentUrl: checkoutUrl,
         wixCheckoutId: checkoutId, wixOnlinePayment: true, remainingBalanceCents: Math.max(0, liveBalance - amount),
@@ -607,23 +607,24 @@ const ReservationsV2Page: FC = () => {
   };
 
   const refreshWixPayment = async (payment: Payment) => {
+    if (!paymentsEnabled) return setError('Les paiements Wix sont disponibles à partir du plan Starter.');
     if (!payment._id || !payment.wixPaymentLinkId) return;
     setProcessing(true); setError('');
     try {
-      const wixGetPaid = (await import('@wix/get-paid')) as any;
-      const api = wixGetPaid.paymentLinks;
-      if (!api?.getPaymentLink) throw new Error('Le module Wix Payment Links n’est pas disponible.');
-      const response = await api.getPaymentLink(payment.wixPaymentLinkId);
-      const link = response?.paymentLink || response;
-      const wixStatus = String(link?.status || '').toUpperCase();
-      const paid = wixStatus === 'PAID';
-      await items.update(PAYMENTS, { ...payment, _id: payment._id, status: paid ? 'PAID' : payment.status || 'PENDING', paymentDate: paid ? new Date() : payment.paymentDate });
-      if (paid && selectedReservation) {
-        await logActivity(selectedReservation, 'PAYMENT_CONFIRMED', `Paiement Wix ${payment.paymentNumber || ''} confirmé.`);
-        await updateReservation(selectedReservation, { workflowStage: stageAtLeast(selectedReservation.workflowStage, 'PAYMENT') }, 'WORKFLOW_PAYMENT', 'Étape paiement atteinte.');
+      // The server verifies Wix's link ID, currency and received amount before
+      // promoting a pending payment. Never mark PAID from a client-side status.
+      const response = await httpClient.fetchWithAuth(
+        `${import.meta.env.BASE_API_URL}/api/reconcile-payments`,
+        { method: 'POST' },
+      );
+      const result = await response.json().catch(() => null) as { error?: string; updated?: number; repaired?: number; repairPending?: number } | null;
+      if (!response.ok) {
+        throw new Error(result?.error || 'La vérification des paiements Wix a échoué.');
       }
       await load();
-      setSuccess(paid ? 'Paiement Wix confirmé.' : `Statut Wix : ${wixStatus || 'en attente'}.`);
+      setSuccess(result?.repairPending
+        ? 'Vérification Wix terminée. Une mise à jour du solde doit être réessayée.'
+        : 'Vérification Wix terminée. Consultez le statut du paiement et le solde actualisés.');
     } catch (e) { setError(e instanceof Error ? e.message : 'Impossible d’actualiser le paiement Wix.'); }
     finally { setProcessing(false); }
   };
@@ -635,6 +636,7 @@ const ReservationsV2Page: FC = () => {
 
   const saveInspection = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (!inspectionsEnabled) return setError('Les inspections sont disponibles à partir du plan Business.');
     if (!selectedReservation?._id) return;
     const asset = linkedItems.find((item) => item.assetId === inspectionForm.assetId);
     if (!asset) return setError('Sélectionnez un équipement de la réservation.');
@@ -643,7 +645,7 @@ const ReservationsV2Page: FC = () => {
       const damage = Math.round(numeric(inspectionForm.damageAmount) * 100);
       await items.insert(INSPECTIONS, {
         reservationId: selectedReservation._id, reservationNumber: selectedReservation.reservationNumber || '',
-        inspectionNumber: generatedNumber(inspectionForm.inspectionType === 'DEPARTURE' ? 'INS-D' : 'INS-R'),
+        inspectionNumber: generateReferenceNumber(inspectionForm.inspectionType === 'DEPARTURE' ? 'INS-D' : 'INS-R'),
         inspectionType: inspectionForm.inspectionType, status: 'COMPLETED', assetId: asset.assetId || '',
         assetNumber: asset.assetNumber || '', assetTitle: asset.assetTitle || '', condition: inspectionForm.condition,
         hasDamage: inspectionForm.hasDamage, damageDescription: inspectionForm.damageDescription.trim(),
@@ -653,7 +655,7 @@ const ReservationsV2Page: FC = () => {
       if (inspectionForm.hasDamage && damage > 0) {
         await items.insert(PAYMENTS, {
           reservationId: selectedReservation._id, reservationNumber: selectedReservation.reservationNumber || '',
-          paymentNumber: generatedNumber('DMG'), paymentType: 'DAMAGE_CHARGE', method: 'PENDING', status: 'PENDING',
+          paymentNumber: generateReferenceNumber('DMG'), paymentType: 'DAMAGE_CHARGE', method: 'PENDING', status: 'PENDING',
           amountCents: damage, currency: selectedReservation.currency || 'CAD', paymentDate: new Date(),
           reference: `Dommage ${asset.assetNumber || ''}`, wixOnlinePayment: false, remainingBalanceCents: damage,
           notes: inspectionForm.damageDescription.trim(),
@@ -668,14 +670,14 @@ const ReservationsV2Page: FC = () => {
   const checkout = async () => {
     if (!selectedReservation) return;
     const hasDeparture = linkedInspections.some((inspection) => inspection.inspectionType === 'DEPARTURE' && inspection.status === 'COMPLETED');
-    if (!hasDeparture) return setError('Une inspection de départ complétée est requise avant de confirmer le départ.');
+    if (inspectionsEnabled && !hasDeparture) return setError('Une inspection de départ complétée est requise avant de confirmer le départ.');
     await updateReservation(selectedReservation, { status: 'RENTED', workflowStage: 'RENTED', checkoutDateTime: new Date() }, 'CHECKOUT', 'Départ confirmé; réservation en location.');
   };
 
   const returnRental = async () => {
     if (!selectedReservation) return;
     const hasReturn = linkedInspections.some((inspection) => inspection.inspectionType === 'RETURN' && inspection.status === 'COMPLETED');
-    if (!hasReturn) return setError('Une inspection de retour complétée est requise avant de confirmer le retour.');
+    if (inspectionsEnabled && !hasReturn) return setError('Une inspection de retour complétée est requise avant de confirmer le retour.');
     await updateReservation(selectedReservation, { status: 'RETURNED', workflowStage: 'RETURNED', returnDateTime: new Date() }, 'RETURN', 'Retour confirmé.');
   };
 
@@ -717,6 +719,32 @@ const ReservationsV2Page: FC = () => {
             {error && <div style={{ ...card, background: '#fef2f2', borderColor: '#fecaca', color: '#991b1b' }}>{error}</div>}
             {success && <div style={{ ...card, background: '#f0fdf4', borderColor: '#86efac', color: '#166534' }}>{success}</div>}
 
+            {!loading && view === 'LIST' && (
+              <section style={{ ...card, padding: 18 }} aria-label="Recherche de réservations">
+                <div style={{ display: 'flex', alignItems: 'end', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                  <label htmlFor="rf-reservation-search" style={{ flex: '1 1 260px', fontSize: 13, fontWeight: 700 }}>
+                    Rechercher une réservation
+                    <input id="rf-reservation-search" type="search" style={{ ...input, marginTop: 6 }}
+                      placeholder="Numéro, client, courriel, téléphone…" value={reservationSearch}
+                      onChange={(event) => setReservationSearch(event.target.value)} />
+                  </label>
+                  <span role="status" style={{ color: '#64748b', fontSize: 13 }}>{listReservations.length} sur {sortedReservations.length} réservation(s)</span>
+                </div>
+                <div role="group" aria-label="Filtrer les réservations" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 16 }}>
+                  {reservationFilterOptions.map((option) => (
+                    <button type="button" key={option.key} aria-pressed={reservationFilter === option.key}
+                      onClick={() => setReservationFilter(option.key)}
+                      style={{ ...secondary, borderRadius: 999, padding: '8px 12px',
+                        background: reservationFilter === option.key ? '#174b64' : '#f8fafc',
+                        color: reservationFilter === option.key ? '#fff' : '#174b64',
+                        borderColor: reservationFilter === option.key ? '#174b64' : '#dbe3eb' }}>
+                      {option.label} · {filterManagementReservations(sortedReservations, reservationSearch, option.key).length}
+                    </button>
+                  ))}
+                </div>
+              </section>
+            )}
+
             {loading ? <div style={card}>Chargement…</div> : null}
 
             {!loading && view === 'MONTH' && (
@@ -736,7 +764,13 @@ const ReservationsV2Page: FC = () => {
               </div>
             )}
 
-            {!loading && view === 'LIST' && <ReservationList reservations={sortedReservations} onOpen={openReservation} />}
+            {!loading && view === 'LIST' && (listReservations.length === 0
+              ? <div style={{ ...card, textAlign: 'center', padding: 34, color: '#64748b' }}>
+                  <strong style={{ display: 'block', color: '#17314b', fontSize: 17, marginBottom: 7 }}>Aucune réservation trouvée</strong>
+                  <div>Modifiez votre recherche ou vos filtres pour afficher d’autres résultats.</div>
+                  {(reservationSearch || reservationFilter !== 'ALL') && <button type="button" style={{ ...secondary, marginTop: 16 }} onClick={() => { setReservationSearch(''); setReservationFilter('ALL'); }}>Effacer les filtres</button>}
+                </div>
+              : <ReservationList reservations={listReservations} onOpen={openReservation} />)}
 
             {!loading && view === 'AVAILABILITY' && (
               <div style={card}>
@@ -793,8 +827,8 @@ const ReservationsV2Page: FC = () => {
 
                 <h3 style={{ marginTop: 24 }}>Paiement</h3>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(230px,1fr))', gap: 12 }}>
-                  <Field label="Paiement à la réservation"><select style={input} value={form.paymentMode} onChange={(e) => setForm({ ...form, paymentMode: e.target.value as PaymentMode })}><option value="NONE">Aucun paiement maintenant</option><option value="FULL">Paiement complet</option><option value="DEPOSIT">Dépôt de réservation</option></select></Field>
-                  {form.paymentMode === 'DEPOSIT' ? <><Field label="Type de dépôt"><select style={input} value={form.depositType} onChange={(e) => setForm({ ...form, depositType: e.target.value as DepositType })}><option value="PERCENT">Pourcentage</option><option value="FIXED">Montant fixe</option></select></Field><Field label={form.depositType === 'PERCENT' ? 'Dépôt (%)' : 'Dépôt fixe'}><input type="number" min="0" step="0.01" style={input} value={form.depositValue} onChange={(e) => setForm({ ...form, depositValue: e.target.value })} /></Field></> : null}
+                  <Field label="Paiement à la réservation"><select style={input} value={paymentsEnabled ? form.paymentMode : 'NONE'} disabled={!paymentsEnabled} onChange={(e) => setForm({ ...form, paymentMode: e.target.value as PaymentMode })}><option value="NONE">Aucun paiement maintenant</option>{paymentsEnabled ? <><option value="FULL">Paiement complet</option>{depositEnabledForPlan ? <option value="DEPOSIT">Dépôt de réservation</option> : null}</> : null}</select></Field>
+                  {paymentsEnabled && depositEnabledForPlan && form.paymentMode === 'DEPOSIT' ? <><Field label="Type de dépôt"><select style={input} value={form.depositType} onChange={(e) => setForm({ ...form, depositType: e.target.value as DepositType })}><option value="PERCENT">Pourcentage</option><option value="FIXED">Montant fixe</option></select></Field><Field label={form.depositType === 'PERCENT' ? 'Dépôt (%)' : 'Dépôt fixe'}><input type="number" min="0" step="0.01" style={input} value={form.depositValue} onChange={(e) => setForm({ ...form, depositValue: e.target.value })} /></Field></> : null}
                 </div>
 
                 {pricingLines.length > 0 && <div style={{ ...card, background: '#f8fafc', marginTop: 18 }}><h3 style={{ marginTop: 0 }}>Résumé financier</h3>{pricingLines.map((line) => <div key={line.asset._id} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0' }}><span>{line.asset.title} · {line.billableDays} jour(s) · {line.pricingMode}</span><strong>{money(line.totalCents, currency)}</strong></div>)}<hr style={{ border: 0, borderTop: '1px solid #e5e7eb' }} /><FinanceRow label="Sous-total" value={money(subtotalCents, currency)} />{discountCents > 0 ? <FinanceRow label={`Rabais client (${discountPercent} %)`} value={`-${money(discountCents, currency)}`} /> : null}<FinanceRow label="Avant taxes" value={money(taxPreview.preTaxTotalCents, currency)} />{taxPreview.tax1Cents > 0 ? <FinanceRow label={`${settings.tax1Name || 'Taxe 1'} (${settings.tax1Rate || 0} %)`} value={money(taxPreview.tax1Cents, currency)} /> : null}{taxPreview.tax2Cents > 0 ? <FinanceRow label={`${settings.tax2Name || 'Taxe 2'} (${settings.tax2Rate || 0} %)`} value={money(taxPreview.tax2Cents, currency)} /> : null}<FinanceRow strong label="Total" value={money(taxPreview.totalCents, currency)} /><FinanceRow label="À payer maintenant" value={money(depositPreview.amountDueNowCents, currency)} /><FinanceRow label="Solde après ce paiement" value={money(depositPreview.balanceDueCents, currency)} /></div>}
@@ -816,7 +850,15 @@ const ReservationsV2Page: FC = () => {
 
               {detailTab === 'EQUIPMENT' && <div style={{ display: 'grid', gap: 10 }}>{linkedItems.map((item) => <div key={item._id} style={{ ...card, padding: 14 }}><strong>{item.assetTitle || item.assetNumber}</strong><div style={{ color: '#64748b', marginTop: 4 }}>{item.assetNumber} · {item.billableDays || 0} jour(s) · {item.pricingMode}</div><div style={{ marginTop: 4 }}>{dateTime(item.blockedStartDateTime)} → {dateTime(item.blockedEndDateTime)} (période bloquée)</div><div style={{ marginTop: 4, fontWeight: 700 }}>{money(item.lineTotalCents, item.currency || selectedReservation.currency || 'CAD')}</div></div>)}</div>}
 
-              {detailTab === 'PAYMENTS' && <div><div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(190px,1fr))', gap: 10, marginBottom: 18 }}><Info label="Total" value={money(selectedReservation.totalCents, selectedReservation.currency || 'CAD')} /><Info label="Payé" value={money(paidCents, selectedReservation.currency || 'CAD')} /><Info label="Solde" value={money(liveBalance, selectedReservation.currency || 'CAD')} /></div>{liveBalance > 0 ? <button style={primary} disabled={processing} onClick={() => void createWixPaymentLink()}>Créer lien de paiement Wix — {money(paidCents === 0 && initialDue > 0 ? initialDue : liveBalance, selectedReservation.currency || 'CAD')}</button> : <div style={{ ...card, background: '#f0fdf4', color: '#166534' }}>Réservation payée en totalité.</div>}<div style={{ display: 'grid', gap: 10, marginTop: 18 }}>{linkedPayments.length === 0 ? <div style={{ color: '#64748b' }}>Aucun paiement.</div> : linkedPayments.map((payment) => <div key={payment._id} style={{ ...card, padding: 14 }}><div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}><div><strong>{payment.paymentNumber}</strong><div style={{ color: '#64748b', marginTop: 3 }}>{payment.method} · {payment.status} · {payment.paymentType}</div></div><strong>{money(payment.amountCents, payment.currency || 'CAD')}</strong></div>{payment.wixPaymentUrl ? <button style={{ ...secondary, marginTop: 8 }} onClick={() => window.open(payment.wixPaymentUrl, '_blank', 'noopener,noreferrer')}>Ouvrir le checkout Wix</button> : null}{payment.wixPaymentLinkId && payment.status !== 'PAID' ? <button style={{ ...secondary, marginTop: 8, marginLeft: 8 }} disabled={processing} onClick={() => void refreshWixPayment(payment)}>Actualiser le statut Wix</button> : null}</div>)}</div></div>}
+              {detailTab === 'PAYMENTS' && <div><div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(190px,1fr))', gap: 10, marginBottom: 18 }}><Info label="Total" value={money(selectedReservation.totalCents, selectedReservation.currency || 'CAD')} /><Info label="Payé" value={money(paidCents, selectedReservation.currency || 'CAD')} /><Info label="Solde" value={money(liveBalance, selectedReservation.currency || 'CAD')} /></div>{selectedReservation.status === 'COMPLETED' && liveBalance > 0
+                    ? <div role="alert" style={{ ...card, marginBottom: 12, background: '#fff7ed', color: '#9a3412', borderColor: '#fdba74' }}>
+                        Réservation clôturée avec un solde de {money(liveBalance, selectedReservation.currency || 'CAD')} non réglé. Vérifiez les paiements Wix.
+                      </div>
+                    : null}{liveBalance > 0
+                    ? pendingOnlinePayment
+                      ? <div style={{ ...card, background: '#fff7ed', borderColor: '#fdba74', color: '#9a3412' }}>Un lien de paiement Wix est déjà en attente. Vérifiez son statut avant de créer une nouvelle demande.</div>
+                      : <button style={primary} disabled={processing} onClick={() => void createWixPaymentLink()}>Créer lien de paiement Wix — {money(paidCents === 0 && initialDue > 0 ? initialDue : liveBalance, selectedReservation.currency || 'CAD')}</button>
+                    : <div style={{ ...card, background: '#f0fdf4', color: '#166534' }}>Réservation payée en totalité.</div>}<div style={{ display: 'grid', gap: 10, marginTop: 18 }}>{linkedPayments.length === 0 ? <div style={{ color: '#64748b' }}>Aucun paiement.</div> : linkedPayments.map((payment) => <div key={payment._id} style={{ ...card, padding: 14 }}><div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}><div><strong>{payment.paymentNumber}</strong><div style={{ color: '#64748b', marginTop: 3 }}>{payment.method} · {payment.status} · {payment.paymentType}</div></div><strong>{money(payment.amountCents, payment.currency || 'CAD')}</strong></div>{safeBookingCheckoutUrl(payment.wixPaymentUrl) ? <button style={{ ...secondary, marginTop: 8 }} onClick={() => window.open(safeBookingCheckoutUrl(payment.wixPaymentUrl), '_blank', 'noopener,noreferrer')}>Ouvrir le checkout Wix</button> : null}{payment.wixPaymentLinkId && payment.status !== 'PAID' ? <button style={{ ...secondary, marginTop: 8, marginLeft: 8 }} disabled={processing} onClick={() => void refreshWixPayment(payment)}>Actualiser le statut Wix</button> : null}</div>)}</div></div>}
 
               {detailTab === 'DOCUMENTS' && <div><div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 18 }}><button style={secondary} disabled={processing} onClick={() => void createDocument('QUOTE')}>+ Devis</button><button style={secondary} disabled={processing} onClick={() => void createDocument('CONTRACT')}>+ Contrat</button><button style={secondary} disabled={processing} onClick={() => void createDocument('INVOICE')}>+ Facture</button></div><div style={{ display: 'grid', gap: 10 }}>{linkedDocuments.length === 0 ? <div style={{ color: '#64748b' }}>Aucun document généré.</div> : linkedDocuments.map((document) => <div key={document._id} style={{ ...card, padding: 14 }}><div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}><div><strong>{documentLabels[document.documentType || 'QUOTE']} · {document.documentNumber}</strong><div style={{ color: '#64748b', marginTop: 3 }}>Modèle : {document.templateName || '—'} · {document.status}</div></div><strong>{money(document.amountCents, document.currency || 'CAD')}</strong></div><div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginTop: 10 }}><button style={secondary} onClick={() => printDocument(document)}>Aperçu / PDF</button>{document.documentType === 'QUOTE' && document.status !== 'ACCEPTED' ? <button style={successButton} onClick={() => void updateDocumentStatus(document, 'ACCEPT')}>Accepter le devis</button> : null}{document.documentType === 'CONTRACT' && document.status !== 'SIGNED' ? <button style={successButton} onClick={() => void updateDocumentStatus(document, 'SIGN')}>Signer le contrat</button> : null}{document.documentType === 'INVOICE' && document.status !== 'ISSUED' ? <button style={successButton} onClick={() => void updateDocumentStatus(document, 'ISSUE')}>Émettre la facture</button> : null}</div></div>)}</div></div>}
 

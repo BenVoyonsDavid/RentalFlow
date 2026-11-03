@@ -4,20 +4,11 @@ import { items } from '@wix/data';
 import { Page, WixDesignSystemProvider } from '@wix/design-system';
 import '@wix/design-system/styles.global.css';
 import { useRentalFlowI18n } from '../../../../intl';
+import { COLLECTIONS } from '../../../../lib/collection-ids';
+import { loadAllDashboardItems } from '../../../../lib/dashboard-data';
+import type { Category } from '../../../../domain/types';
 
-const CATEGORIES = '@pilotedavid1/rental-flow/categories';
-
-type Category = {
-  _id?: string;
-  name?: string;
-  key?: string;
-  description?: string;
-  forEquipment?: boolean;
-  forProducts?: boolean;
-  forExtras?: boolean;
-  active?: boolean;
-  sortOrder?: number;
-};
+const CATEGORIES = COLLECTIONS.categories;
 
 type FormState = {
   name: string;
@@ -57,8 +48,8 @@ const CategoriesPage: FC = () => {
   const load = async () => {
     setLoading(true); setError('');
     try {
-      const result = await items.query(CATEGORIES).limit(1000).find();
-      setCategories(result.items as Category[]);
+      const loadedCategories = await loadAllDashboardItems<Category>(CATEGORIES);
+      setCategories(loadedCategories);
     } catch (e) {
       setError(e instanceof Error ? e.message : t('Impossible de charger les catégories.', 'Unable to load categories.'));
     } finally { setLoading(false); }

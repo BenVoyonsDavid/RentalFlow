@@ -1,4 +1,5 @@
 import { extensions } from '@wix/astro/builders';
+import type { DashboardSearchPageOptions } from '../../../../lib/dashboard-search-metadata';
 
 export default extensions.dashboardPage({
   id: 'c5635248-110a-4f29-aeee-a84bfaee3a91',
@@ -6,4 +7,9 @@ export default extensions.dashboardPage({
   routePath: 'reservations',
   component: './extensions/dashboard/pages/reservations/reservations.localized.tsx',
   fullPage: false,
-});
+  metaData: {
+    searchable: true,
+    title: "Réservations",
+    description: "Créer et suivre les réservations, contrats, paiements, locations et retours.",
+  },
+} as DashboardSearchPageOptions);

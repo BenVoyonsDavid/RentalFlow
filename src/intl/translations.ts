@@ -1,4 +1,10 @@
 const common: Record<string, string> = {
+  'Apparence': 'Appearance',
+  'Océan': 'Ocean',
+  'Forêt': 'Forest',
+  'Bleu': 'Blue',
+  'Prune': 'Plum',
+  'Ardoise': 'Slate',
   'Tableau de bord': 'Dashboard',
   'Calendrier': 'Calendar',
   'Clients': 'Customers',
@@ -346,6 +352,28 @@ const settings: Record<string, string> = {
 };
 
 const bookingWidget: Record<string, string> = {
+  "1 · Dates et équipements": "1 · Dates and equipment",
+  "2 · Coordonnées": "2 · Contact details",
+  "3 · Confirmation": "3 · Confirmation",
+  "Planifiez votre location": "Plan your rental",
+  "Sélectionnez vos dates": "Select your dates",
+  "Mois précédent": "Previous month",
+  "Mois suivant": "Next month",
+  "Sélectionnez le début, puis la fin.": "Select the start, then the end.",
+  "Dates et équipements": "Dates and equipment",
+  "Votre réservation": "Your reservation",
+  "Choisissez vos dates et vos équipements pour commencer.": "Choose your dates and equipment to get started.",
+  "Continuer vers les coordonnées": "Continue to contact details",
+  "Paiement sécurisé avec Wix.": "Secure payment with Wix.",
+  "Paiement selon les modalités du locateur.": "Payment according to the rental company’s terms.",
+  "Choisissez vos dates": "Choose your dates",
+  "Sélectionné": "Selected",
+  "Choisissez vos dates et vos équipements pour créer votre réservation.": "Choose your dates and equipment to create your reservation.",
+  "Aucun paiement en ligne immédiat requis.": "No immediate online payment required.",
+  "Créer la réservation": "Create reservation",
+  "Confirmation": "Confirmation",
+  "Courriel *": "Email *",
+
   'Location en ligne': 'Online booking',
   'Réservation en ligne': 'Online booking',
   'Choisissez vos dates, vos équipements et payez de façon sécurisée avec Wix.': 'Choose your dates and equipment, then pay securely with Wix.',
@@ -379,9 +407,16 @@ const bookingWidget: Record<string, string> = {
   'Une erreur est survenue.': 'An error occurred.',
   'Choisissez une période et au moins un équipement.': 'Choose a period and at least one piece of equipment.',
   'Le nom et le courriel sont obligatoires.': 'Name and email are required.',
+  'Impossible de joindre le service de réservation. Réessayez dans quelques instants.': 'Unable to reach the booking service. Please try again in a moment.',
+  'Cette disponibilité est en cours de réservation. Réessayez dans quelques secondes.': 'This availability is currently being booked. Please try again in a few seconds.',
+  'Le stock d’un extra est en cours de réservation. Réessayez dans quelques secondes.': 'An add-on stock item is currently being booked. Please try again in a few seconds.',
+  'La réservation n’a pas été confirmée parce que le paiement Wix n’a pas pu être préparé.': 'The reservation was not confirmed because Wix payment could not be prepared.',
+  'Impossible de compléter la réservation en ligne.': 'Unable to complete the online booking.',
+  'Impossible de charger la réservation en ligne.': 'Unable to load online booking.',
 };
 
 const widgetPanel: Record<string, string> = {
+  "Les couleurs se personnalisent dans RentalFlow → Paramètres → Apparence.": "Customize colors in RentalFlow → Settings → Appearance.",
   '(réponse vide)': '(empty response)',
   '(vide)': '(empty)',
   'ERREUR': 'ERROR',

@@ -1,4 +1,5 @@
 import { extensions } from '@wix/astro/builders';
+import type { DashboardSearchPageOptions } from '../../../../lib/dashboard-search-metadata';
 
 export default extensions.dashboardPage({
   id: 'aded2636-c1a8-48aa-ae81-db5264196ce4',
@@ -6,4 +7,9 @@ export default extensions.dashboardPage({
   routePath: 'customers',
   component: './extensions/dashboard/pages/customers/customers.localized.tsx',
   fullPage: false,
-});
+  metaData: {
+    searchable: true,
+    title: "Clients",
+    description: "Consulter et gérer les fiches clients, coordonnées et historique des locations.",
+  },
+} as DashboardSearchPageOptions);

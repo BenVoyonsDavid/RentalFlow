@@ -52,7 +52,11 @@ export default {
       unique: false,
     },
     {
-      fields: [{ path: 'catalogItemId', order: 'ASC' }],
+      fields: [
+        { path: 'catalogItemId', order: 'ASC' },
+        { path: 'startDateTime', order: 'ASC' },
+        { path: 'endDateTime', order: 'ASC' },
+      ],
       unique: false,
     },
   ],

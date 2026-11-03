@@ -1,0 +1,29 @@
+1
+00:00:00,000 --> 00:00:08,000
+Louer du matériel, c'est gérer
+beaucoup plus que des dates.
+
+2
+00:00:08,000 --> 00:00:20,000
+Avec RentalFlow, retrouvez vos équipements,
+leurs tarifs et leur disponibilité au même endroit.
+
+3
+00:00:20,000 --> 00:00:32,000
+Visualisez vos réservations
+dans un calendrier clair.
+
+4
+00:00:32,000 --> 00:00:44,000
+Suivez chaque location, du premier contact
+jusqu'au retour du matériel.
+
+5
+00:00:44,000 --> 00:00:54,000
+Simplifiez votre organisation quotidienne
+avec un tableau de bord pratique.
+
+6
+00:00:54,000 --> 00:01:00,000
+RentalFlow : votre activité de location,
+au même endroit, directement dans Wix.
