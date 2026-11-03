@@ -8,22 +8,10 @@ import {
   submitPublicBooking,
 } from '../../server/public-booking-service';
 import { requireActiveAppInstance } from '../../server/request-auth';
+import { publicBookingCorsHeaders } from '../../lib/public-booking-cors';
 
-function corsHeaders(request?: Request): Record<string, string> {
-  const origin = String(request?.headers.get('origin') || '').trim();
-  const requestedHeaders = String(
-    request?.headers.get('access-control-request-headers') || '',
-  ).trim();
-
-  return {
-    'access-control-allow-origin': origin || '*',
-    'access-control-allow-methods': 'GET,POST,OPTIONS',
-    'access-control-allow-headers':
-      requestedHeaders || 'Authorization,Content-Type,X-Wix-Linguist',
-    'access-control-allow-credentials': origin ? 'true' : 'false',
-    'access-control-max-age': '600',
-    vary: 'Origin, Access-Control-Request-Headers',
-  };
+function corsHeaders(_request?: Request): Record<string, string> {
+  return publicBookingCorsHeaders();
 }
 
 function json(

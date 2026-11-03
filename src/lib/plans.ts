@@ -114,6 +114,22 @@ export function planFromPackageName(packageName: unknown, isFree?: boolean): Ren
   return isFree === false ? 'STARTER' : 'NO_PLAN';
 }
 
+/** Recognize only HTTPS Wix development subdomains from Wix's trusted app-instance data. */
+export function isWixDevelopmentSiteUrl(value: unknown): boolean {
+  if (typeof value !== 'string') return false;
+  try {
+    const url = new URL(value);
+    const hostname = url.hostname.toLowerCase().replace(/\.$/, '');
+    return url.protocol === 'https:'
+      && !url.username
+      && !url.password
+      && (hostname === 'wix-development-sites.org'
+        || hostname.endsWith('.wix-development-sites.org'));
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Supports both current SDK response shapes (`response.data`) and older/direct
  * app instance shapes. Billing packageName is authoritative when multiple paid
@@ -131,7 +147,7 @@ export function planFromAppInstanceResponse(response: unknown): RentalFlowPlan {
   // full-feature trial so preview/testing stays possible without creating a
   // permanent free tier for real customer sites.
   const siteUrl = String((root as any)?.site?.url || (instance as any)?.site?.url || '').toLowerCase();
-  if (isFree === true && siteUrl.includes('wix-development-sites.org')) return 'TRIAL';
+  if (isFree === true && isWixDevelopmentSiteUrl(siteUrl)) return 'TRIAL';
 
   const packageName =
     (billing as any)?.packageName ??

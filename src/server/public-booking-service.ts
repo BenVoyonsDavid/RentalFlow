@@ -73,7 +73,7 @@ export async function loadPublicBooking(
     loadSettingsAndTemplates(),
     loadActiveAssets(),
     loadActiveCatalog(),
-    loadCurrentPlan(request),
+    loadCurrentPlan(),
   ]);
 
   let start: Date | undefined;
@@ -118,7 +118,7 @@ export async function loadPublicBooking(
 }
 
 export async function submitPublicBooking(
-  request: Request,
+  _request: Request,
   body: BookingRequest,
 ): Promise<PublicBookingSuccess> {
   let createdBooking: CreatedOnlineReservation | null = null;
@@ -181,7 +181,7 @@ export async function submitPublicBooking(
         loadSettingsAndTemplates(),
         loadActiveAssets(),
         loadActiveCatalog(),
-        loadCurrentPlan(request),
+        loadCurrentPlan(),
       ]);
 
     if (!hasAppAccess(plan)) {

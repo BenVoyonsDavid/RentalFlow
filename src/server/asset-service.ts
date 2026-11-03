@@ -245,7 +245,7 @@ export async function saveAssetWithPlan(
   assetId: string | undefined,
   input: Asset,
 ): Promise<Asset> {
-  const plan = await loadCurrentPlan(request);
+  const plan = await loadCurrentPlan();
   const existing = assetId ? await loadAsset(assetId) : undefined;
 
   if (assetId && !existing?._id) {

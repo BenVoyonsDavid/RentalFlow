@@ -57,8 +57,14 @@ const publicBookingEndpointSource = await readFile(
   join(root, 'src/pages/api/public-booking.ts'),
   'utf8',
 );
-assert(publicBookingEndpointSource.includes('access-control-request-headers'));
-assert(publicBookingEndpointSource.includes('X-Wix-Linguist'));
+const publicBookingCorsSource = await readFile(
+  join(root, 'src/lib/public-booking-cors.ts'),
+  'utf8',
+);
+assert(publicBookingEndpointSource.includes('publicBookingCorsHeaders()'));
+assert(!publicBookingEndpointSource.includes('access-control-request-headers'));
+assert(publicBookingCorsSource.includes('Authorization,Content-Type,X-Wix-Linguist'));
+assert(!publicBookingCorsSource.includes('access-control-allow-credentials'));
 
 const dashboardReservationServiceSource = await readFile(
   join(root, 'src/server/dashboard-reservation-service.ts'),
