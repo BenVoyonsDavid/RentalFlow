@@ -22,6 +22,16 @@ Le workflow garde la validation des autres suites dans `.github/workflows/valida
 
 Ajouter une clé d'API Wix valide comme secret GitHub Actions nommé `WIX_API_KEY` dans le dépôt **RentalFlow**, en suivant le processus de clés d'API du compte Wix. Ne jamais insérer la clé dans le code source, un fichier du dépôt, un billet GitHub ou ce chat. Ne pas utiliser la clé d'un environnement de production si une clé à accès limité suffit.
 
+## Premier essai de la CI — 3 novembre 2026
+
+- L'application et le site cible ont été reconnus par le workflow.
+- Les suites de tests standard ont toutes réussi : [GitHub Actions #41718718817](https://github.com/BenVoyonsDavid/RentalFlow/actions/runs/41718718817).
+- La compilation non authentifiée a échoué avec `WIX_CLIENT_INSTANCE_ID is missing`. Ce champ est géré par Wix CLI; **ne pas le fabriquer ni le renseigner manuellement** dans GitHub.
+- La CI a confirmé que `WIX_API_KEY` était absent : aucun `wix login`, `wix env pull`, build authentifié ou `wix preview` n'a eu lieu.
+- La porte de validation Wix est désormais explicitement en échec lorsque la clé manque; ceci permet de distinguer un simple succès des tests applicatifs d'un véritable preview vérifié.
+
+Une fois le secret ajouté, relancer le workflow **Wix Staging Candidate Preview (No Release)** sur la branche candidate, ou utiliser l'option de réexécution du job GitHub Actions. Ne jamais copier la valeur du secret dans le chat.
+
 ## Vérifications manuelles après la création du preview
 
 - [ ] Confirmer le lien de prévisualisation généré par `wix preview` et la version candidate réellement chargée.

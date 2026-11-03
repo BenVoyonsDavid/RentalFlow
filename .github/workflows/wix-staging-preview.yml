@@ -58,7 +58,8 @@ jobs:
       - name: Report isolated build outcome
         run: |
           echo "Unauthenticated Wix build: ${{ steps.unauthenticated_build.outcome }}" >> "$GITHUB_STEP_SUMMARY"
-          echo 'A green workflow does not prove a Wix preview was created: inspect the preview steps below.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Missing WIX_CLIENT_INSTANCE_ID is expected before an authenticated Wix env pull; Wix CLI manages WIX_CLIENT variables and they must not be set manually.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Staging readiness requires the authenticated Wix build and preview steps to pass.' >> "$GITHUB_STEP_SUMMARY"
 
       - name: Authenticate Wix CLI
         if: steps.credentials.outputs.available == 'true'
@@ -95,3 +96,13 @@ jobs:
             wix-site-selection.txt
           if-no-files-found: ignore
           retention-days: 7
+
+      - name: Enforce actual Wix preview gate
+        if: always()
+        run: |
+          if [[ "${{ steps.credentials.outputs.available }}" != 'true' ]]; then
+            echo '::error::BLOCKED: configure WIX_API_KEY in GitHub Actions repository secrets to run Wix build and preview.'
+            echo '### RESULT: BLOCKED — no Wix preview or authenticated Wix build' >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          echo '### RESULT: Wix preview gate executed — inspect the preview and build results above' >> "$GITHUB_STEP_SUMMARY"
