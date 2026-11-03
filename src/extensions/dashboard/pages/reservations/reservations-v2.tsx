@@ -8,6 +8,7 @@ import { COLLECTIONS } from '../../../../lib/collection-ids';
 import { generateReferenceNumber } from '../../../../lib/reference-number';
 import { getCurrentPlan, hasFeature } from '../../../../lib/plans';
 import { loadAllDashboardItems } from '../../../../lib/dashboard-data';
+import { sendRentalFlowBiEvent } from '../../../../lib/bi-events-client';
 import { filterManagementReservations, type ReservationListFilter } from '../../../../lib/management-filters';
 import { reservationBalanceCents } from '../../../../lib/payment-reconciliation';
 import { safeBookingCheckoutUrl } from '../../../../lib/booking-checkout';
@@ -420,6 +421,9 @@ const ReservationsV2Page: FC = () => {
       }
 
       const created = payload.reservation;
+      // Confirmed by the reservation API; report usage without customer/booking identifiers.
+      void sendRentalFlowBiEvent({ eventName: 'PRIMARY_ACTION_PERFORMED' });
+      void sendRentalFlowBiEvent({ eventName: 'CUSTOM', customEventName: 'rentalflow_reservation_created' });
       const number = payload.reservationNumber
         || created.reservationNumber
         || '';

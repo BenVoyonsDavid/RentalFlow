@@ -6,4 +6,9 @@ export default extensions.dashboardPage({
   routePath: 'categories',
   component: './extensions/dashboard/pages/categories/categories.localized.tsx',
   fullPage: false,
+  metaData: {
+    searchable: true,
+    title: "Catégories",
+    description: "Organiser les catégories d’équipements, de produits, de services et d’extras.",
+  },
 });

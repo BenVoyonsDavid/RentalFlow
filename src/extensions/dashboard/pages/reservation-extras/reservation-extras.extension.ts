@@ -6,4 +6,9 @@ export default extensions.dashboardPage({
   routePath: 'reservation-extras',
   component: './extensions/dashboard/pages/reservation-extras/reservation-extras.localized.tsx',
   fullPage: false,
+  metaData: {
+    searchable: true,
+    title: "Extras de réservation",
+    description: "Configurer les accessoires et les extras à proposer avec les réservations et locations.",
+  },
 });

@@ -6,4 +6,9 @@ export default extensions.dashboardPage({
   routePath: '',
   component: './extensions/dashboard/pages/my-page/my-page.localized.tsx',
   fullPage: false,
+  metaData: {
+    searchable: true,
+    title: "Tableau de bord",
+    description: "Suivre les locations à venir, les départs, les retours et les opérations quotidiennes.",
+  },
 });

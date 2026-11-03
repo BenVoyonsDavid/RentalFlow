@@ -6,4 +6,9 @@ export default extensions.dashboardPage({
   routePath: 'catalog',
   component: './extensions/dashboard/pages/catalog/catalog.localized.tsx',
   fullPage: false,
+  metaData: {
+    searchable: true,
+    title: "Catalogue",
+    description: "Gérer le catalogue des produits, services et accessoires offerts à la location.",
+  },
 });

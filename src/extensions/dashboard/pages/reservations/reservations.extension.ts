@@ -6,4 +6,9 @@ export default extensions.dashboardPage({
   routePath: 'reservations',
   component: './extensions/dashboard/pages/reservations/reservations.localized.tsx',
   fullPage: false,
+  metaData: {
+    searchable: true,
+    title: "Réservations",
+    description: "Créer et suivre les réservations, contrats, paiements, locations et retours.",
+  },
 });

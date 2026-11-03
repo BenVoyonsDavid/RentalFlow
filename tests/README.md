@@ -30,3 +30,9 @@ For payment reconciliation before App Market validation, run `npm run test:billi
 ## Phase 5 — cohérence des paiements sur Wix staging
 
 Lancer `npm run test:staging-finance` pour contrôler le calcul du solde, les remboursements, l'état du parcours paiement et l'absence de confirmation client non vérifiée. Cette suite ne remplace pas un paiement Wix sandbox réel.
+
+## Référencement Wix App Market / Dashboard
+
+La suite `npm run test:app-market` vérifie que les neuf pages de tableau de bord Wix sont recherchables et ont un titre et une description de moins de 200 caractères, conformément aux règles du builder. Elle vérifie également la présence des appels BI non bloquants dans le code et le filtrage des noms d'événements.
+
+Les modifications d'extensions ne deviennent visibles aux utilisateurs Wix qu'après la publication d'une nouvelle version de l'application. La prévisualisation ne publie pas de version App Market.

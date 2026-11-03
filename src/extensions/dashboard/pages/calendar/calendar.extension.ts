@@ -6,4 +6,9 @@ export default extensions.dashboardPage({
   routePath: 'calendar',
   component: './extensions/dashboard/pages/calendar/calendar.localized.tsx',
   fullPage: false,
+  metaData: {
+    searchable: true,
+    title: "Calendrier",
+    description: "Consulter le calendrier des locations, réservations et disponibilités des équipements.",
+  },
 });

@@ -6,4 +6,9 @@ export default extensions.dashboardPage({
   routePath: 'equipment',
   component: './extensions/dashboard/pages/equipment/equipment.localized.tsx',
   fullPage: false,
+  metaData: {
+    searchable: true,
+    title: "Équipements",
+    description: "Gérer les équipements de location, leur inventaire, disponibilité, tarifs et entretien.",
+  },
 });

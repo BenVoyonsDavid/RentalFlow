@@ -6,4 +6,9 @@ export default extensions.dashboardPage({
   routePath: 'settings',
   component: './extensions/dashboard/pages/settings/settings.localized.tsx',
   fullPage: false,
+  metaData: {
+    searchable: true,
+    title: "Paramètres",
+    description: "Configurer la société, les taxes, les paiements, la réservation en ligne et les modèles.",
+  },
 });

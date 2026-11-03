@@ -6,4 +6,9 @@ export default extensions.dashboardPage({
   routePath: 'customers',
   component: './extensions/dashboard/pages/customers/customers.localized.tsx',
   fullPage: false,
+  metaData: {
+    searchable: true,
+    title: "Clients",
+    description: "Consulter et gérer les fiches clients, coordonnées et historique des locations.",
+  },
 });

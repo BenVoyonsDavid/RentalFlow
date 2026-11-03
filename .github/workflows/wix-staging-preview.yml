@@ -5,6 +5,7 @@ on:
     branches:
       - test/wix-staging-candidate-validation
       - fix/payment-reconciliation-phase5
+      - feat/app-market-discoverability
   workflow_dispatch:
 
 permissions:
