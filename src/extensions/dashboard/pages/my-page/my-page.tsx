@@ -5,24 +5,23 @@ import { Page, WixDesignSystemProvider } from '@wix/design-system';
 import '@wix/design-system/styles.global.css';
 import { COLLECTIONS } from '../../../../lib/collection-ids';
 import { loadAllDashboardItems } from '../../../../lib/dashboard-data';
+import { getOperationsForDashboard, type OperationsFilter } from '../../../../lib/management-filters';
 import type { Asset, Reservation } from '../../../../domain/types';
 
 const ASSETS = COLLECTIONS.assets;
 const RESERVATIONS = COLLECTIONS.reservations;
+const card: CSSProperties = { background: '#fff', border: '1px solid #e1e7ee', borderRadius: 16, padding: 22, boxShadow: '0 4px 16px rgba(19,40,66,.04)' };
+const muted: CSSProperties = { color: '#64748b', fontSize: 13 };
+const button: CSSProperties = { background: '#fff', border: '1px solid #cbd5e1', borderRadius: 10, color: '#164a69', fontSize: 14, fontWeight: 700, cursor: 'pointer', padding: '10px 16px' };
 
-const card: CSSProperties = { background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 20, boxShadow: '0 1px 3px rgba(0,0,0,.06)' };
-
-function asDate(value?: Date | string): Date {
-  if (value instanceof Date) return value;
-  return value ? new Date(value) : new Date(0);
-}
-function sameDay(a: Date, b: Date): boolean {
-  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+function asDate(value?: Date | string): Date | null {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isFinite(date.getTime()) ? date : null;
 }
 function dateTime(value?: Date | string): string {
   const date = asDate(value);
-  if (!date.getTime()) return '—';
-  return new Intl.DateTimeFormat('fr-CA', { dateStyle: 'medium', timeStyle: 'short' }).format(date);
+  return date ? new Intl.DateTimeFormat('fr-CA', { dateStyle: 'medium', timeStyle: 'short' }).format(date) : '—';
 }
 function money(cents = 0, currency = 'CAD'): string {
   return new Intl.NumberFormat('fr-CA', { style: 'currency', currency }).format(cents / 100);
@@ -33,17 +32,25 @@ const DashboardPage: FC = () => {
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [focus, setFocus] = useState<OperationsFilter>('DEPARTURES');
 
   useEffect(() => {
     let active = true;
     const load = async () => {
+      setLoading(true);
+      setError('');
       try {
+        // Payment reconciliation must never prevent the dashboard from opening.
         try {
-          await httpClient.fetchWithAuth(`${import.meta.env.BASE_API_URL}/api/reconcile-payments`, { method: 'POST' });
+          await httpClient.fetchWithAuth(
+            `${import.meta.env.BASE_API_URL}/api/reconcile-payments`,
+            { method: 'POST' },
+          );
         } catch (paymentSyncError) {
           console.warn('RentalFlow payment reconciliation skipped.', paymentSyncError);
         }
-
         const [loadedAssets, loadedReservations] = await Promise.all([
           loadAllDashboardItems<Asset>(ASSETS),
           loadAllDashboardItems<Reservation>(RESERVATIONS),
@@ -51,17 +58,20 @@ const DashboardPage: FC = () => {
         if (active) {
           setAssets(loadedAssets);
           setReservations(loadedReservations);
+          setLastUpdated(new Date());
         }
       } catch (e) {
         if (active) setError(e instanceof Error ? e.message : 'Impossible de charger les données RentalFlow.');
-      } finally { if (active) setLoading(false); }
+      } finally {
+        if (active) setLoading(false);
+      }
     };
     void load();
     return () => { active = false; };
-  }, []);
+  }, [refreshKey]);
 
   const inventory = useMemo(() => {
-    const current = assets.filter((asset) => asset.active !== false);
+    const current = assets.filter((asset) => asset.active !== false && asset.status !== 'INACTIVE');
     return {
       total: current.length,
       available: current.filter((asset) => asset.status === 'AVAILABLE').length,
@@ -71,75 +81,105 @@ const DashboardPage: FC = () => {
     };
   }, [assets]);
 
-  const operations = useMemo(() => {
-    const now = new Date();
-    const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-    const activeReservations = reservations.filter((reservation) => !['CANCELLED', 'ERROR', 'COMPLETED'].includes(reservation.status || ''));
-    const departures = activeReservations.filter((reservation) => reservation.status === 'CONFIRMED' && sameDay(asDate(reservation.startDateTime), now));
-    const returns = activeReservations.filter((reservation) => reservation.status === 'RENTED' && sameDay(asDate(reservation.endDateTime), now));
-    const late = activeReservations.filter((reservation) => reservation.status === 'RENTED' && asDate(reservation.endDateTime) < now);
-    const prepare = activeReservations.filter((reservation) => reservation.status === 'CONFIRMED' && asDate(reservation.startDateTime) >= now && asDate(reservation.startDateTime) <= tomorrow);
-    const upcoming = activeReservations
-      .filter((reservation) => asDate(reservation.startDateTime) >= new Date(now.getFullYear(), now.getMonth(), now.getDate()))
-      .sort((a, b) => asDate(a.startDateTime).getTime() - asDate(b.startDateTime).getTime())
-      .slice(0, 6);
-    const bookedRevenue = reservations
-      .filter((reservation) => !['CANCELLED', 'ERROR'].includes(reservation.status || ''))
-      .reduce((sum, reservation) => sum + (reservation.totalCents || 0), 0);
-    return { departures, returns, late, prepare, upcoming, bookedRevenue };
-  }, [reservations]);
+  const operations = useMemo(() => getOperationsForDashboard(reservations), [reservations]);
+  const activeCount = useMemo(() => reservations.filter(
+    (r) => !['CANCELLED', 'COMPLETED', 'ERROR'].includes(r.status || ''),
+  ).length, [reservations]);
+  const bookedCad = useMemo(() => reservations
+    .filter((r) => !['CANCELLED', 'ERROR'].includes(r.status || '') && (r.currency || 'CAD') === 'CAD')
+    .reduce((sum, r) => sum + (r.totalCents || 0), 0), [reservations]);
+
+  const queues: Record<OperationsFilter, Reservation[]> = {
+    DEPARTURES: operations.departures,
+    RETURNS: operations.returns,
+    LATE: operations.late,
+    PREPARE: operations.prepare,
+  };
+  const focusLabels: Record<OperationsFilter, string> = {
+    DEPARTURES: 'Départs du jour',
+    RETURNS: 'Retours du jour',
+    LATE: 'Retards à traiter',
+    PREPARE: 'À préparer (24 h)',
+  };
+  const focusedReservations = queues[focus];
 
   return (
     <WixDesignSystemProvider features={{ newColorsBranding: true }}>
       <Page>
-        <Page.Header title="Tableau de bord" subtitle="Vue d’ensemble de votre activité de location." />
+        <Page.Header title="Tableau de bord" subtitle="Votre centre de contrôle pour les locations." />
         <Page.Content>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 24, paddingBottom: 40 }}>
-            {error && <div style={{ ...card, background: '#fef2f2', color: '#991b1b', borderColor: '#fecaca' }}>{error}</div>}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 20, paddingBottom: 40 }}>
+            <section style={{ ...card, background: 'linear-gradient(115deg,#12263b,#174b64)', color: '#fff', border: 0, padding: '26px 28px' }}>
+              <div style={{ display: 'flex', gap: 16, justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap' }}>
+                <div>
+                  <div style={{ textTransform: 'uppercase', fontSize: 11, fontWeight: 800, letterSpacing: '0.12em', color: '#98d8e3' }}>Vue opérationnelle</div>
+                  <h2 style={{ margin: '8px 0 6px', fontSize: 25, color: '#fff' }}>Vos locations, en un coup d’œil</h2>
+                  <p style={{ margin: 0, color: '#d8e6ee', fontSize: 14 }}>Retrouvez les départs, les retours et les actions prioritaires sans chercher dans le calendrier.</p>
+                  {lastUpdated && <div style={{ marginTop: 10, color: '#bdd3e1', fontSize: 12 }}>Actualisé le {dateTime(lastUpdated)}</div>}
+                </div>
+                <button type="button" onClick={() => setRefreshKey((key) => key + 1)} disabled={loading} style={{ ...button, opacity: loading ? .65 : 1 }}>
+                  {loading ? 'Actualisation…' : '↻ Actualiser'}
+                </button>
+              </div>
+            </section>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: 16 }}>
-              <Stat label="Équipements actifs" value={inventory.total} loading={loading} />
-              <Stat label="Disponibles" value={inventory.available} loading={loading} />
-              <Stat label="Réservations actives" value={reservations.filter((r) => !['CANCELLED', 'COMPLETED', 'ERROR'].includes(r.status || '')).length} loading={loading} />
-              <Stat label="En location" value={reservations.filter((r) => r.status === 'RENTED').length} loading={loading} />
-              <Stat label="Revenus réservés" value={money(operations.bookedRevenue)} loading={loading} text />
+            {error && <div role="alert" style={{ ...card, background: '#fff1f2', color: '#991b1b', borderColor: '#fecdd3' }}>{error} <button type="button" style={{ ...button, marginLeft: 10 }} onClick={() => setRefreshKey((key) => key + 1)}>Réessayer</button></div>}
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(175px,1fr))', gap: 12 }} aria-busy={loading}>
+              <Metric label="Équipements actifs" value={inventory.total} loading={loading} detail="Unités gérées" />
+              <Metric label="Disponibles" value={inventory.available} loading={loading} detail="Statut manuel" />
+              <Metric label="Réservations actives" value={activeCount} loading={loading} detail="Hors clôturées et annulées" />
+              <Metric label="En location" value={reservations.filter((r) => r.status === 'RENTED').length} loading={loading} detail="Réservations en cours" />
+              <Metric label="Montants réservés (CAD)" value={money(bookedCad)} loading={loading} detail="Total contractuel, non encaissé" />
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(300px,1fr))', gap: 16 }}>
-              <div style={card}>
-                <h2 style={{ marginTop: 0 }}>Aujourd’hui</h2>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-                  <MiniStat label="Départs" value={operations.departures.length} />
-                  <MiniStat label="Retours" value={operations.returns.length} />
-                  <MiniStat label="Retards" value={operations.late.length} alert={operations.late.length > 0} />
-                  <MiniStat label="À préparer (24 h)" value={operations.prepare.length} />
+            <section style={card}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
+                <div>
+                  <h2 style={{ margin: '0 0 4px', fontSize: 19 }}>À traiter</h2>
+                  <div style={muted}>Sélectionnez une catégorie pour voir les réservations concernées.</div>
                 </div>
               </div>
+              <div role="group" aria-label="Priorités opérationnelles" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(145px,1fr))', gap: 10 }}>
+                <QueueButton label="Départs" count={operations.departures.length} active={focus === 'DEPARTURES'} onClick={() => setFocus('DEPARTURES')} />
+                <QueueButton label="Retours" count={operations.returns.length} active={focus === 'RETURNS'} onClick={() => setFocus('RETURNS')} />
+                <QueueButton label="Retards" count={operations.late.length} active={focus === 'LATE'} onClick={() => setFocus('LATE')} danger={operations.late.length > 0} />
+                <QueueButton label="À préparer (24 h)" count={operations.prepare.length} active={focus === 'PREPARE'} onClick={() => setFocus('PREPARE')} />
+              </div>
+              <div style={{ marginTop: 18, borderTop: '1px solid #e2e8f0', paddingTop: 16 }} aria-live="polite">
+                <h3 style={{ margin: '0 0 12px', fontSize: 16 }}>{focusLabels[focus]}</h3>
+                {loading ? <div style={muted}>Chargement…</div> : focusedReservations.length === 0
+                  ? <div style={{ padding: 20, borderRadius: 10, background: '#f8fafc', color: '#64748b' }}>Aucune réservation à traiter dans cette catégorie.</div>
+                  : <div style={{ display: 'grid', gap: 9 }}>
+                    {focusedReservations.slice(0, 8).map((reservation) => (
+                      <ReservationPreview key={reservation._id || reservation.reservationNumber} reservation={reservation} />
+                    ))}
+                    {focusedReservations.length > 8 && <div style={muted}>{focusedReservations.length - 8} autre(s) réservation(s) dans cette catégorie.</div>}
+                  </div>}
+              </div>
+            </section>
 
-              <div style={card}>
-                <h2 style={{ marginTop: 0 }}>État de l’inventaire</h2>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(280px,1fr))', gap: 16 }}>
+              <section style={card}>
+                <h2 style={{ fontSize: 19, marginTop: 0 }}>Prochaines réservations</h2>
+                {loading ? <div style={muted}>Chargement…</div>
+                  : operations.upcoming.length === 0
+                    ? <div style={{ ...muted, padding: 18, background: '#f8fafc', borderRadius: 10 }}>Aucune réservation à venir.</div>
+                    : <div style={{ display: 'grid', gap: 9 }}>
+                      {operations.upcoming.slice(0, 6).map((reservation) => <ReservationPreview key={reservation._id || reservation.reservationNumber} reservation={reservation} />)}
+                    </div>}
+              </section>
+              <section style={card}>
+                <h2 style={{ fontSize: 19, marginTop: 0 }}>Inventaire physique</h2>
+                <p style={muted}>Statut attribué aux équipements. La disponibilité par période est vérifiée dans le calendrier.</p>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,minmax(0,1fr))', gap: 10 }}>
                   <MiniStat label="Disponible" value={inventory.available} />
-                  <MiniStat label="Réservé manuel" value={inventory.reserved} />
-                  <MiniStat label="En location manuel" value={inventory.rented} />
+                  <MiniStat label="Réservé" value={inventory.reserved} />
+                  <MiniStat label="En location" value={inventory.rented} />
                   <MiniStat label="Entretien" value={inventory.maintenance} />
                 </div>
-              </div>
-            </div>
-
-            <div style={card}>
-              <h2 style={{ marginTop: 0 }}>Prochaines réservations</h2>
-              {loading ? <div>Chargement…</div> : operations.upcoming.length === 0 ? <div style={{ color: '#64748b' }}>Aucune réservation à venir.</div> : <div style={{ display: 'grid', gap: 9 }}>{operations.upcoming.map((reservation) => <div key={reservation._id || reservation.reservationNumber} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: 13, background: '#f8fafc', borderRadius: 10, flexWrap: 'wrap' }}><div><strong>{reservation.reservationNumber || 'Réservation'} · {reservation.customerName || 'Client'}</strong><div style={{ color: '#64748b', marginTop: 3 }}>{dateTime(reservation.startDateTime)} → {dateTime(reservation.endDateTime)}</div></div><div style={{ textAlign: 'right' }}><strong>{money(reservation.totalCents, reservation.currency || 'CAD')}</strong><div style={{ color: '#64748b', marginTop: 3 }}>{reservation.workflowStage || 'RESERVATION'}</div></div></div>)}</div>}
-            </div>
-
-            <div style={card}>
-              <h2 style={{ marginTop: 0 }}>Espaces RentalFlow</h2>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))', gap: 10 }}>
-                <Quick label="Équipements" text="Inventaire, statuts et tarification" />
-                <Quick label="Calendrier / Réservations" text="Disponibilités et flux complet" />
-                <Quick label="Clients" text="Fiches clients et historique" />
-                <Quick label="Paramètres" text="Abonnements et options" />
-              </div>
+                {!loading && inventory.total === 0 && <p style={{ ...muted, marginTop: 16 }}>Ajoutez votre premier équipement dans la page Équipements pour commencer.</p>}
+              </section>
             </div>
           </div>
         </Page.Content>
@@ -148,8 +188,38 @@ const DashboardPage: FC = () => {
   );
 };
 
-const Stat: FC<{ label: string; value: number | string; loading: boolean; text?: boolean }> = ({ label, value, loading }) => <div style={card}><div style={{ color: '#64748b', fontSize: 14 }}>{label}</div><div style={{ fontSize: typeof value === 'string' ? 25 : 32, fontWeight: 700, marginTop: 8 }}>{loading ? '…' : value}</div></div>;
-const MiniStat: FC<{ label: string; value: number; alert?: boolean }> = ({ label, value, alert }) => <div style={{ background: alert ? '#fef2f2' : '#f8fafc', borderRadius: 10, padding: 16, color: alert ? '#991b1b' : undefined }}><div style={{ color: alert ? '#991b1b' : '#64748b', fontSize: 13 }}>{label}</div><div style={{ fontSize: 24, fontWeight: 700, marginTop: 4 }}>{value}</div></div>;
-const Quick: FC<{ label: string; text: string }> = ({ label, text }) => <div style={{ background: '#f8fafc', borderRadius: 10, padding: 14 }}><div style={{ fontWeight: 700 }}>{label}</div><div style={{ color: '#64748b', fontSize: 13, marginTop: 3 }}>{text}</div></div>;
+const Metric: FC<{ label: string; value: number | string; loading: boolean; detail: string }> = ({ label, value, loading, detail }) =>
+  <div style={{ ...card, padding: 19 }}>
+    <div style={{ color: '#536579', fontSize: 13, fontWeight: 600 }}>{label}</div>
+    <div style={{ fontSize: typeof value === 'string' ? 23 : 32, color: '#17314b', fontWeight: 800, marginTop: 10 }}>{loading ? '…' : value}</div>
+    <div style={{ ...muted, marginTop: 6, fontSize: 11 }}>{detail}</div>
+  </div>;
+
+const MiniStat: FC<{ label: string; value: number }> = ({ label, value }) =>
+  <div style={{ background: '#f5f8fb', borderRadius: 12, padding: 16 }}>
+    <div style={muted}>{label}</div><div style={{ fontSize: 25, fontWeight: 800, color: '#17314b', marginTop: 5 }}>{value}</div>
+  </div>;
+
+const QueueButton: FC<{ label: string; count: number; active: boolean; danger?: boolean; onClick: () => void }> = ({ label, count, active, danger, onClick }) =>
+  <button type="button" aria-pressed={active} onClick={onClick} style={{
+    border: active ? '2px solid #136d89' : '1px solid #dbe5ec', borderRadius: 12,
+    background: active ? '#eff9fb' : danger ? '#fff5f4' : '#fff',
+    padding: 14, textAlign: 'left', cursor: 'pointer', color: danger ? '#9f2929' : '#17314b',
+  }}>
+    <span style={{ display: 'block', fontSize: 13, fontWeight: 700 }}>{label}</span>
+    <strong style={{ display: 'block', fontSize: 25, marginTop: 4 }}>{count}</strong>
+  </button>;
+
+const ReservationPreview: FC<{ reservation: Reservation }> = ({ reservation }) =>
+  <div style={{ display: 'flex', alignItems: 'start', justifyContent: 'space-between', gap: 12, border: '1px solid #e2e8f0', background: '#fbfdff', padding: 13, borderRadius: 11, flexWrap: 'wrap' }}>
+    <div>
+      <strong style={{ color: '#18354e', fontSize: 14 }}>{reservation.reservationNumber || 'Réservation'} · {reservation.customerName || 'Client'}</strong>
+      <div style={{ ...muted, marginTop: 5 }}>{dateTime(reservation.startDateTime)} → {dateTime(reservation.endDateTime)}</div>
+    </div>
+    <div style={{ textAlign: 'right' }}>
+      <strong style={{ color: '#19384f' }}>{money(reservation.totalCents || 0, reservation.currency || 'CAD')}</strong>
+      <div style={{ ...muted, marginTop: 4 }}>{reservation.status || '—'}</div>
+    </div>
+  </div>;
 
 export default DashboardPage;

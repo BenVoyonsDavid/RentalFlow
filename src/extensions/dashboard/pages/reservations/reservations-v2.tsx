@@ -8,6 +8,7 @@ import { COLLECTIONS } from '../../../../lib/collection-ids';
 import { generateReferenceNumber } from '../../../../lib/reference-number';
 import { getCurrentPlan, hasFeature } from '../../../../lib/plans';
 import { loadAllDashboardItems } from '../../../../lib/dashboard-data';
+import { filterManagementReservations, type ReservationListFilter } from '../../../../lib/management-filters';
 import type {
   ActivityEntry,
   AppSettings,
@@ -47,6 +48,13 @@ const SETTINGS = COLLECTIONS.appSettings;
 const TEMPLATES = COLLECTIONS.documentTemplates;
 
 type ViewMode = 'MONTH' | 'LIST' | 'AVAILABILITY';
+const reservationFilterOptions: { key: ReservationListFilter; label: string }[] = [
+  { key: 'ALL', label: 'Toutes' },
+  { key: 'UPCOMING', label: 'À venir' },
+  { key: 'IN_PROGRESS', label: 'En cours' },
+  { key: 'COMPLETED', label: 'Terminées' },
+  { key: 'CANCELLED', label: 'Annulées' },
+];
 type DetailTab = 'DETAILS' | 'EQUIPMENT' | 'PAYMENTS' | 'DOCUMENTS' | 'INSPECTION' | 'NOTES' | 'HISTORY';
 type CustomerMode = 'EXISTING' | 'NEW';
 
@@ -146,7 +154,9 @@ const ReservationsV2Page: FC = () => {
   const depositEnabledForPlan = hasFeature(plan, 'SECURITY_DEPOSIT');
   const inspectionsEnabled = hasFeature(plan, 'INSPECTIONS');
   const fullHistoryEnabled = hasFeature(plan, 'FULL_HISTORY');
-  const [view, setView] = useState<ViewMode>('MONTH');
+  const [view, setView] = useState<ViewMode>('LIST');
+  const [reservationSearch, setReservationSearch] = useState('');
+  const [reservationFilter, setReservationFilter] = useState<ReservationListFilter>('ALL');
   const [assets, setAssets] = useState<Asset[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [reservations, setReservations] = useState<Reservation[]>([]);
@@ -230,6 +240,10 @@ const ReservationsV2Page: FC = () => {
   const activeCustomers = useMemo(() => customers.filter((customer) => customer.active !== false).sort((a, b) => customerDisplayName(a).localeCompare(customerDisplayName(b), 'fr')), [customers]);
   const activeTemplates = useMemo(() => documentsEnabled ? templates.filter((template) => template.active !== false) : [], [documentsEnabled, templates]);
   const sortedReservations = useMemo(() => [...reservations].filter((r) => r.status !== 'ERROR').sort((a, b) => asDate(a.startDateTime).getTime() - asDate(b.startDateTime).getTime()), [reservations]);
+  const listReservations = useMemo(
+    () => filterManagementReservations(sortedReservations, reservationSearch, reservationFilter),
+    [sortedReservations, reservationSearch, reservationFilter],
+  );
 
   const logActivity = async (reservation: Reservation, actionType: string, description: string) => {
     if (!reservation._id) return;
@@ -692,6 +706,32 @@ const ReservationsV2Page: FC = () => {
             {error && <div style={{ ...card, background: '#fef2f2', borderColor: '#fecaca', color: '#991b1b' }}>{error}</div>}
             {success && <div style={{ ...card, background: '#f0fdf4', borderColor: '#86efac', color: '#166534' }}>{success}</div>}
 
+            {!loading && view === 'LIST' && (
+              <section style={{ ...card, padding: 18 }} aria-label="Recherche de réservations">
+                <div style={{ display: 'flex', alignItems: 'end', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                  <label htmlFor="rf-reservation-search" style={{ flex: '1 1 260px', fontSize: 13, fontWeight: 700 }}>
+                    Rechercher une réservation
+                    <input id="rf-reservation-search" type="search" style={{ ...input, marginTop: 6 }}
+                      placeholder="Numéro, client, courriel, téléphone…" value={reservationSearch}
+                      onChange={(event) => setReservationSearch(event.target.value)} />
+                  </label>
+                  <span role="status" style={{ color: '#64748b', fontSize: 13 }}>{listReservations.length} sur {sortedReservations.length} réservation(s)</span>
+                </div>
+                <div role="group" aria-label="Filtrer les réservations" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 16 }}>
+                  {reservationFilterOptions.map((option) => (
+                    <button type="button" key={option.key} aria-pressed={reservationFilter === option.key}
+                      onClick={() => setReservationFilter(option.key)}
+                      style={{ ...secondary, borderRadius: 999, padding: '8px 12px',
+                        background: reservationFilter === option.key ? '#174b64' : '#f8fafc',
+                        color: reservationFilter === option.key ? '#fff' : '#174b64',
+                        borderColor: reservationFilter === option.key ? '#174b64' : '#dbe3eb' }}>
+                      {option.label} · {filterManagementReservations(sortedReservations, reservationSearch, option.key).length}
+                    </button>
+                  ))}
+                </div>
+              </section>
+            )}
+
             {loading ? <div style={card}>Chargement…</div> : null}
 
             {!loading && view === 'MONTH' && (
@@ -711,7 +751,13 @@ const ReservationsV2Page: FC = () => {
               </div>
             )}
 
-            {!loading && view === 'LIST' && <ReservationList reservations={sortedReservations} onOpen={openReservation} />}
+            {!loading && view === 'LIST' && (listReservations.length === 0
+              ? <div style={{ ...card, textAlign: 'center', padding: 34, color: '#64748b' }}>
+                  <strong style={{ display: 'block', color: '#17314b', fontSize: 17, marginBottom: 7 }}>Aucune réservation trouvée</strong>
+                  <div>Modifiez votre recherche ou vos filtres pour afficher d’autres résultats.</div>
+                  {(reservationSearch || reservationFilter !== 'ALL') && <button type="button" style={{ ...secondary, marginTop: 16 }} onClick={() => { setReservationSearch(''); setReservationFilter('ALL'); }}>Effacer les filtres</button>}
+                </div>
+              : <ReservationList reservations={listReservations} onOpen={openReservation} />)}
 
             {!loading && view === 'AVAILABILITY' && (
               <div style={card}>
