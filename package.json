@@ -21,6 +21,7 @@
     "test:security": "node tests/security.mjs",
     "test:journey": "node tests/booking-journey.mjs",
     "test:management-ui": "node tests/management-ui.mjs",
+    "test:billing": "node tests/billing-hardening.mjs",
     "test:booking-design": "node tests/booking-design.mjs"
   },
   "dependencies": {

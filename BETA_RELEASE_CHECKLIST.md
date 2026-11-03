@@ -2,7 +2,9 @@
 
 Cette checklist couvre la validation de la première version publique de RentalFlow.
 
-## État E.4 — 30 septembre 2026
+## Référence historique E.4 — 30 septembre 2026
+
+> Cette section est une référence historique. Voir `APP_MARKET_RELEASE_READINESS.md` pour les blocages et l'état des PR des phases 1 à 4.
 
 - PR #24 : branche principale de validation; CI GitHub verte.
 - PR #1 et #5 : fermées, leurs changements sont intégrés dans #24.
@@ -12,7 +14,7 @@ Cette checklist couvre la validation de la première version publique de RentalF
 - Accès Wix Pay Links : confirmé.
 - Collections attendues après la prochaine release : asset-capacity-locks et catalog-stock-locks.
 - Index uniques déjà actifs : assetNumber, customerNumber, reservationNumber, paymentNumber et booking-locks.assetId.
-- Release prévue : mineure, tant qu'aucune nouvelle permission Wix n'est ajoutée.
+- Type de version : **à déterminer en staging**. Les changements de schéma et d'index de collections peuvent imposer une version majeure.
 
 
 ## 1. Build et version
@@ -20,8 +22,8 @@ Cette checklist couvre la validation de la première version publique de RentalF
 - Exécuter `npm run typecheck`.
 - Exécuter `npm run build`.
 - Corriger toute erreur TypeScript/build avant de continuer.
-- Exécuter `npm run release -- --site 7f1ec6c8-4e35-4b19-a55d-21a9009e9386 --version-type minor --comment "RentalFlow hardening, booking security and data integrity"` seulement après validation fonctionnelle.
-- Utiliser une version **Minor** pour cette mise à jour tant qu'aucune nouvelle permission Wix n'est ajoutée.
+- Ne pas lancer `wix release` ou publier l’application tant que les PR et les tests de staging ne sont pas validés.
+- Choisir Major/Minor seulement après révision des permissions, des collections et de leur compatibilité avec les installations existantes.
 - Après la release, confirmer que les nouvelles collections et leurs index sont actifs avant les tests fonctionnels.
 
 ## 2. Forfaits Wix et limites
@@ -88,7 +90,9 @@ Tests obligatoires :
 ### Paiements
 - Créer une réservation en ligne payante et vérifier la création du Wix Payment Link.
 - Effectuer un paiement réel ou de test.
-- Ouvrir le tableau de bord RentalFlow et vérifier que le paiement PENDING est réconcilié en PAID.
+- Ouvrir le tableau de bord RentalFlow et vérifier que PENDING passe à PAID **seulement** si Wix confirme le bon lien, la devise et le montant réellement reçu.
+- Tester les montants partiels, nuls et de devises différentes : aucune fausse confirmation.
+- Contrôler les soldes après paiement, dépôt de sécurité, dommage, remboursement locatif et remboursement de dépôt.
 - Vérifier la mise à jour du solde de la réservation.
 - Vérifier que l'étape PAYMENT passe à READY lorsque le solde atteint zéro.
 - Enregistrer un dépôt de sécurité et un remboursement manuel.
@@ -154,3 +158,10 @@ Tests obligatoires :
 - QR / codes-barres.
 - Automatisations avancées.
 - Multi-emplacements.
+
+## 8. Phases récentes (sans déploiement)
+
+- PR #25 : sécurité des endpoints et des privilèges Wix.
+- PR #26 : parcours de réservation et paiement en attente.
+- PR #27 : tableau de bord et filtres d’administration.
+- Phase 4 : voir `APP_MARKET_RELEASE_READINESS.md`. Les tests automatisés ne remplacent pas un vrai checkout en staging.

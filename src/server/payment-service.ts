@@ -9,6 +9,7 @@ import {
   onlinePaymentLabel,
 } from '../lib/booking-payment';
 import { generateReferenceNumber } from '../lib/reference-number';
+import { safeBookingCheckoutUrl } from '../lib/booking-checkout';
 import type { PaymentMode } from '../lib/reservation-finance';
 
 const PAYMENTS = COLLECTIONS.payments;
@@ -150,7 +151,8 @@ export async function createOnlinePayment(
       checkoutId = checkout.checkoutId;
     }
 
-    if (!checkoutUrl) throw new Error('PAYLINK_NO_URL');
+    checkoutUrl = safeBookingCheckoutUrl(checkoutUrl);
+    if (!checkoutUrl) throw new Error('PAYLINK_NO_SECURE_URL');
 
     const balanceDueCents = onlinePaymentBalance(input.totalCents, amount);
 
