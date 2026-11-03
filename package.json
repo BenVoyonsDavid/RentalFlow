@@ -18,6 +18,7 @@
     "skills": "wix skills",
     "typecheck": "astro check",
     "test:domain": "node tests/domain-logic.mjs",
+    "test:security": "node tests/security.mjs",
     "test:booking-design": "node tests/booking-design.mjs"
   },
   "dependencies": {

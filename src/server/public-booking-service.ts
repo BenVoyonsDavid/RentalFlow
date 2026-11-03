@@ -73,7 +73,7 @@ export async function loadPublicBooking(
     loadSettingsAndTemplates(),
     loadActiveAssets(),
     loadActiveCatalog(),
-    loadCurrentPlan(request),
+    loadCurrentPlan(),
   ]);
 
   let start: Date | undefined;
@@ -181,7 +181,7 @@ export async function submitPublicBooking(
         loadSettingsAndTemplates(),
         loadActiveAssets(),
         loadActiveCatalog(),
-        loadCurrentPlan(request),
+        loadCurrentPlan(),
       ]);
 
     if (!hasAppAccess(plan)) {

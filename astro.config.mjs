@@ -13,6 +13,6 @@ export default defineConfig({
     driver: "memory",
   },
   image: { domains: ["static.wixstatic.com"] },
-  security: { checkOrigin: false },
+  security: { checkOrigin: true },
   devToolbar: { enabled: false }
 });

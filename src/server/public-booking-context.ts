@@ -25,33 +25,15 @@ async function elevatedFind(query: any): Promise<any> {
   return query.find();
 }
 
-function isWixDevelopmentRequest(request: Request): boolean {
-  const origin = String(request.headers.get('origin') || '').toLowerCase();
-  const referer = String(request.headers.get('referer') || '').toLowerCase();
-
-  return origin.includes('wix-development-sites.org')
-    || referer.includes('wix-development-sites.org');
-}
-
-export async function loadCurrentPlan(
-  request: Request,
-): Promise<RentalFlowPlan> {
+// Plan privileges are derived only from the Wix app instance, never from browser headers.
+export async function loadCurrentPlan(): Promise<RentalFlowPlan> {
   try {
     const getInstance = auth.elevate(appInstances.getAppInstance);
     const response = await getInstance();
-    const resolved = planFromAppInstanceResponse(response);
-
-    if (
-      isWixDevelopmentRequest(request)
-      && (resolved === 'NO_PLAN' || resolved === 'BASIC')
-    ) {
-      return 'TRIAL';
-    }
-
-    return resolved;
+    return planFromAppInstanceResponse(response);
   } catch (error) {
     console.error('RentalFlow public booking could not resolve Wix plan.', error);
-    return isWixDevelopmentRequest(request) ? 'TRIAL' : 'NO_PLAN';
+    return 'NO_PLAN';
   }
 }
 

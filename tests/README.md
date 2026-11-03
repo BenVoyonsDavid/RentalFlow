@@ -5,6 +5,7 @@ Run from the repository root:
 ```sh
 npm install
 npm run test:domain
+npm run test:security
 npx playwright install chromium
 npm run test:booking-design
 npm run typecheck
