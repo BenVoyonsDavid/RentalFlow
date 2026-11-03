@@ -1,5 +1,6 @@
 import { bookingThemeVariables, bookingImageUrl } from '../../../../lib/booking-theme';
 import { resolveLanguage } from '../../../../intl';
+import { safeBookingCheckoutUrl } from '../../../../lib/booking-checkout';
 import designStyles from './booking-design.css?inline';
 import { fetchPublicBookingJson, publicBookingApiUrl } from './booking-widget-api';
 import {
@@ -182,6 +183,8 @@ export class RentalFlowBookingElement extends HTMLElement {
     this.error = '';
     this.message = '';
     this.selected.clear();
+    // A failed refresh must not leave the previous availability/quote selectable.
+    this.data.assets.forEach((asset) => { asset.available = null; });
     this.result = null;
     this.render();
 
@@ -295,12 +298,16 @@ export class RentalFlowBookingElement extends HTMLElement {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(payload),
       });
-      this.message = `Réservation ${this.result?.reservationNumber || ''} créée avec succès.`;
+      // The reservation exists, but a Wix Payment Link is not proof of payment.
+      // The completion screen distinguishes pending payment from offline booking.
+      this.message = '';
     } catch (error) {
       this.error = this.friendlyError(error);
-      if (this.error.toLowerCase().includes('disponible')) {
-        void this.searchAvailability();
-        return;
+      if (this.error.toLowerCase().includes('disponib')) {
+        // The server rejected a stale availability quote. Keep the explanation
+        // visible and require a fresh search before another submission.
+        this.selected.clear();
+        this.data.assets.forEach((asset) => { asset.available = null; });
       }
     } finally {
       this.submitting = false;
@@ -356,6 +363,8 @@ export class RentalFlowBookingElement extends HTMLElement {
     const dueNow = this.dueNowCents();
     const balance = Math.max(0, taxes.total - dueNow);
     const paymentsEnabled = this.data.settings.paymentsEnabled;
+    const pendingPayment = Boolean(this.result && this.result.amountDueNowCents > 0);
+    const checkoutUrl = safeBookingCheckoutUrl(this.result?.checkoutUrl);
 
     const assetCards = renderBookingAssetCards({
       assets,
@@ -394,12 +403,21 @@ export class RentalFlowBookingElement extends HTMLElement {
 
           ${this.loading ? '<div class="loading">Chargement de la disponibilité…</div>' : this.result ? `
             <div class="complete">
-              <h2>Votre réservation est créée</h2>
+              <h2>${pendingPayment
+                ? language === 'en' ? 'Booking saved — payment pending' : 'Réservation enregistrée — paiement en attente'
+                : language === 'en' ? 'Your booking has been saved' : 'Votre réservation est enregistrée'}</h2>
               <div class="number">${this.escape(this.result.reservationNumber)}</div>
+              ${pendingPayment ? `<p role="status" class="muted" style="margin-top:10px">${language === 'en'
+                ? 'Your payment has not been confirmed. Complete payment on the secure Wix checkout page.'
+                : 'Votre paiement n’est pas encore confirmé. Terminez le paiement sur la page sécurisée de Wix.'}</p>` : ''}
               <p>Total : <strong>${this.money(this.result.totalCents, this.result.currency)}</strong></p>
               ${this.result.amountDueNowCents > 0 ? `<p style="margin-top:7px">À payer maintenant : <strong>${this.money(this.result.amountDueNowCents, this.result.currency)}</strong></p>` : ''}
               ${this.result.balanceDueCents > 0 ? `<p class="muted" style="margin-top:5px">Solde restant : ${this.money(this.result.balanceDueCents, this.result.currency)}</p>` : ''}
-              ${this.result.checkoutUrl ? `<a class="button" style="display:inline-block;text-decoration:none;margin-top:18px" href="${this.escape(this.result.checkoutUrl)}">Payer avec Wix</a>` : '<p style="margin-top:14px">Aucun paiement en ligne immédiat requis.</p>'}
+              ${pendingPayment
+                ? checkoutUrl
+                  ? `<a class="button" style="display:inline-block;text-decoration:none;margin-top:18px" href="${this.escape(checkoutUrl)}">${language === 'en' ? 'Pay securely with Wix' : 'Payer avec Wix'}</a>`
+                  : `<p class="notice error" role="alert">${language === 'en' ? 'The payment link is unavailable. Contact the rental business before trying again.' : 'Le lien de paiement est indisponible. Communiquez avec le locateur avant de réessayer.'}</p>`
+                : `<p style="margin-top:14px">${language === 'en' ? 'No immediate online payment is required.' : 'Aucun paiement en ligne immédiat requis.'}</p>`}
             </div>` : `
             <nav data-rf-step-navigation aria-label="Réservation"><span>1 · Dates et équipements</span><span>2 · Coordonnées</span><span>3 · Confirmation</span></nav>
             <div class="booking-layout">
