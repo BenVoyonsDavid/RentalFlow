@@ -39,5 +39,8 @@ jobs:
       - name: Security regression tests
         run: npm run test:security
 
+      - name: Public booking journey regression tests
+        run: npm run test:journey
+
       - name: Wix build note
         run: echo "Wix build is validated locally after 'npx wix env pull'; CI cannot supply the Wix-managed instance environment."

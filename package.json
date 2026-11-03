@@ -19,6 +19,7 @@
     "typecheck": "astro check",
     "test:domain": "node tests/domain-logic.mjs",
     "test:security": "node tests/security.mjs",
+    "test:journey": "node tests/booking-journey.mjs",
     "test:booking-design": "node tests/booking-design.mjs"
   },
   "dependencies": {
