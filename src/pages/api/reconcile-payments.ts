@@ -5,6 +5,7 @@ import { requireDashboardUser } from '../../server/request-auth';
 import { COLLECTIONS } from '../../lib/collection-ids';
 import { collectAllPages } from '../../lib/pagination';
 import type { Payment, Reservation } from '../../domain/types';
+import { reservationBalanceCents, verifiedWixPaymentLink } from '../../lib/payment-reconciliation';
 
 const PAYMENTS = COLLECTIONS.payments;
 const RESERVATIONS = COLLECTIONS.reservations;
@@ -34,15 +35,6 @@ async function elevatedInsert(collectionId: string, item: Record<string, unknown
   return insert(collectionId, item);
 }
 
-function asCents(value: unknown): number {
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    // Wix Money amounts are normally decimal major units.
-    return Math.max(0, Math.round(value * 100));
-  }
-  const parsed = Number(String(value ?? '').replace(',', '.'));
-  return Number.isFinite(parsed) ? Math.max(0, Math.round(parsed * 100)) : 0;
-}
-
 async function syncReservationBalance(reservationId: string): Promise<number> {
   const [reservationResult, payments] = await Promise.all([
     elevatedFind(items.query(RESERVATIONS).eq('_id', reservationId).limit(1)),
@@ -60,10 +52,11 @@ async function syncReservationBalance(reservationId: string): Promise<number> {
   const reservation = reservationResult.items?.[0] as Reservation | undefined;
   if (!reservation?._id) return 0;
 
-  const paid = payments
-    .filter((payment) => payment.status === 'PAID')
-    .reduce((sum, payment) => sum + Math.max(0, payment.amountCents || 0), 0);
-  const balanceDueCents = Math.max(0, (reservation.totalCents || 0) - paid);
+  const balanceDueCents = reservationBalanceCents(
+    reservation.totalCents || 0,
+    payments,
+    reservation.currency || 'CAD',
+  );
 
   await elevatedUpdate(RESERVATIONS, {
     ...reservation,
@@ -101,52 +94,48 @@ async function reconcilePendingPayments(): Promise<{ checked: number; updated: n
 
     try {
       const response = await getPaymentLink(payment.wixPaymentLinkId);
-      const link = response?.paymentLink || response;
-      const status = String(link?.status || '').toUpperCase();
-      const receivedCount = Number(link?.totalReceived?.paymentCount || 0);
-      const isPaid = status === 'PAID' || receivedCount > 0;
-      if (!isPaid) continue;
+      const evidence = verifiedWixPaymentLink(response, payment);
+      if (!evidence) continue;
 
-      const receivedAmountCents = asCents(link?.totalReceived?.amount);
-      const amountCents = receivedAmountCents > 0 ? Math.min(receivedAmountCents, payment.amountCents || receivedAmountCents) : payment.amountCents || 0;
-      const transactionId = String(
-        link?.lastTransactionId ||
-        link?.transactionId ||
-        payment.wixTransactionId ||
-        ''
-      );
-
-      await elevatedUpdate(PAYMENTS, {
+      const confirmed: Payment = {
         ...payment,
         status: 'PAID',
-        amountCents,
-        paymentDate: link?.lastPaymentDate ? new Date(link.lastPaymentDate) : payment.paymentDate || new Date(),
-        wixTransactionId: transactionId,
+        amountCents: evidence.amountCents,
+        paymentDate: evidence.paymentDate || payment.paymentDate || new Date(),
+        wixTransactionId: evidence.transactionId || payment.wixTransactionId || '',
         notes: [payment.notes, 'Paiement confirmé automatiquement depuis Wix Payment Links.'].filter(Boolean).join(' '),
-      });
+      };
+      // Save the receipt before calculating balance so the calculation includes it.
+      await elevatedUpdate(PAYMENTS, confirmed);
 
       let balanceDueCents = payment.remainingBalanceCents || 0;
-      if (payment.reservationId) balanceDueCents = await syncReservationBalance(payment.reservationId);
+      try {
+        if (payment.reservationId) {
+          balanceDueCents = await syncReservationBalance(payment.reservationId);
+        }
+      } catch (balanceError) {
+        // The receipt must remain PAID; surface balance sync failure for repair.
+        console.error('RentalFlow reservation balance synchronization failed.', balanceError);
+      }
 
-      await elevatedInsert(ACTIVITY, {
-        reservationId: payment.reservationId || '',
-        reservationNumber: payment.reservationNumber || '',
-        actionType: 'ONLINE_PAYMENT_CONFIRMED',
-        description: `Paiement Wix ${payment.paymentNumber || ''} confirmé${amountCents ? ` pour ${(amountCents / 100).toFixed(2)} ${payment.currency || ''}` : ''}.`,
-        actor: 'RentalFlow Payment Sync',
-        eventDate: new Date(),
-      });
+      try {
+        await elevatedUpdate(PAYMENTS, { ...confirmed, remainingBalanceCents: balanceDueCents });
+      } catch (balanceRecordError) {
+        console.error('RentalFlow payment balance snapshot could not be updated.', balanceRecordError);
+      }
 
-      if (payment._id) {
-        await elevatedUpdate(PAYMENTS, {
-          ...payment,
-          status: 'PAID',
-          amountCents,
-          paymentDate: link?.lastPaymentDate ? new Date(link.lastPaymentDate) : payment.paymentDate || new Date(),
-          wixTransactionId: transactionId,
-          remainingBalanceCents: balanceDueCents,
-          notes: [payment.notes, 'Paiement confirmé automatiquement depuis Wix Payment Links.'].filter(Boolean).join(' '),
+      // Audit logging must not roll back or hide an already verified receipt.
+      try {
+        await elevatedInsert(ACTIVITY, {
+          reservationId: payment.reservationId || '',
+          reservationNumber: payment.reservationNumber || '',
+          actionType: 'ONLINE_PAYMENT_CONFIRMED',
+          description: `Paiement Wix ${payment.paymentNumber || ''} confirmé pour ${(evidence.amountCents / 100).toFixed(2)} ${payment.currency || ''}.`,
+          actor: 'RentalFlow Payment Sync',
+          eventDate: new Date(),
         });
+      } catch (activityError) {
+        console.error('RentalFlow payment confirmation audit logging failed.', activityError);
       }
 
       updated += 1;

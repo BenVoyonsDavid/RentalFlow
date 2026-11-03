@@ -86,30 +86,33 @@ export function canCreateAsset(plan: RentalFlowPlan, activeAssetCount: number): 
   return limit === null || activeAssetCount < limit;
 }
 
-function normalizePlanName(value: unknown): string {
+function normalizePlanTokens(value: unknown): string[] {
+  // Match complete package words, not substrings: "Proxy" is not "Pro".
   return String(value ?? '')
     .trim()
+    // Wix package tiers must be complete, delimited words; camel-case brand
+    // names such as MyBusinessTools are not proof of a Business subscription.
     .toUpperCase()
-    .replace(/[^A-Z0-9]+/g, '');
+    .split(/[^A-Z0-9]+/)
+    .filter(Boolean);
 }
 
 export function planFromPackageName(packageName: unknown, isFree?: boolean): RentalFlowPlan {
-  const normalized = normalizePlanName(packageName);
+  const tokens = normalizePlanTokens(packageName);
+  const has = (...names: string[]) => names.some((name) => tokens.includes(name));
 
   if (
     isFree === true
-    || normalized.includes('BASIC')
-    || normalized.includes('FREE')
-    || normalized.includes('GRATUIT')
+    || has('BASIC', 'FREE', 'GRATUIT')
   ) {
     return 'BASIC';
   }
 
-  if (!normalized) return isFree === false ? 'STARTER' : 'NO_PLAN';
+  if (!tokens.length) return isFree === false ? 'STARTER' : 'NO_PLAN';
 
-  if (normalized.includes('PRO') || normalized.includes('PREMIUM')) return 'PRO';
-  if (normalized.includes('BUSINESS') || normalized.includes('GROWTH')) return 'BUSINESS';
-  if (normalized.includes('STARTER') || normalized.includes('PLUS')) return 'STARTER';
+  if (has('PRO', 'PREMIUM')) return 'PRO';
+  if (has('BUSINESS', 'GROWTH')) return 'BUSINESS';
+  if (has('STARTER', 'PLUS')) return 'STARTER';
   // Unknown paid packages fail closed to the lowest paid tier.
   return isFree === false ? 'STARTER' : 'NO_PLAN';
 }
