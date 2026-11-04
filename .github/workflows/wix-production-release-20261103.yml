@@ -1,0 +1,123 @@
+name: RentalFlow Wix Production Release (Approved 2026-11-03)
+
+on:
+  push:
+    branches:
+      - release/wix-production-20261103
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rentalflow-production-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Publish Wix app version (not App Market submission)
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    env:
+      CI: 'true'
+      WIX_CLIENT_ID: 8ee574c2-70b9-45e9-98ed-9e8439a26e5d
+    steps:
+      - name: Checkout exact release candidate
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Verify this is the approved main commit plus only this release workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = 'refs/heads/release/wix-production-20261103'
+          test "$(git rev-parse HEAD^)" = 'efbef47d7d9c3ccd54658be953ac9506f6857805'
+          diff="$(git diff --name-only HEAD^ HEAD)"
+          test "$diff" = '.github/workflows/wix-production-release-20261103.yml'
+          node --input-type=module -e "import {readFileSync} from 'node:fs';const c=JSON.parse(readFileSync('wix.config.json','utf8'));if(c.appId!=='8ee574c2-70b9-45e9-98ed-9e8439a26e5d'||c.namespace!=='@pilotedavid1/rental-flow'||c.projectType!=='App')process.exit(1)"
+          printf 'WIX_SITE_ID=7f1ec6c8-4e35-4b19-a55d-21a9009e9386\n' > .env.local
+          echo 'Publishing only the version built from approved main commit efbef47d7d9c3ccd54658be953ac9506f6857805; no App Market submission.' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install pinned dependencies
+        run: npm ci
+
+      - name: Install Chromium for all regression suites
+        run: npx playwright install --with-deps chromium
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Domain regression tests
+        run: npm run test:domain
+
+      - name: Browser booking design tests
+        run: npm run test:booking-design
+
+      - name: Security regression tests
+        run: npm run test:security
+
+      - name: Public booking journey tests
+        run: npm run test:journey
+
+      - name: Management UI tests
+        run: npm run test:management-ui
+
+      - name: Billing regression tests
+        run: npm run test:billing
+
+      - name: Financial reconciliation tests
+        run: npm run test:staging-finance
+
+      - name: Wix App Market metadata and event tests
+        run: npm run test:app-market
+
+      - name: Check Wix CI authorization
+        env:
+          WIX_API_KEY: ${{ secrets.WIX_API_KEY }}
+        run: |
+          if [[ -z "$WIX_API_KEY" ]]; then
+            echo '::error::WIX_API_KEY missing. No release attempted.'
+            exit 1
+          fi
+
+      - name: Authenticate Wix CLI
+        env:
+          WIX_API_KEY: ${{ secrets.WIX_API_KEY }}
+        run: npx wix login --api-key "$WIX_API_KEY"
+
+      - name: Load Wix instance configuration and verify staging context for build
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wix env pull
+          npx wix dev-site current | tee wix-site-check.txt
+          grep -Fq '7f1ec6c8-4e35-4b19-a55d-21a9009e9386' wix-site-check.txt
+
+      - name: Build release version
+        run: npm run build
+
+      - name: Release MINOR Wix app version (authorized by user)
+        shell: bash
+        timeout-minutes: 15
+        run: |
+          set -euo pipefail
+          npx wix release --version-type minor --comment "RentalFlow - production release 2026-11-03 from efbef47d7d9c3ccd54658be953ac9506f6857805" 2>&1 | tee wix-release-result.txt
+          echo '### Wix CLI release finished. App Market submission (Submit & Publish) is a separate step.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Review the command log for the created app version and Wix Developer Center link.' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Save non-secret release output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rentalflow-wix-production-release-log
+          path: |
+            wix-site-check.txt
+            wix-release-result.txt
+          if-no-files-found: ignore
+          retention-days: 14
