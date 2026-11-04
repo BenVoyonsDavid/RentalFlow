@@ -1,3 +1,4 @@
+import assert from 'node:assert/strict';
 import { build } from 'esbuild';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -47,3 +48,13 @@ const misses = config.filter(x => !(
   x.configMetaData?.searchable === true
 ));
 console.log(`MISSING_FROM_WIX_BUILDER_RESULT=${misses.length}/${config.length}`);
+
+assert.equal(misses.length, 0, 'Wix builder lost metadata before app component registration');
+for (const page of config) {
+  const meta = page.optionsMetaData;
+  assert(meta?.searchable === true, `Builder missing searchable metadata for ${page.name}`);
+  assert(typeof meta?.title === 'string' && meta.title.length > 0);
+  assert(typeof meta?.description === 'string' && meta.description.length > 20);
+  assert(meta.description.length <= 200);
+}
+console.log('PASS: Nine Wix dashboard builder options contain metadata. Wix API component draft must also be checked after release.');
