@@ -24,7 +24,8 @@
     "test:billing": "node tests/billing-hardening.mjs",
     "test:staging-finance": "node tests/staging-finance.mjs",
     "test:app-market": "node tests/app-market-discoverability.mjs",
-    "test:booking-design": "node tests/booking-design.mjs"
+    "test:booking-design": "node tests/booking-design.mjs",
+    "test:post-release": "node tests/post-release-smoke.mjs"
   },
   "dependencies": {
     "@wix/app-management": "^1.0.159",
