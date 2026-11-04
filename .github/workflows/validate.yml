@@ -54,5 +54,8 @@ jobs:
       - name: App Market dashboard search and BI event checks
         run: npm run test:app-market
 
+      - name: Diagnose dashboard metadata runtime registration
+        run: node tests/inspect-dashboard-extension-runtime.mjs
+
       - name: Wix build note
         run: echo "Wix build is validated locally after 'npx wix env pull'; CI cannot supply the Wix-managed instance environment."
