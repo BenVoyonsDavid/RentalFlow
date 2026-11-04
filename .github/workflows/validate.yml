@@ -54,5 +54,8 @@ jobs:
       - name: App Market dashboard search and BI event checks
         run: npm run test:app-market
 
+      - name: Post-release payment, plan, BI and webhook simulations
+        run: npm run test:post-release
+
       - name: Wix build note
         run: echo "Wix build is validated locally after 'npx wix env pull'; CI cannot supply the Wix-managed instance environment."

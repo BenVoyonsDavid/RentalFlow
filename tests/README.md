@@ -38,3 +38,8 @@ La suite `npm run test:app-market` vérifie que les neuf pages de tableau de bor
 Les modifications d'extensions ne deviennent visibles aux utilisateurs Wix qu'après la publication d'une nouvelle version de l'application. La prévisualisation ne publie pas de version App Market.
 
 Les extensions Wix de cycle de vie (installation, changement de forfait, désinstallation) disposent d'un test de structure dans `test:app-market`. Leur enregistrement côté Wix doit être confirmé par les journaux de l'application, après activation de la version, sans aucun test de désinstallation destructeur.
+
+
+## Post-release integration simulations
+
+Run `npm run test:post-release` to exercise payment and plan semantics, BI HTTP forwarding with mocked authenticated transport, and the three Wix lifecycle event callbacks with an SDK stub. It uses no live credentials, test purchases, plan changes, installs or uninstalls. It complements (but cannot replace) the live Wix checks. The live site has a 144 CAD demo reservation with zero money received; a payment row's `remainingBalanceCents: 0` reflects the **projected balance once its pending payment link is settled**, not the actual amount collected. The UI calculates the current balance from settled receipts.
